@@ -1,0 +1,29 @@
+To check if still needed...
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: u-boot-2010.03/board/armadeus/apf9328/apf9328.c
+===================================================================
+--- u-boot-2010.03.orig/board/armadeus/apf9328/apf9328.c	2011-10-04 15:25:28.000000000 +0200
++++ u-boot-2010.03/board/armadeus/apf9328/apf9328.c	2011-10-04 15:52:25.000000000 +0200
+@@ -99,3 +99,10 @@
+ {
+ 	return;
+ }
++
++#ifdef CONFIG_DRIVER_DM9000
++int board_eth_init(bd_t *bis)
++{
++	return dm9000_initialize(bis);
++}
++#endif
+Index: u-boot-2010.03/board/armadeus/apf9328/config.mk
+===================================================================
+--- u-boot-2010.03.orig/board/armadeus/apf9328/config.mk	2011-10-04 15:25:28.000000000 +0200
++++ u-boot-2010.03/board/armadeus/apf9328/config.mk	2011-10-04 15:25:28.000000000 +0200
+@@ -8,3 +8,5 @@
+ #
+ 
+ TEXT_BASE = 0x0BF80000
++
++LDSCRIPT := $(SRCTREE)/board/$(BOARDDIR)/u-boot.lds

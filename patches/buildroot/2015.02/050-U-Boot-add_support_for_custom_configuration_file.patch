@@ -1,0 +1,50 @@
+U-Boot: add option to use a custom config file as it can be done within
+ Linux kernel, Busybox, uClibc and some other tools.
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+Index: buildroot/boot/uboot/Config.in
+===================================================================
+--- buildroot.orig/boot/uboot/Config.in
++++ buildroot/boot/uboot/Config.in
+@@ -80,6 +80,26 @@ config BR2_TARGET_UBOOT_CUSTOM_PATCH_DIR
+	  Most users may leave this empty
+
+ choice
++	prompt "U-Boot configuration"
++	default BR2_TARGET_UBOOT_USE_DEFCONFIG
++
++config BR2_TARGET_UBOOT_USE_DEFCONFIG
++	bool "Using default configuration"
++	help
++	  Using the default configuration selected by U-Boot board name.
++
++config BR2_TARGET_UBOOT_USE_CUSTOM_CONFIG
++	bool "Using a custom config file"
++
++endchoice
++
++config BR2_TARGET_UBOOT_CUSTOM_CONFIG_FILE
++	string "Configuration file path"
++	depends on BR2_TARGET_UBOOT_USE_CUSTOM_CONFIG
++	help
++	  Path to the custimized U-Boot configuration file
++
++choice
+	prompt "U-Boot binary format"
+	default BR2_TARGET_UBOOT_FORMAT_BIN
+
+Index: buildroot/boot/uboot/uboot.mk
+===================================================================
+--- buildroot.orig/boot/uboot/uboot.mk
++++ buildroot/boot/uboot/uboot.mk
+@@ -94,6 +94,9 @@ UBOOT_POST_PATCH_HOOKS += UBOOT_APPLY_CU
+ endif
+
+ define UBOOT_CONFIGURE_CMDS
++	$(if $(BR2_TARGET_UBOOT_USE_CUSTOM_CONFIG),
++		cp -pf $(call qstrip,$(BR2_TARGET_UBOOT_CUSTOM_CONFIG_FILE)) \
++			$(@D)/include/configs/$(UBOOT_BOARD_NAME).h)
+	$(TARGET_CONFIGURE_OPTS) 	\
+		$(MAKE) -C $(@D) $(UBOOT_MAKE_OPTS)		\
+		$(UBOOT_BOARD_NAME)_config

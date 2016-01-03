@@ -1,0 +1,43 @@
+Will be useful when smpeg and python-numpy packages will be available in BR.
+:-)
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/python-pygame/Config.in
+===================================================================
+--- buildroot.orig/package/python-pygame/Config.in	2012-02-21 17:45:22.000000000 +0100
++++ buildroot/package/python-pygame/Config.in	2012-02-21 17:47:02.000000000 +0100
+@@ -40,6 +40,33 @@
+ 	help
+ 	  pygame module for controlling streamed audio
+ 
++config BR2_PACKAGE_PYTHON_PYGAME_SNDARRAY
++	bool "pygame.sndarray"
++	depends on BR2_PACKAGE_PYTHON_PYGAME_MIXER && BR2_PACKAGE_PYTHON_NUMPY
++	help
++	  pygame module for accessing sound sample data
++
++comment "pygame.sndarray depends on Python's Numpy extension that is not (yet) supported"
++	depends on !BR2_PACKAGE_PYTHON_PYGAME_SNDARRAY
++
++config BR2_PACKAGE_PYTHON_PYGAME_SURFARRAY
++	bool "pygame.surfarray"
++	depends on BR2_PACKAGE_PYTHON_NUMPY
++	help
++	  pygame module for accessing surface pixel data using array interfaces
++
++comment "pygame.surfarray depends on Python's Numpy extension that is not (yet) supported"
++	depends on !BR2_PACKAGE_PYTHON_PYGAME_SURFARRAY
++
++config BR2_PACKAGE_PYTHON_PYGAME_MOVIE
++	bool "pygame.movie"
++	depends on BR2_PACKAGE_SMPEG
++	help
++	  pygame module for playback of mpeg video
++
++comment "pygame.movie depends on smpeg"
++	depends on !BR2_PACKAGE_PYTHON_PYGAME_MOVIE
++
+ config BR2_PACKAGE_PYTHON_PYGAME_SCRAP
+ 	bool "pygame.scrap"
+ 	depends on BR2_PACKAGE_SDL_X11

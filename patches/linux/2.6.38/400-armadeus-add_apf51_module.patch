@@ -1,0 +1,584 @@
+Index: linux-2.6.38.8/arch/arm/mach-mx5/Kconfig
+===================================================================
+--- linux-2.6.38.8.orig/arch/arm/mach-mx5/Kconfig	2012-03-26 16:38:15.000000000 +0200
++++ linux-2.6.38.8/arch/arm/mach-mx5/Kconfig	2012-03-28 09:59:58.000000000 +0200
+@@ -162,4 +162,17 @@
+ 	  Include support for MX50 reference design platform (RDP) board. This
+ 	  includes specific configurations for the board and its peripherals.
+ 
++config MACH_APF51
++	bool "Support Armadeus APF51"
++	select SOC_IMX51
++	select IMX_HAVE_PLATFORM_IMX_UART
++	select IMX_HAVE_PLATFORM_IMX_I2C
++	select IMX_HAVE_PLATFORM_MXC_NAND
++	select IMX_HAVE_PLATFORM_IMX2_WDT
++	select IMX_HAVE_PLATFORM_MXC_IIM
++	select MXC_ULPI
++	help
++	  Include support for Armadeus systems APF51 System On Module. This
++	  includes specific configurations for the board and its peripherals.
++
+ endif
+Index: linux-2.6.38.8/arch/arm/mach-mx5/Makefile
+===================================================================
+--- linux-2.6.38.8.orig/arch/arm/mach-mx5/Makefile	2011-06-03 03:35:11.000000000 +0200
++++ linux-2.6.38.8/arch/arm/mach-mx5/Makefile	2012-03-28 09:59:58.000000000 +0200
+@@ -7,6 +7,7 @@
+ obj-$(CONFIG_SOC_IMX50) += mm-mx50.o
+ 
+ obj-$(CONFIG_CPU_FREQ_IMX)    += cpu_op-mx51.o
++obj-$(CONFIG_MACH_APF51) += board-apf51.o
+ obj-$(CONFIG_MACH_MX51_BABBAGE) += board-mx51_babbage.o
+ obj-$(CONFIG_MACH_MX51_3DS) += board-mx51_3ds.o
+ obj-$(CONFIG_MACH_MX53_EVK) += board-mx53_evk.o
+Index: linux-2.6.38.8/arch/arm/mach-mx5/board-apf51.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.38.8/arch/arm/mach-mx5/board-apf51.c	2012-03-26 20:28:00.000000000 +0200
+@@ -0,0 +1,510 @@
++/*
++ * Support for APF51 System On Module
++ * Copyright (C) 2010-2011 Armadeus systems <support@armadeus.com>
++ *
++ * Based on code which is:
++ * Copyright 2009-2010 Freescale Semiconductor, Inc. All Rights Reserved.
++ * Copyright (C) 2009-2010 Amit Kucheria <amit.kucheria@canonical.com>
++ *
++ * The code contained herein is licensed under the GNU General Public
++ * License. You may obtain a copy of the GNU General Public License
++ * Version 2 or later at the following locations:
++ *
++ * http://www.opensource.org/licenses/gpl-license.html
++ * http://www.gnu.org/copyleft/gpl.html
++ */
++
++#include <linux/gpio.h>
++#include <linux/platform_device.h>
++#include <linux/io.h>
++#include <linux/delay.h>
++#include <linux/usb/otg.h>
++#include <linux/fec.h>
++#include <linux/i2c.h>
++#include <linux/mfd/wm831x/core.h>
++#include <linux/mfd/wm831x/pdata.h>
++#include <linux/irq.h>
++
++#include <asm/mach-types.h>
++#include <asm/mach/arch.h>
++#include <asm/mach/time.h>
++
++#include <mach/hardware.h>
++#include <mach/common.h>
++#include <mach/iomux-mx51.h>
++#include <mach/imx-uart.h>
++#include <mach/mxc_nand.h>
++#include <mach/mxc_ehci.h>
++#include <mach/ulpi.h>
++
++#include "devices-imx51.h"
++#include "devices.h"
++#include "cpu_op-mx51.h"
++
++extern void apf51_baseboard_init(void);
++
++/* USB_CTRL_1 */
++#define MX51_USB_CTRL_1_OFFSET			0x10
++#define MX51_USB_CTRL_UH1_EXT_CLK_EN		(1 << 25)
++#define MX51_USB_CTRL_UH2_EXT_CLK_EN		(1 << 26)
++
++#define APF51_GPIO_SPECIAL_PAD_CTRL (PAD_CTL_DSE_HIGH | PAD_CTL_PKE | PAD_CTL_SRE_FAST | PAD_CTL_PUE)
++
++
++static iomux_v3_cfg_t apf51_pads[] = {
++#ifdef APF51_PROTO
++	/* UART2 (Console) */
++	MX51_PAD_UART2_RXD__UART2_RXD,
++	MX51_PAD_UART2_TXD__UART2_TXD,
++#else
++	/* UART3 (Console) */
++	MX51_PAD_UART3_RXD__UART3_RXD,
++	MX51_PAD_UART3_TXD__UART3_TXD,
++#endif
++
++	/* USB HOST1 */
++	MX51_PAD_USBH1_CLK__USBH1_CLK,
++	MX51_PAD_USBH1_DIR__USBH1_DIR,
++	MX51_PAD_USBH1_NXT__USBH1_NXT,
++	MX51_PAD_USBH1_DATA0__USBH1_DATA0,
++	MX51_PAD_USBH1_DATA1__USBH1_DATA1,
++	MX51_PAD_USBH1_DATA2__USBH1_DATA2,
++	MX51_PAD_USBH1_DATA3__USBH1_DATA3,
++	MX51_PAD_USBH1_DATA4__USBH1_DATA4,
++	MX51_PAD_USBH1_DATA5__USBH1_DATA5,
++	MX51_PAD_USBH1_DATA6__USBH1_DATA6,
++	MX51_PAD_USBH1_DATA7__USBH1_DATA7,
++	MX51_PAD_USBH1_STP__USBH1_STP,
++
++	/* USB HOST2 */
++	MX51_PAD_EIM_A24__USBH2_CLK,
++	MX51_PAD_EIM_A25__USBH2_DIR,
++	MX51_PAD_EIM_A26__USBH2_STP,
++	MX51_PAD_EIM_A27__USBH2_NXT,
++	MX51_PAD_EIM_D16__USBH2_DATA0,
++	MX51_PAD_EIM_D17__USBH2_DATA1,
++	MX51_PAD_EIM_D18__USBH2_DATA2,
++	MX51_PAD_EIM_D19__USBH2_DATA3,
++	MX51_PAD_EIM_D20__USBH2_DATA4,
++	MX51_PAD_EIM_D21__USBH2_DATA5,
++	MX51_PAD_EIM_D22__USBH2_DATA6,
++	MX51_PAD_EIM_D23__USBH2_DATA7,
++
++	/* FEC */
++	MX51_PAD_DI_GP3__FEC_TX_ER,
++	MX51_PAD_DI2_PIN4__FEC_CRS,
++	MX51_PAD_DI2_PIN2__FEC_MDC,
++	MX51_PAD_DI2_PIN3__FEC_MDIO,
++	MX51_PAD_DI2_DISP_CLK__FEC_RDATA1,
++	MX51_PAD_DI_GP4__FEC_RDATA2,
++	MX51_PAD_DISP2_DAT0__FEC_RDATA3,
++	MX51_PAD_DISP2_DAT1__FEC_RX_ER,
++	MX51_PAD_DISP2_DAT6__FEC_TDATA1,
++	MX51_PAD_DISP2_DAT7__FEC_TDATA2,
++	MX51_PAD_DISP2_DAT8__FEC_TDATA3,
++	MX51_PAD_DISP2_DAT9__FEC_TX_EN,
++	MX51_PAD_DISP2_DAT10__FEC_COL,
++	MX51_PAD_DISP2_DAT11__FEC_RX_CLK,
++	MX51_PAD_DISP2_DAT12__FEC_RX_DV,
++	MX51_PAD_DISP2_DAT13__FEC_TX_CLK,
++	MX51_PAD_DISP2_DAT14__FEC_RDATA0,
++	MX51_PAD_DISP2_DAT15__FEC_TDATA0,
++
++	/* FEC PHY reset line */
++	MX51_PAD_DI1_PIN11__GPIO3_0,
++
++	/* I2C2 */
++	MX51_PAD_EIM_D24__I2C2_SDA,
++	MX51_PAD_EIM_D27__I2C2_SCL,
++
++	/* WM8311 IRQ */
++	MX51_PAD_GPIO1_7__GPIO1_7,
++	/* WM8311 TOUCH_DETECT */
++	MX51_PAD_GPIO1_4__GPIO1_4,
++	/* WM8311 TOUCH_EOC */
++	MX51_PAD_GPIO1_6__GPIO1_6,
++
++	/* FPGA */
++	MX51_PAD_DI1_D0_CS__GPIO3_3, /* CONFIG_SYS_FPGA_PWR */
++	MX51_PAD_CSI2_D12__GPIO4_9,  /* CONFIG_SYS_FPGA_PRG */
++	MX51_PAD_CSI2_D18__GPIO4_11, /* CONFIG_SYS_FPGA_INIT */
++	MX51_PAD_CSI2_D13__GPIO4_10, /* CONFIG_SYS_FPGA_DONE */
++	MX51_PAD_DISPB2_SER_DIO__GPIO3_6, /* CONFIG_SYS_FPGA_SUSPEND */
++	(_MX51_PAD_GPIO1_5__GPIO1_5 | MUX_PAD_CTRL(APF51_GPIO_SPECIAL_PAD_CTRL)), /* CLK0 as gpio */
++};
++
++
++/* Serial ports */
++static struct imxuart_platform_data uart_pdata = {
++	.flags = 0, /*IMXUART_HAVE_RTSCTS,*/
++};
++
++
++/* APF51 has a 512MB+ 3,3V Micron NAND flash, 8 bits width */
++static const struct mxc_nand_platform_data apf51_nand_board_info __initconst = {
++	.width = 1,
++	.hw_ecc = 1,
++	.flash_bbt = 1, /* we handle Bad Block Table */
++};
++
++
++/* APF51 has 2 PHYs on USB Host port 1 & 2 */
++
++static int initialize_usbh1_port(struct platform_device *pdev)
++{
++	u32 v;
++	void __iomem *usb_base;
++	void __iomem *usbother_base;
++
++	usb_base = ioremap(MX51_OTG_BASE_ADDR, SZ_4K);
++	usbother_base = usb_base + MX5_USBOTHER_REGS_OFFSET;
++
++	/* The clock for the USBH1 ULPI port will come externally from the PHY. */
++	v = __raw_readl(usbother_base + MX51_USB_CTRL_1_OFFSET);
++	__raw_writel(v | MX51_USB_CTRL_UH1_EXT_CLK_EN, usbother_base + MX51_USB_CTRL_1_OFFSET);
++	iounmap(usb_base);
++
++	return mx51_initialize_usb_hw(pdev->id,
++			(MXC_EHCI_POWER_PINS_ENABLED | MXC_EHCI_ITC_NO_THRESHOLD));
++}
++
++static int initialize_usbh2_port(struct platform_device *pdev)
++{
++	u32 v;
++	void __iomem *usb_base;
++	void __iomem * usbother_base;
++
++	usb_base = ioremap(MX51_OTG_BASE_ADDR, SZ_4K);
++	usbother_base = usb_base + MX5_USBOTHER_REGS_OFFSET;
++
++	/* The clock for the USBH2 ULPI port will come externally from the PHY. */
++	v = __raw_readl(usbother_base + MX51_USB_CTRL_1_OFFSET);
++	__raw_writel(v | MX51_USB_CTRL_UH2_EXT_CLK_EN, usbother_base + MX51_USB_CTRL_1_OFFSET);
++	iounmap(usb_base);
++
++	return mx51_initialize_usb_hw(pdev->id,
++			(MXC_EHCI_POWER_PINS_ENABLED | MXC_EHCI_ITC_NO_THRESHOLD));
++}
++
++static struct mxc_usbh_platform_data usbh1_config = {
++	.init	= initialize_usbh1_port,
++	.portsc	= MXC_EHCI_MODE_ULPI,
++};
++
++static struct mxc_usbh_platform_data usbh2_config = {
++	.init	= initialize_usbh2_port,
++	.portsc	= MXC_EHCI_MODE_ULPI,
++};
++
++#define APF51_USBH1_STP			(0*32 + 27)	/* GPIO_1_27 */
++#define APF51_USB_HOST_PHY_RESET	(2*32 +1)	/* GPIO_3_1 */
++
++static int apf51_usbh1_usbh2_active(void)
++{
++	iomux_v3_cfg_t phyreset_gpio = MX51_PAD_DI1_PIN12__GPIO3_1;
++	int ret;
++#if 0
++	iomux_v3_cfg_t usbh1stp_gpio = MX51_PAD_USBH1_STP__GPIO1_27;
++
++	/* Set USBH1_STP to GPIO and toggle it */
++	mxc_iomux_v3_setup_pad(&usbh1stp_gpio);
++	ret = gpio_request(APF51_USBH1_STP, "usbh1_stp");
++
++	if (ret) {
++		pr_debug("failed to get MX51_PAD_USBH1_STP__GPIO1_27: %d\n", ret);
++		return ret;
++	}
++	gpio_direction_output(APF51_USBH1_STP, 0);
++	gpio_set_value(APF51_USBH1_STP, 1);
++	msleep(100);
++	gpio_free(APF51_USBH1_STP);
++#endif
++
++	/* De-assert USB PHY RESETB */
++	mxc_iomux_v3_setup_pad(phyreset_gpio);
++	ret = gpio_request(APF51_USB_HOST_PHY_RESET, "phy_reset");
++
++	if (ret) {
++		pr_debug("failed to get MX51_PAD_DI1_PIN12__GPIO3_1: %d\n", ret);
++		return ret;
++	}
++	gpio_direction_output(APF51_USB_HOST_PHY_RESET, 1);
++	msleep(50);
++
++	return 0;
++}
++
++
++/* OTG port with i.MX51 internal PHY */
++#define	MX51_USB_PLL_DIV_19_2_MHZ	0x01
++
++/* This function is board specific as the bit mask for the plldiv will also
++be different for other Freescale SoCs, thus a common bitmask is not
++possible and cannot get place in /plat-mxc/ehci.c.*/
++static int initialize_otg_port(struct platform_device *pdev)
++{
++	u32 v;
++	void __iomem *usb_base;
++	void __iomem *usbother_base;
++
++	usb_base = ioremap(MX51_OTG_BASE_ADDR, SZ_4K);
++	if (!usb_base)
++		return -ENOMEM;
++	usbother_base = usb_base + MX5_USBOTHER_REGS_OFFSET;
++
++	/* Set the PHY clock to 19.2MHz */
++	v = __raw_readl(usbother_base + MXC_USB_PHY_CTR_FUNC2_OFFSET);
++	v &= ~MX5_USB_UTMI_PHYCTRL1_PLLDIV_MASK;
++	v |= MX51_USB_PLL_DIV_19_2_MHZ;
++	__raw_writel(v, usbother_base + MXC_USB_PHY_CTR_FUNC2_OFFSET);
++	iounmap(usb_base);
++
++	mdelay(10);
++
++	if (pdev)
++		return mx51_initialize_usb_hw(pdev->id, MXC_EHCI_INTERNAL_PHY);
++	else
++		return 0;
++}
++
++static struct mxc_usbh_platform_data apf51_usbdr_host_config = {
++	.init = initialize_otg_port,
++	.portsc	= MXC_EHCI_UTMI_16BIT,
++};
++
++static struct fsl_usb2_platform_data apf51_usbdr_device_pdata = {
++	.operating_mode	= FSL_USB2_DR_DEVICE,
++	.phy_mode = FSL_USB2_PHY_UTMI_WIDE,
++};
++
++static int otg_mode_host;
++
++static int __init apf51_otg_mode(char *options)
++{
++	if (!strcmp(options, "host"))
++		otg_mode_host = 1;
++	else if (!strcmp(options, "device"))
++		otg_mode_host = 0;
++	else
++		pr_info("otg_mode neither \"host\" nor \"device\". "
++			"Defaulting to device\n");
++	return 0;
++}
++__setup("otg_mode=", apf51_otg_mode);
++
++#if 0
++/* Done in U-Boot, kept here just in case... ;-) */
++#define APF51_FEC_PHY_RESET (2*32+0)	/* GPIO3_0 */
++static inline void apf51_fec_reset(void)
++{
++	int ret;
++
++	/* reset FEC PHY */
++	ret = gpio_request(APF51_FEC_PHY_RESET, "fec-phy-reset");
++	if (ret) {
++		printk(KERN_ERR"failed to get GPIO_FEC_PHY_RESET: %d\n", ret);
++		return;
++	}
++	gpio_direction_output(APF51_FEC_PHY_RESET, 0);
++	gpio_set_value(APF51_FEC_PHY_RESET, 0);
++	msleep(1);
++	gpio_set_value(APF51_FEC_PHY_RESET, 1);
++}
++#endif
++
++/* APF51 has a Wolfson PMIC on I2C2 */
++static const struct imxi2c_platform_data apf51_i2c_data __initconst = {
++	.bitrate = 400000,
++};
++
++#define APF51_WM8311_IRQ_GPIO		(0*32 + 7)	/* GPIO1_7 */
++#define APF51_WM8311_TOUCH_DETECT_GPIO	(0*32 + 4)	/* GPIO1_4 */
++#define APF51_WM8311_TOUCH_EOC_GPIO	(0*32 + 6)	/* GPIO1_6 */
++
++static int apf51_wm8311_pre_init(struct wm831x *wm831x)
++{
++	int ret = 0;
++
++	/* PMIC_IRQ line */
++	gpio_request(APF51_WM8311_IRQ_GPIO, "wm8311_irq");
++	gpio_direction_input(APF51_WM8311_IRQ_GPIO);
++	set_irq_type(gpio_to_irq(APF51_WM8311_IRQ_GPIO), IRQF_TRIGGER_FALLING);
++
++	/* TOUCH_DETECT line */
++	gpio_request(APF51_WM8311_TOUCH_DETECT_GPIO, "wm8311_touch_detect");
++	gpio_direction_input(APF51_WM8311_TOUCH_DETECT_GPIO);
++	set_irq_type(gpio_to_irq(APF51_WM8311_TOUCH_DETECT_GPIO), IRQF_TRIGGER_FALLING /*IRQF_TRIGGER_BOTH*/);
++
++	/* TOUCH_EOC line */
++	gpio_request(APF51_WM8311_TOUCH_EOC_GPIO, "wm8311_touch_eoc");
++	gpio_direction_input(APF51_WM8311_TOUCH_EOC_GPIO);
++	set_irq_type(gpio_to_irq(APF51_WM8311_TOUCH_EOC_GPIO), IRQF_TRIGGER_FALLING);
++
++	return ret;
++}
++
++static int apf51_wm8311_post_init(struct wm831x *wm831x)
++{
++	int ret = 0;
++
++	printk("--- %s 0x%08x\n", __func__, wm831x_reg_read(wm831x, WM831X_INTERRUPT_STATUS_2_MASK));
++	/* Configure GPIO6: input, pwdmn 0, inverted, CMOS, enable, pullup */
++	wm831x_reg_write(wm831x, WM831X_GPIO6_CONTROL, 0xc080);
++
++	return ret;
++}
++
++static struct wm831x_status_pdata apf51_wm8311_led1_pdata = {
++	.default_src = WM831X_STATUS_PRESERVE,
++	.name = "LED1:yellow:",
++};
++
++static struct wm831x_status_pdata apf51_wm8311_led2_pdata = {
++	.default_src = WM831X_STATUS_PRESERVE,
++	.name = "LED2:yellow:",
++};
++
++static struct wm831x_touch_pdata apf51_wm8311_touch_pdata = {
++	.fivewire = 0,
++	.pressure = 1,
++	.data_irq = gpio_to_irq(APF51_WM8311_TOUCH_EOC_GPIO),
++	.pd_irq = gpio_to_irq(APF51_WM8311_TOUCH_DETECT_GPIO),
++};
++
++static struct wm831x_pdata apf51_wm8311_pdata = {
++	.pre_init = apf51_wm8311_pre_init,
++	.post_init = apf51_wm8311_post_init,
++	.irq_cmos = 1,
++	.irq_base = MXC_BOARD_IRQ_START,
++#if 0
++	.gpio_base = GPIO_BOARD_START,
++#endif
++	.status = {
++		&apf51_wm8311_led1_pdata,
++		&apf51_wm8311_led2_pdata,
++	},
++	.touch = &apf51_wm8311_touch_pdata,
++};
++
++static struct i2c_board_info apf51_i2c1_devices[] __initdata = {
++	{
++#ifdef APF51_PROTO
++		I2C_BOARD_INFO("wm8311", 0x34),
++#else
++		I2C_BOARD_INFO("wm8311", 0x36),
++#endif
++		.platform_data = &apf51_wm8311_pdata,
++		.irq = gpio_to_irq(APF51_WM8311_IRQ_GPIO),
++	},
++};
++
++static int apf51_fpga_init(void)
++{
++#define	CONFIG_SYS_FPGA_PWR (2*32 + 3)
++#define	CONFIG_SYS_FPGA_PRG (3*32 + 9)
++#define	CONFIG_SYS_FPGA_INIT (3*32 + 11)
++#define	CONFIG_SYS_FPGA_DONE (3*32 + 10)
++#define	CONFIG_SYS_FPGA_SUSPEND (2*32 + 6)
++
++	int ret;
++
++	ret = gpio_request(CONFIG_SYS_FPGA_PRG, "FPGA");
++	if (ret) {
++		pr_warn("failed to get CONFIG_SYS_FPGA_PRG GPIO: %d\n", ret);
++		return ret;
++	}
++	ret = gpio_request(CONFIG_SYS_FPGA_PWR, "FPGA");
++	if (ret) {
++		pr_warn("failed to get CONFIG_SYS_FPGA_PWR GPIO: %d\n", ret);
++		return ret;
++	}
++	ret = gpio_request(CONFIG_SYS_FPGA_SUSPEND, "FPGA");
++	if (ret) {
++		pr_warn("failed to get CONFIG_SYS_FPGA_SUSPEND: %d\n", ret);
++		return ret;
++	}
++	ret = gpio_request(CONFIG_SYS_FPGA_DONE, "FPGA");
++	if (ret) {
++		pr_warn("failed to get CONFIG_SYS_FPGA_DONE: %d\n", ret);
++		return ret;
++	}
++	ret = gpio_request(CONFIG_SYS_FPGA_INIT, "FPGA");
++	if (ret) {
++		pr_warn("failed to get CONFIG_SYS_FPGA_INIT: %d\n", ret);
++		return ret;
++	}
++
++	return 0;
++}
++
++
++/*
++ * Board specific initialization.
++ */
++static void __init apf51_board_init(void)
++{
++#if defined(CONFIG_CPU_FREQ_IMX)
++	get_cpu_op = mx51_get_cpu_op;
++#endif
++	mxc_iomux_v3_setup_multiple_pads(apf51_pads,
++					ARRAY_SIZE(apf51_pads));
++
++#ifdef APF51_PROTO
++	imx51_add_imx_uart(1, &uart_pdata);
++#else
++	imx51_add_imx_uart(2, &uart_pdata);
++#endif
++
++	imx51_add_imx_i2c(1, &apf51_i2c_data);
++	i2c_register_board_info(1, apf51_i2c1_devices, ARRAY_SIZE(apf51_i2c1_devices));
++
++	/* APF51 has an Ethernet PHY connected on internal FEC */
++	imx51_add_fec(NULL);
++
++	imx51_add_mxc_nand(&apf51_nand_board_info);
++
++	apf51_usbh1_usbh2_active();
++	mxc_register_device(&mxc_usbh1_device, &usbh1_config);
++	mxc_register_device(&mxc_usbh2_device, &usbh2_config);
++
++	if (otg_mode_host)
++		mxc_register_device(&mxc_usbdr_host_device, &apf51_usbdr_host_config);
++	else {
++		initialize_otg_port(NULL);
++		mxc_register_device(&mxc_usbdr_udc_device, &apf51_usbdr_device_pdata);
++	}
++
++#ifdef CONFIG_ARMADEUS_FPGA_DRIVERS
++	apf51_fpga_init();
++#endif
++
++	imx51_add_imx2_wdt(0, NULL);
++	imx51_add_iim(NULL);
++
++	mxc_register_device(&mxc_scc_device, NULL);
++
++	mxc_register_device(&mxc_vpu_device, NULL);
++
++#ifdef CONFIG_MACH_APF51_HAS_BASEBOARD
++	apf51_baseboard_init();
++#endif
++}
++
++static void __init apf51_timer_init(void)
++{
++	mx51_clocks_init(32768, 32768*1024, 0 /*22579200*/, 0);
++}
++
++static struct sys_timer apf51_timer = {
++	.init   = apf51_timer_init,
++};
++
++MACHINE_START(APF51, "Armadeus APF51")
++	/* Maintainer: Armadeus systems <support@armadeus.com> */
++	.boot_params = MX51_PHYS_OFFSET + 0x100,
++	.map_io = mx51_map_io,
++	.init_irq = mx51_init_irq,
++	.init_machine = apf51_board_init,
++	.timer = &apf51_timer,
++MACHINE_END
++
+Index: linux-2.6.38.8/arch/arm/plat-mxc/include/mach/uncompress.h
+===================================================================
+--- linux-2.6.38.8.orig/arch/arm/plat-mxc/include/mach/uncompress.h	2012-03-26 16:38:16.000000000 +0200
++++ linux-2.6.38.8/arch/arm/plat-mxc/include/mach/uncompress.h	2012-03-26 16:38:17.000000000 +0200
+@@ -63,6 +63,7 @@
+ #define MX3X_UART1_BASE_ADDR	0x43F90000
+ #define MX3X_UART2_BASE_ADDR	0x43F94000
+ #define MX51_UART1_BASE_ADDR	0x73fbc000
++#define MX51_UART3_BASE_ADDR	0x7000c000
+ #define MX50_UART1_BASE_ADDR	0x53fbc000
+ #define MX53_UART1_BASE_ADDR	0x53fbc000
+ 
+@@ -113,6 +114,9 @@
+ 	case MACH_TYPE_MX53_EVK:
+ 		uart_base = MX53_UART1_BASE_ADDR;
+ 		break;
++	case MACH_TYPE_APF51:
++		uart_base = MX51_UART3_BASE_ADDR;
++		break;
+ 	default:
+ 		break;
+ 	}
+Index: linux-2.6.38.8/arch/arm/plat-mxc/include/mach/irqs.h
+===================================================================
+--- linux-2.6.38.8.orig/arch/arm/plat-mxc/include/mach/irqs.h	2012-03-26 16:38:16.000000000 +0200
++++ linux-2.6.38.8/arch/arm/plat-mxc/include/mach/irqs.h	2012-03-26 16:38:17.000000000 +0200
+@@ -53,6 +53,8 @@
+ #define MXC_BOARD_IRQS  80
+ #elif defined CONFIG_MACH_APF27
+ #define MXC_BOARD_IRQS  48
++#elif defined CONFIG_MACH_APF51
++#define MXC_BOARD_IRQS	96	/* WM8311 needs 64 of them and FPGA 16 */
+ #else
+ #define MXC_BOARD_IRQS	16
+ #endif

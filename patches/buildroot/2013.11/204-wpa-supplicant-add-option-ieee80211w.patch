@@ -1,0 +1,45 @@
+Add option to disable management frame protection (IEEE 802.11w) not supported
+by legacy Linux kernel
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+
+diff -purN buildroot/package/wpa_supplicant/Config.in buildroot/package/wpa_supplicant/Config.in
+--- buildroot/package/wpa_supplicant/Config.in
++++ buildroot/package/wpa_supplicant/Config.in
+@@ -54,4 +54,9 @@ config BR2_PACKAGE_WPA_SUPPLICANT_WPS
+ 	help
+ 	  Enable support for Wi-Fi Protected Setup (WPS)
+ 
++config BR2_PACKAGE_WPA_SUPPLICANT_IEEE80211W
++	bool "Enable support for management frame protection"
++	help
++	  Enable support for management frame protection (IEEE 802.11w)
++
+ endif
+diff -purN buildroot/package/wpa_supplicant/wpa_supplicant.mk buildroot/package/wpa_supplicant/wpa_supplicant.mk
+--- buildroot/package/wpa_supplicant/wpa_supplicant.mk
++++ buildroot/package/wpa_supplicant/wpa_supplicant.mk
+@@ -116,16 +116,22 @@ endef
+ 
+ endif
+ 
++ifeq ($(BR2_PACKAGE_WPA_SUPPLICANT_IEEE80211W),y)
++define WPA_SUPPLICANT_IEEE80211W_CONFIG
++	$(SED) 's/\(#\)\(CONFIG_IEEE80211W.*\)/\2/' $(WPA_SUPPLICANT_CONFIG)
++endef
++endif
++
+ define WPA_SUPPLICANT_CONFIGURE_CMDS
+ 	cp $(@D)/wpa_supplicant/defconfig $(WPA_SUPPLICANT_CONFIG)
+ 	$(SED) 's/\(#\)\(CONFIG_HS20.*\)/\2/' $(WPA_SUPPLICANT_CONFIG)
+ 	$(SED) 's/\(#\)\(CONFIG_IEEE80211N.*\)/\2/' $(WPA_SUPPLICANT_CONFIG)
+ 	$(SED) 's/\(#\)\(CONFIG_IEEE80211R.*\)/\2/' $(WPA_SUPPLICANT_CONFIG)
+-	$(SED) 's/\(#\)\(CONFIG_IEEE80211W.*\)/\2/' $(WPA_SUPPLICANT_CONFIG)
+ 	$(SED) 's/\(#\)\(CONFIG_INTERWORKING.*\)/\2/' $(WPA_SUPPLICANT_CONFIG)
+ 	$(SED) 's/\(#\)\(CONFIG_DELAYED_MIC.*\)/\2/' $(WPA_SUPPLICANT_CONFIG)
+ 	$(SED) 's/\(CONFIG_DRIVER_ATMEL\)/#\1/' $(WPA_SUPPLICANT_CONFIG)
+ 	$(SED) 's/\(CONFIG_SMARTCARD\)/#\1/' $(WPA_SUPPLICANT_CONFIG)
++	$(WPA_SUPPLICANT_IEEE80211W_CONFIG)
+ 	$(WPA_SUPPLICANT_LIBTOMMATH_CONFIG)
+ 	$(WPA_SUPPLICANT_TLS_CONFIG)
+ 	$(WPA_SUPPLICANT_EAP_CONFIG)

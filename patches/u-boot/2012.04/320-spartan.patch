@@ -1,0 +1,47 @@
+spartan3: Fix minor issue.
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+Signed-off-by: Nicolas Colombain <nicolas.colombain@armadeus.com>
+---
+ drivers/fpga/spartan3.c |    9 +++++++--
+ 1 files changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/fpga/spartan3.c b/drivers/fpga/spartan3.c
+index 1633a70..9ca0522 100644
+--- a/drivers/fpga/spartan3.c
++++ b/drivers/fpga/spartan3.c
+@@ -188,7 +188,7 @@ static int Spartan3_sp_load(Xilinx_desc *desc, const void *buf, size_t bsize)
+ 		(*fn->clk) (TRUE, TRUE, cookie);	/* Assert the clock pin */
+ 
+ 		/* Load the data */
+-		while (bytecount < bsize) {
++		while ( (*fn->done) (cookie) == FPGA_FAIL){
+ 			/* XXX - do we check for an Ctrl-C press in here ??? */
+ 			/* XXX - Check the error bit? */
+ 
+@@ -198,8 +198,8 @@ static int Spartan3_sp_load(Xilinx_desc *desc, const void *buf, size_t bsize)
+ 			CONFIG_FPGA_DELAY ();
+ 			(*fn->clk) (TRUE, TRUE, cookie);	/* Assert the clock pin */
+ 
+-#ifdef CONFIG_SYS_FPGA_CHECK_BUSY
+ 			ts = get_timer (0);	/* get current time */
++#ifdef CONFIG_SYS_FPGA_CHECK_BUSY
+ 			while ((*fn->busy) (cookie)) {
+ 				/* XXX - we should have a check in here somewhere to
+ 				 * make sure we aren't busy forever... */
+@@ -216,6 +216,11 @@ static int Spartan3_sp_load(Xilinx_desc *desc, const void *buf, size_t bsize)
+ 				}
+ 			}
+ #endif
++			if (get_timer (ts) > CONFIG_SYS_FPGA_WAIT) {	/* check the time */
++				puts ("** Timeout waiting for BUSY to clear.\n");
++				(*fn->abort) (cookie);	/* abort the burn */
++				return FPGA_FAIL;
++			}
+ 
+ #ifdef CONFIG_SYS_FPGA_PROG_FEEDBACK
+ 			if (bytecount % (bsize / 40) == 0)
+-- 
+1.7.4.4
+

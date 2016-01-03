@@ -1,0 +1,6 @@
+config BR2_PACKAGE_AD9889CTRL
+	bool "ad9889ctrl"
+	depends on BR2_TARGET_ARMADEUS
+	help
+	  Build "ad9889ctrl" tool. It allows you to configure the HDMI/DVI
+	  output of the APF27DevFull directly from Linux userspace.

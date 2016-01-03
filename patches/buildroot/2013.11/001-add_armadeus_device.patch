@@ -1,0 +1,24 @@
+Add armadeus target specific menu to BR.
+
+Index: buildroot/Makefile
+===================================================================
+--- buildroot/Makefile
++++ buildroot/Makefile
+@@ -337,6 +337,7 @@ endif
+ include boot/common.mk
+ include linux/linux.mk
+ include system/system.mk
++include target/device/armadeus/Makefile.in
+ 
+ TARGETS+=target-finalize
+ 
+Index: buildroot/system/Config.in
+===================================================================
+--- buildroot/system/Config.in
++++ buildroot/system/Config.in
+@@ -294,4 +294,5 @@ config BR2_ROOTFS_POST_BUILD_SCRIPT
+ 	  first and only argument. The script is executed from the
+ 	  main Buildroot source directory as the current directory.
+ 
++source "target/device/armadeus/Config.in"
+ endmenu

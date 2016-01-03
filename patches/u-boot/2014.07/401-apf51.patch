@@ -1,0 +1,1001 @@
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+Signed-off-by: Nicolas Colombain <nicolas.colombain@armadeus.com>
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+---
+ board/armadeus/apf51/Makefile |   43 ++
+ board/armadeus/apf51/apf51.c  | 1222 +++++++++++++++++++++++++++++++++++++++++
+ board/armadeus/apf51/fpga.c   |  266 +++++++++
+ board/armadeus/apf51/fpga.h   |   39 ++
+ boards.cfg                    |    1 +
+ 5 files changed, 1571 insertions(+), 0 deletions(-)
+ create mode 100644 board/armadeus/apf51/Makefile
+ create mode 100644 board/armadeus/apf51/apf51.c
+ create mode 100644 board/armadeus/apf51/fpga.c
+ create mode 100644 board/armadeus/apf51/fpga.h
+
+diff --git a/board/armadeus/apf51/Makefile b/board/armadeus/apf51/Makefile
+new file mode 100644
+index 0000000..9d94f74
+--- /dev/null
++++ b/board/armadeus/apf51/Makefile
+@@ -0,0 +1,9 @@
++#
++# (C) Copyright 2000-2006
++# Wolfgang Denk, DENX Software Engineering, wd@denx.de.
++#
++# SPDX-License-Identifier:	GPL-2.0+
++#
++
++obj-y	:= apf51.o fpga.o
++
+diff --git a/board/armadeus/apf51/apf51.c b/board/armadeus/apf51/apf51.c
+new file mode 100644
+index 0000000..8ff1381
+--- /dev/null
++++ b/board/armadeus/apf51/apf51.c
+@@ -0,0 +1,677 @@
++/*
++ * Armadeus APF51 baseboard
++ *
++ * (C) Copyright 2010-2014 Eric Jarrige, Armadeus Project
++ *
++ * SPDX-License-Identifier:	GPL-2.0+
++ */
++
++#include <common.h>
++#include <command.h>
++#include <environment.h>
++#include <asm/armv7.h>
++#include <asm/arch/clock.h>
++#include <asm/arch/crm_regs.h>
++#include <asm/arch/imx-regs.h>
++#include <asm/arch/iomux-mx51.h>
++#include <asm/arch/regs_esdctl.h>
++#include <asm/arch/sys_proto.h>
++#include <asm/gpio.h>
++#include <asm/errno.h>
++#include <asm/io.h>
++#include <i2c.h>
++#include <jffs2/jffs2.h>
++#include <fsl_esdhc.h>
++#include "fpga.h"
++#include <nand.h>
++#include <mmc.h>
++
++DECLARE_GLOBAL_DATA_PTR;
++
++unsigned long boot_verb;
++
++u32 get_board_rev(void)
++{
++
++	struct iim_regs *iim = (struct iim_regs *)IMX_IIM_BASE;
++
++	return readl(&iim->bank[1].fuse_regs[0x0f]) & 0x1f;
++}
++
++int get_num_ram_bank(void)
++{
++	struct iim_regs *iim = (struct iim_regs *)IMX_IIM_BASE;
++	int nr_dram_banks = 1;
++
++	if ((get_board_rev() > 0) && (CONFIG_NR_DRAM_BANKS > 1))
++		nr_dram_banks += readl(&iim->bank[1].fuse_regs[0x10]) & 0x01;
++	else
++		nr_dram_banks = CONFIG_NR_DRAM_POPULATED;
++
++	return nr_dram_banks;
++}
++
++int dram_init(void)
++{
++
++	gd->ram_size = get_ram_size((void *)CSD0_BASE_ADDR, PHYS_SDRAM_1_SIZE);
++	if (get_num_ram_bank() > 1) {
++		gd->ram_size +=
++			get_ram_size((void *)CSD1_BASE_ADDR, PHYS_SDRAM_2_SIZE);
++	}
++
++	return 0;
++}
++
++void dram_init_banksize(void)
++{
++	gd->bd->bi_dram[0].start = CSD0_BASE_ADDR;
++	gd->bd->bi_dram[0].size = gd->ram_size / get_num_ram_bank();
++	if (CONFIG_NR_DRAM_BANKS > 1) {
++		gd->bd->bi_dram[1].start = CSD1_BASE_ADDR;
++		gd->bd->bi_dram[1].size = gd->ram_size
++					- gd->bd->bi_dram[0].size;
++	}
++
++}
++
++void setup_usb(void)
++{
++	/*
++	 * Configure iomux for USB interfaces
++	 */
++#define USB_PAD_CFG		(PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH | \
++				PAD_CTL_SRE_FAST)
++
++	/*
++	 * usboh1
++	 */
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_USBH1_CLK__USBH1_CLK,
++				USB_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_USBH1_DIR__USBH1_DIR,
++				USB_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_USBH1_STP__USBH1_STP,
++				USB_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_USBH1_NXT__USBH1_NXT,
++				USB_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_USBH1_DATA0__USBH1_DATA0,
++				USB_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_USBH1_DATA1__USBH1_DATA1,
++				USB_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_USBH1_DATA2__USBH1_DATA2,
++				USB_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_USBH1_DATA3__USBH1_DATA3,
++				USB_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_USBH1_DATA4__USBH1_DATA4,
++				USB_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_USBH1_DATA5__USBH1_DATA5,
++				USB_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_USBH1_DATA6__USBH1_DATA6,
++				USB_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_USBH1_DATA7__USBH1_DATA7,
++				USB_PAD_CFG));
++	/*
++	 * usboh2
++	 */
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_D16__USBH2_DATA0,
++				USB_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_D17__USBH2_DATA1,
++				USB_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_D18__USBH2_DATA2,
++				USB_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_D19__USBH2_DATA3,
++				USB_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_D20__USBH2_DATA4,
++				USB_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_D21__USBH2_DATA5,
++				USB_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_D22__USBH2_DATA6,
++				USB_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_D23__USBH2_DATA7,
++				USB_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_A24__USBH2_CLK,
++				USB_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_A25__USBH2_DIR,
++				USB_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_A26__USBH2_STP,
++				USB_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_A27__USBH2_NXT,
++				USB_PAD_CFG));
++}
++
++void setup_uart(void)
++{
++	/*
++	 * Configure iomux for UART interfaces
++	 */
++
++#define UART_PAD_CFG		(PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH | \
++				PAD_CTL_SRE_FAST)
++	/*
++	 * uart1
++	 */
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_UART1_RXD__UART1_RXD,
++				UART_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_UART1_TXD__UART1_TXD,
++				UART_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_UART1_RTS__UART1_RTS,
++				UART_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_UART1_CTS__UART1_CTS,
++				UART_PAD_CFG));
++	/*
++	 * uart2
++	 */
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_D25__UART2_CTS,
++				UART_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_D26__UART2_RTS,
++				UART_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_UART2_RXD__UART2_RXD,
++				UART_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_UART2_TXD__UART2_TXD,
++				UART_PAD_CFG));
++	/*
++	 * uart3
++	 */
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_UART3_RXD__UART3_RXD,
++				UART_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_UART3_TXD__UART3_TXD,
++				UART_PAD_CFG));
++
++}
++
++void setup_audio(void)
++{
++	/*
++	 * Configure iomux for audio interfaces
++	 */
++
++#define AUD_PAD_CFG		(PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH | \
++				PAD_CTL_SRE_FAST)
++	/*
++	 * audmux3
++	 */
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_AUD3_BB_TXD__AUD3_TXD,
++				AUD_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_AUD3_BB_RXD__AUD3_RXD,
++				AUD_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_AUD3_BB_CK__AUD3_TXC,
++				AUD_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_AUD3_BB_FS__AUD3_TXFS,
++				AUD_PAD_CFG));
++	/*
++	 * audmux5
++	 */
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_EB2__AUD5_RXFS,
++				AUD_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_EB3__AUD5_RXC,
++				AUD_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_CS2__AUD5_TXD,
++				AUD_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_CS3__AUD5_RXD,
++				AUD_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_CS4__AUD5_TXC,
++				AUD_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_CS5__AUD5_TXFS,
++				AUD_PAD_CFG));
++	/*
++	 * audmux6
++	 */
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_D28__AUD6_TXD,
++				UART_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_D29__AUD6_RXD,
++				UART_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_D30__AUD6_TXC,
++				UART_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_D31__AUD6_TXFS,
++				UART_PAD_CFG));
++}
++
++void setup_csi(void)
++{
++	/*
++	 * Configure iomux for CSI interfaces
++	 */
++
++#define CSI_PAD_CFG		(PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH | \
++				PAD_CTL_SRE_FAST)
++	/*
++	 * csi1
++	 */
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_CSI1_D8__CSI1_D8,
++				CSI_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_CSI1_D9__CSI1_D9,
++				CSI_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_CSI1_D10__CSI1_D10,
++				CSI_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_CSI1_D11__CSI1_D11,
++				CSI_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_CSI1_D12__CSI1_D12,
++				CSI_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_CSI1_D13__CSI1_D13,
++				CSI_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_CSI1_D14__CSI1_D14,
++				CSI_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_CSI1_D15__CSI1_D15,
++				CSI_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_CSI1_D16__CSI1_D16,
++				CSI_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_CSI1_D17__CSI1_D17,
++				CSI_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_CSI1_D18__CSI1_D18,
++				CSI_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_CSI1_D19__CSI1_D19,
++				CSI_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_CSI1_VSYNC__CSI1_VSYNC,
++				CSI_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_CSI1_HSYNC__CSI1_HSYNC,
++				CSI_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_CSI1_PIXCLK__CSI1_PIXCLK,
++				CSI_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_CSI1_MCLK__CSI1_MCLK,
++				CSI_PAD_CFG));
++}
++
++void setup_eim(void)
++{
++struct weim *weim = (struct weim *)WEIM_BASE_ADDR;
++
++	writel(ACFG_WCR_VALUE, &weim->wcr);
++	writel(ACFG_WIAR_VALUE, &weim->wiar);
++
++	writel(ACFG_CS1GCR1_VALUE, &weim->cs1gcr1);
++	writel(ACFG_CS2GCR1_VALUE, &weim->cs2gcr1);
++	writel(ACFG_CS3GCR1_VALUE, &weim->cs3gcr1);
++	writel(ACFG_CS4GCR1_VALUE, &weim->cs4gcr1);
++	writel(ACFG_CS5GCR1_VALUE, &weim->cs5gcr1);
++
++	writel(ACFG_CS1GCR2_VALUE, &weim->cs1gcr2);
++	writel(ACFG_CS2GCR2_VALUE, &weim->cs2gcr2);
++	writel(ACFG_CS3GCR2_VALUE, &weim->cs3gcr2);
++	writel(ACFG_CS4GCR2_VALUE, &weim->cs4gcr2);
++	writel(ACFG_CS5GCR2_VALUE, &weim->cs5gcr2);
++
++	writel(ACFG_CS1RCR1_VALUE, &weim->cs1rcr1);
++	writel(ACFG_CS2RCR1_VALUE, &weim->cs2rcr1);
++	writel(ACFG_CS3RCR1_VALUE, &weim->cs3rcr1);
++	writel(ACFG_CS4RCR1_VALUE, &weim->cs4rcr1);
++	writel(ACFG_CS5RCR1_VALUE, &weim->cs5rcr1);
++
++	writel(ACFG_CS1RCR2_VALUE, &weim->cs1rcr2);
++	writel(ACFG_CS2RCR2_VALUE, &weim->cs2rcr2);
++	writel(ACFG_CS3RCR2_VALUE, &weim->cs3rcr2);
++	writel(ACFG_CS4RCR2_VALUE, &weim->cs4rcr2);
++	writel(ACFG_CS5RCR2_VALUE, &weim->cs5rcr2);
++
++	writel(ACFG_CS1WCR1_VALUE, &weim->cs1wcr1);
++	writel(ACFG_CS2WCR1_VALUE, &weim->cs2wcr1);
++	writel(ACFG_CS3WCR1_VALUE, &weim->cs3wcr1);
++	writel(ACFG_CS4WCR1_VALUE, &weim->cs4wcr1);
++	writel(ACFG_CS5WCR1_VALUE, &weim->cs5wcr1);
++
++	writel(ACFG_CS1WCR2_VALUE, &weim->cs1wcr2);
++	writel(ACFG_CS2WCR2_VALUE, &weim->cs2wcr2);
++	writel(ACFG_CS3WCR2_VALUE, &weim->cs3wcr2);
++	writel(ACFG_CS4WCR2_VALUE, &weim->cs4wcr2);
++	writel(ACFG_CS5WCR2_VALUE, &weim->cs5wcr2);
++
++}
++
++void setup_misc(void)
++{
++	/*
++	 * Configure iomux for misc interfaces
++	 */
++
++#define GPIO_PAD_CFG		(PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH | \
++				PAD_CTL_SRE_FAST)
++
++	/* pwm 1 & 2 */
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_GPIO1_2__PWM1_PWMO,
++				GPIO_PAD_CFG));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_GPIO1_3__PWM2_PWMO,
++				GPIO_PAD_CFG));
++
++	/* touch detect# */
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_GPIO1_4__GPIO1_4,
++				GPIO_PAD_CFG));
++
++	/* clko */
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_GPIO1_5__CCM_CLKO,
++				GPIO_PAD_CFG));
++
++	/* touch eoc# */
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_GPIO1_6__GPIO1_6,
++				GPIO_PAD_CFG));
++
++	/* PMIC IRQ */
++	imx_iomux_v3_setup_pad(MX51_PAD_GPIO1_7__GPIO1_7);
++
++	/* FEC PHY RST# */
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_DI1_PIN11__GPIO3_0,
++				GPIO_PAD_CFG));
++
++	/* USBHOST RST# */
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_DI1_PIN12__GPIO3_1,
++				GPIO_PAD_CFG));
++
++	/* PMIC SLEEP# */
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_DISPB2_SER_CLK__GPIO3_7,
++				GPIO_PAD_CFG));
++
++	/* PMIC OFF# */
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_DISPB2_SER_RS__GPIO3_8,
++				GPIO_PAD_CFG));
++}
++
++void setup_fpga(void)
++{
++#define FPGA_PAD_CFG		(PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH | \
++				PAD_CTL_SRE_FAST)
++	/* FPGA PWR */
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_DI1_D0_CS__GPIO3_3,
++				FPGA_PAD_CFG));
++
++	/* FPGA SUSPEND */
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_DISPB2_SER_DIO__GPIO3_6,
++				FPGA_PAD_CFG));
++
++	/* FPGA PROG */
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_CSI2_D12__GPIO4_9,
++				FPGA_PAD_CFG));
++
++	/* FPGA DONE */
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_CSI2_D13__GPIO4_10,
++				FPGA_PAD_CFG));
++
++	/* FPGA INIT# */
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_CSI2_D18__GPIO4_11,
++				FPGA_PAD_CFG));
++}
++
++void setup_display(void)
++{
++	/*
++	 * Configure iomux for display 1 interface
++	 */
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_DI1_D1_CS__GPIO3_4,
++				(PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH |
++				PAD_CTL_SRE_FAST)));
++}
++
++void setup_nfc(void)
++{
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_WE_B__NANDF_WE_B,
++				PAD_CTL_PUS_47K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_RE_B__NANDF_RE_B,
++				PAD_CTL_PUS_47K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_CLE__NANDF_CLE,
++				PAD_CTL_PUS_47K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_ALE__NANDF_ALE,
++				PAD_CTL_PUS_47K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_WP_B__NANDF_WP_B,
++				PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_RB0__NANDF_RB0,
++				PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_D0__NANDF_D0,
++				PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_D1__NANDF_D1,
++				PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_D2__NANDF_D2,
++				PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_D3__NANDF_D3,
++				PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_D4__NANDF_D4,
++				PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_D5__NANDF_D5,
++				PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_D6__NANDF_D6,
++				PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_D7__NANDF_D7,
++				PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH));
++}
++
++void setup_spi_io(void)
++{
++	/*
++	 * Configure iomux for SPI interface
++	 */
++
++#define CSPI_PAD_CFG		(PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH | \
++				PAD_CTL_SRE_FAST)
++
++	static const iomux_v3_cfg_t spi_pads[] = {
++		NEW_PAD_CTRL(MX51_PAD_CSPI1_MOSI__ECSPI1_MOSI, CSPI_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_CSPI1_MISO__ECSPI1_MISO, CSPI_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_CSPI1_SS0__ECSPI1_SS0, CSPI_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_CSPI1_SS1__ECSPI1_SS1, CSPI_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_CSPI1_RDY__ECSPI1_RDY, CSPI_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_CSPI1_SCLK__ECSPI1_SCLK, CSPI_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_NANDF_RB1__ECSPI2_RDY, CSPI_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_NANDF_RB2__ECSPI2_SCLK, CSPI_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_NANDF_RB3__ECSPI2_MISO, CSPI_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_NANDF_D15__ECSPI2_MOSI, CSPI_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_NANDF_D14__ECSPI2_SS3, CSPI_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_NANDF_D13__ECSPI2_SS2, CSPI_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_NANDF_D12__ECSPI2_SS1, CSPI_PAD_CFG),
++	};
++
++	imx_iomux_v3_setup_multiple_pads(spi_pads, ARRAY_SIZE(spi_pads));
++}
++
++#ifdef CONFIG_SYS_I2C_MXC
++static void setup_i2c(unsigned int i2c_bus)
++{
++	static const iomux_v3_cfg_t i2c1_pads[] = {
++		MX51_PAD_I2C1_CLK__I2C1_CLK,
++		MX51_PAD_I2C1_DAT__I2C1_DAT,
++	};
++
++	static const iomux_v3_cfg_t i2c2_pads[] = {
++		MX51_PAD_EIM_D24__I2C2_SDA,
++		MX51_PAD_EIM_D27__I2C2_SCL,
++	};
++
++	/*
++	 * Configure iomux for I2C interfaces
++	 */
++	switch (i2c_bus) {
++	case 0:
++		imx_iomux_v3_setup_multiple_pads(i2c1_pads, ARRAY_SIZE(i2c1_pads));
++		break;
++
++	case 1:
++		imx_iomux_v3_setup_multiple_pads(i2c2_pads, ARRAY_SIZE(i2c2_pads));
++		break;
++
++	default:
++		printf("Invalid I2C bus: 0x%x\n", i2c_bus);
++		break;
++	}
++}
++#endif
++
++static void setup_fec(void)
++{
++#ifdef CONFIG_FEC_MXC
++#define FEC_PAD_CFG		(PAD_CTL_DSE_MED | PAD_CTL_HYS )
++
++	static const iomux_v3_cfg_t fec_pads[] = {
++		NEW_PAD_CTRL(MX51_PAD_DI_GP3__FEC_TX_ER, FEC_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_DI2_PIN4__FEC_CRS, FEC_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_DI2_PIN2__FEC_MDC, FEC_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_DI2_PIN3__FEC_MDIO, FEC_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_DI2_DISP_CLK__FEC_RDATA1, FEC_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_DI_GP4__FEC_RDATA2, FEC_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_DISP2_DAT0__FEC_RDATA3, FEC_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_DISP2_DAT1__FEC_RX_ER, FEC_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_DISP2_DAT6__FEC_TDATA1, FEC_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_DISP2_DAT7__FEC_TDATA2, FEC_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_DISP2_DAT8__FEC_TDATA3, FEC_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_DISP2_DAT9__FEC_TX_EN, FEC_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_DISP2_DAT10__FEC_COL, FEC_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_DISP2_DAT11__FEC_RX_CLK, FEC_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_DISP2_DAT12__FEC_RX_DV, FEC_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_DISP2_DAT13__FEC_TX_CLK, FEC_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_DISP2_DAT14__FEC_RDATA0, FEC_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_DISP2_DAT15__FEC_TDATA0, FEC_PAD_CFG),
++	};
++
++	gpio_set_value(CONFIG_SYS_PHY_RESET_GPIO, 0);
++	gpio_direction_output(CONFIG_SYS_PHY_RESET_GPIO, 0);
++
++	imx_iomux_v3_setup_multiple_pads(fec_pads, ARRAY_SIZE(fec_pads));
++
++	/* Ethernet PHY leave Reset state (POR only) */
++	gpio_set_value(CONFIG_SYS_PHY_RESET_GPIO, 1);
++	gpio_direction_output(CONFIG_SYS_PHY_RESET_GPIO, 1);
++
++#endif
++}
++
++#ifdef CONFIG_FSL_ESDHC
++
++struct fsl_esdhc_cfg esdhc_cfg[2] = {
++	{MMC_SDHC1_BASE_ADDR},
++	{MMC_SDHC2_BASE_ADDR},
++};
++
++int board_mmc_getcd(struct mmc *mmc)
++{
++	struct fsl_esdhc_cfg *cfg = (struct fsl_esdhc_cfg *)mmc->priv;
++	int ret = 0;
++
++	if (cfg->esdhc_base == MMC_SDHC1_BASE_ADDR)
++		ret = !gpio_get_value(IMX_GPIO_NR(2, 29));
++
++	return ret;
++}
++
++#define SD_PAD_CFG		(PAD_CTL_DSE_MAX | PAD_CTL_PKE | \
++				PAD_CTL_PUE | PAD_CTL_PUS_47K_UP | \
++				PAD_CTL_HYS  | PAD_CTL_SRE_FAST)
++int board_mmc_init(bd_t *bis)
++{
++	static const iomux_v3_cfg_t sd1_pads[] = {
++		MX51_PAD_EIM_CS4__GPIO2_29,
++		NEW_PAD_CTRL(MX51_PAD_SD1_CMD__SD1_CMD, SD_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_SD1_CLK__SD1_CLK, PAD_CTL_DSE_MAX | \
++				PAD_CTL_PUS_47K_UP | PAD_CTL_SRE_FAST),
++		NEW_PAD_CTRL(MX51_PAD_SD1_DATA0__SD1_DATA0, SD_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_SD1_DATA1__SD1_DATA1, SD_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_SD1_DATA2__SD1_DATA2, SD_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_SD1_DATA3__SD1_DATA3, SD_PAD_CFG),
++	};
++
++	static const iomux_v3_cfg_t sd2_pads[] = {
++		NEW_PAD_CTRL(MX51_PAD_SD2_CMD__SD2_CMD, SD_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_SD2_CLK__SD2_CLK, PAD_CTL_DSE_MAX | \
++				PAD_CTL_PUS_47K_UP | PAD_CTL_SRE_FAST),
++		NEW_PAD_CTRL(MX51_PAD_SD2_DATA0__SD2_DATA0, SD_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_SD2_DATA1__SD2_DATA1, SD_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_SD2_DATA2__SD2_DATA2, SD_PAD_CFG),
++		NEW_PAD_CTRL(MX51_PAD_SD2_DATA3__SD2_DATA3, SD_PAD_CFG),
++	};
++
++	s32 status = 0;
++	int esdh_addr = CONFIG_SYS_FSL_ESDHC_ADDR;
++
++	switch (esdh_addr) {
++	case MMC_SDHC1_BASE_ADDR:
++
++		esdhc_cfg[0].sdhc_clk = mxc_get_clock(MXC_ESDHC_CLK);
++
++		imx_iomux_v3_setup_multiple_pads(sd1_pads, ARRAY_SIZE(sd1_pads));
++
++		gpio_direction_input(IMX_GPIO_NR(2, 29));
++
++		status = fsl_esdhc_initialize(bis, &esdhc_cfg[0]);
++		break;
++	case MMC_SDHC2_BASE_ADDR:
++		esdhc_cfg[1].sdhc_clk = mxc_get_clock(MXC_ESDHC2_CLK);
++
++		imx_iomux_v3_setup_multiple_pads(sd2_pads, ARRAY_SIZE(sd2_pads));
++
++		status = fsl_esdhc_initialize(bis, &esdhc_cfg[1]);
++		break;
++	default:
++		printf("*** ERROR: SD/MMC interface %d not supported\n",
++		       esdh_addr);
++		status = 1;
++		break;
++	}
++
++	return status;
++}
++#endif
++
++int board_early_init_f(void)
++{
++	struct mxc_ccm_reg *mxc_ccm = (struct mxc_ccm_reg *)MXC_CCM_BASE;
++	struct src *src = (struct src *)SRC_BASE_ADDR;
++
++	/* Increase freq to APF_ARM_CLK (800MHz) */
++	writel((ACFG_PLL1_CLK / APF_ARM_CLK) - 1, &mxc_ccm->cacrr);
++
++	/* Disable warm reset */
++	writel(0x560, &src->scr);
++
++	setup_misc();
++	setup_uart();
++	setup_spi_io();
++	setup_nfc();
++	setup_fec();
++#ifdef CONFIG_SYS_I2C_MXC
++	setup_i2c(1);
++#endif
++	setup_display();
++	setup_usb();
++	setup_audio();
++	setup_eim();
++	setup_csi();
++#ifdef CONFIG_FPGA
++	setup_fpga();
++#endif
++
++	return 0;
++}
++
++int board_init(void)
++{
++	/* address of boot parameters */
++	gd->bd->bi_boot_params = CSD0_BASE_ADDR + 0x100;
++
++#if defined(CONFIG_FPGA)
++	APF51_init_fpga();
++#endif
++	return 0;
++}
++
++int checkboard(void)
++{
++	printf("Board: Armadeus APF51 revision %d\n", get_board_rev());
++	return 0;
++}
++
++/*void enable_caches(void)
++{
++#ifndef CONFIG_SYS_DCACHE_OFF
++
++	dcache_enable();
++#endif
++}*/
++
++#ifndef CONFIG_L2_OFF
++void v7_outer_cache_enable(void)
++{
++	asm("mrc 15, 0, r0, c1, c0, 1");
++	asm("orr r0, r0, #0x2");
++	asm("mcr 15, 0, r0, c1, c0, 1");
++}
++
++void v7_outer_cache_disable(void)
++{
++	asm("mrc 15, 0, r0, c1, c0, 1");
++	asm("bic r0, r0, #0x2");
++	asm("mcr 15, 0, r0, c1, c0, 1");
++}
++#endif
+diff --git a/board/armadeus/apf51/fpga.c b/board/armadeus/apf51/fpga.c
+new file mode 100644
+index 0000000..665928e
+--- /dev/null
++++ b/board/armadeus/apf51/fpga.c
+@@ -0,0 +1,240 @@
++/*
++ * Copyright (C) 2002-2010
++ * Nicolas Colombain <nicolas.colombain@armadeus.com>
++ * Rich Ireland, Enterasys Networks, rireland@enterasys.com.
++ * Keith Outwater, keith_outwater@mvis.com.
++ *
++ * SPDX-License-Identifier:	GPL-2.0+
++ */
++#include <common.h>
++
++#if defined(CONFIG_FPGA)
++
++#include <asm/arch/crm_regs.h>
++#include <asm/arch/imx-regs.h>
++#include <asm/gpio.h>
++#include <generated/asm-offsets.h>
++#include <asm/io.h>
++#include <command.h>
++#include <config.h>
++#include <asm/arch/iomux-mx51.h>
++#include "fpga.h"
++#include <spartan3.h>
++
++#ifdef FPGA_DEBUG
++#define		PRINTF(fmt, args...)	printf(fmt , ##args)
++#else
++#define		PRINTF(fmt, args...)
++#endif
++
++static u32 temp_clk;		/* use to restore the emi_clk_sel after donwload */
++static u32 temp_rcr1;
++static u32 temp_wcr1;
++static u32 temp_data;
++static u32 temp_index;
++
++/* Note that these are pointers to code that is in Flash.  They will be
++ * relocated at runtime.
++ * Spartan2 code is used to download our Spartan 6 :) code is compatible.
++ * Just take care about the file size
++*/
++xilinx_spartan3_slave_parallel_fns fpga_fns = {
++	fpga_pre_fn,
++	fpga_pgm_fn,
++	fpga_init_fn,
++	NULL,
++	fpga_done_fn,
++	fpga_clk_fn,
++	fpga_cs_fn,
++	fpga_wr_fn,
++	fpga_rdata_fn,
++	fpga_wdata_fn,
++	fpga_busy_fn,
++	fpga_abort_fn,
++	fpga_post_fn,
++};
++
++xilinx_desc fpga[CONFIG_FPGA_COUNT] = {
++	{xilinx_spartan3,
++	 slave_parallel,
++	 3713568l / 8,
++	 (void *)&fpga_fns,
++	 0}
++};
++
++/*
++ *
++ */
++int fpga_pre_fn(int cookie)
++{
++#define EMI_CLK_SEL		1<<26
++	struct mxc_ccm_reg *mxc_ccm = (struct mxc_ccm_reg *)MXC_CCM_BASE;
++	struct weim *weim = (struct weim *)WEIM_BASE_ADDR;
++
++	temp_index = 0;
++	temp_rcr1 = readl(&weim->cs1rcr1);
++	writel(0x01000010, &weim->cs1rcr1);
++	temp_wcr1 = readl(&weim->cs1wcr1);
++	writel(0x01000008, &weim->cs1wcr1);
++
++	/* change emi_clk_sel to ensure blck smaller than 50MHz */
++	temp_clk = readl(&mxc_ccm->cbcdr);
++	writel(temp_clk | EMI_CLK_SEL, &mxc_ccm->cbcdr);
++
++	/* FPGA PROG */
++	gpio_set_value(ACFG_FPGA_PRG, 1);
++	gpio_direction_output(ACFG_FPGA_PRG, 1);
++
++	/* FPGA SUSPEND */
++	gpio_set_value(ACFG_FPGA_SUSPEND, 1);
++	gpio_direction_output(ACFG_FPGA_SUSPEND, 1);
++
++	/* FPGA DONE */
++	gpio_direction_input(ACFG_FPGA_DONE);
++
++	/* FPGA INIT# */
++	gpio_direction_input(ACFG_FPGA_INIT);
++
++	/* FPGA PWR */
++	gpio_set_value(ACFG_FPGA_PWR, 1);
++	gpio_direction_output(ACFG_FPGA_PWR, 1);
++
++	PRINTF("FPGA power enabled\n");
++
++	return cookie;
++}
++
++/*
++ * Set the FPGA's active-low program line to the specified level
++ */
++int fpga_pgm_fn(int assert, int flush, int cookie)
++{
++	PRINTF("%s:%d: FPGA PROGRAM %s\n", __func__, __LINE__,
++		assert ? "high" : "low");
++	gpio_set_value(ACFG_FPGA_PRG, !assert);
++	return assert;
++}
++
++/*
++ * Set the FPGA's active-high clock line to the specified level
++ */
++int fpga_clk_fn(int assert_clk, int flush, int cookie)
++{
++	return assert_clk;
++}
++
++/*
++ * Test the state of the active-low FPGA INIT line.  Return 1 on INIT
++ * asserted (low).
++ */
++int fpga_init_fn(int cookie)
++{
++	int value;
++	PRINTF("%s:%d: INIT check...\n", __func__, __LINE__);
++	value = gpio_get_value(ACFG_FPGA_INIT);
++	PRINTF("init value read %x\n", value);
++	if (value)
++		return 0;
++	return 1;
++}
++
++/*
++ * Test the state of the active-high FPGA DONE pin
++ */
++int fpga_done_fn(int cookie)
++{
++	int value;
++	value = gpio_get_value(ACFG_FPGA_DONE);
++	PRINTF("%s:%d: DONE check... %s", __func__, __LINE__,
++	       value ? "high" : "low");
++	return value ? FPGA_SUCCESS : FPGA_FAIL;
++}
++
++/*
++ * Set the FPGA's wr line to the specified level
++ */
++int fpga_wr_fn(int assert_write, int flush, int cookie)
++{
++	return assert_write;
++}
++
++int fpga_cs_fn(int assert_cs, int flush, int cookie)
++{
++	return assert_cs;
++}
++
++int fpga_rdata_fn(unsigned char *data, int cookie)
++{
++	PRINTF("%s:%d: FPGA READ DATA %02X\n", __func__, __LINE__,
++	       *((char *)ACFG_FPGA_RDATA));
++	*data =
++	    (unsigned char)((*((unsigned short *)ACFG_FPGA_RDATA)) &
++			    0x00FF);
++	return *data;
++}
++
++int fpga_wdata_fn(unsigned char data, int flush, int cookie)
++{
++	PRINTF("%s:%d: FPGA WRITE DATA %02X\n", __func__, __LINE__, data);
++
++	switch (temp_index++) {
++	case 0:
++		temp_data = data << 8;
++		break;
++	case 1:
++		temp_data = temp_data + data;
++		break;
++	case 2:
++		temp_data = temp_data + (data << 24);
++		break;
++	default:
++		*((unsigned long *)ACFG_FPGA_WDATA) = temp_data + (data << 16);
++		temp_index = 0;
++		break;
++	}
++
++	return data;
++}
++
++int fpga_abort_fn(int cookie)
++{
++	return fpga_post_fn(cookie);
++}
++
++int fpga_busy_fn(int cookie)
++{
++	return 1;
++}
++
++int fpga_post_fn(int cookie)
++{
++	struct mxc_ccm_reg *mxc_ccm = (struct mxc_ccm_reg *)MXC_CCM_BASE;
++	struct weim *weim = (struct weim *)WEIM_BASE_ADDR;
++	PRINTF("%s:%d: FPGA POST\n", __func__, __LINE__);
++	/* restore emi_clk_sel */
++	writel(temp_clk, &mxc_ccm->cbcdr);
++	udelay(10);		/* wait a few us after emi_clk_sel change */
++	writel(temp_rcr1, &weim->cs1rcr1);
++	writel(temp_wcr1, &weim->cs1wcr1);
++
++	return cookie;
++}
++
++/*
++ * Initialize the fpga.  Return 1 on success, 0 on failure.
++ */
++int APF51_init_fpga(void)
++{
++	int i;
++
++	fpga_init();
++
++	for (i = 0; i < CONFIG_FPGA_COUNT; i++) {
++		PRINTF("%s:%d: Adding fpga %d\n", __func__, __LINE__, i);
++		fpga_add(fpga_xilinx, &fpga[i]);
++	}
++
++	return 0;
++}
++
++#endif /* CONFIG_FPGA */
+diff --git a/board/armadeus/apf51/fpga.h b/board/armadeus/apf51/fpga.h
+new file mode 100644
+index 0000000..f22f4d8
+--- /dev/null
++++ b/board/armadeus/apf51/fpga.h
+@@ -0,0 +1,22 @@
++/*
++ * Copyright (C) 2002-2010
++ * Eric Jarrige <eric.jarrige@armadeus.org>
++ * Rich Ireland, Enterasys Networks, rireland@enterasys.com.
++ * Keith Outwater, keith_outwater@mvis.com.
++ *
++ * SPDX-License-Identifier:	GPL-2.0+
++ */
++extern int APF51_init_fpga(void);
++
++extern int fpga_pre_fn(int cookie);
++extern int fpga_pgm_fn(int assert_pgm, int flush, int cookie);
++extern int fpga_cs_fn(int assert_cs, int flush, int cookie);
++extern int fpga_init_fn(int cookie);
++extern int fpga_done_fn(int cookie);
++extern int fpga_clk_fn(int assert_clk, int flush, int cookie);
++extern int fpga_wr_fn(int assert_write, int flush, int cookie);
++extern int fpga_rdata_fn(unsigned char *data, int cookie);
++extern int fpga_wdata_fn(unsigned char data, int flush, int cookie);
++extern int fpga_abort_fn(int cookie);
++extern int fpga_post_fn(int cookie);
++extern int fpga_busy_fn(int cookie);
+diff --git a/boards.cfg b/boards.cfg
+index 9df6212..1aa7e95 100644
+--- a/boards.cfg
++++ b/boards.cfg
+@@ -302,6 +302,7 @@ Active  arm         armv7          exyno
+ Active  arm         armv7          exynos      samsung         universal_c210      s5pc210_universal                     -                                                                                                                                 Przemyslaw Marczak <p.marczak@samsung.com>
+ Active  arm         armv7          highbank    -               highbank            highbank                              -                                                                                                                                 Rob Herring <robh@kernel.org>
+ Active  arm         armv7          keystone    ti              k2hk_evm            k2hk_evm                              -                                                                                                                                 Vitaly Andrianov <vitalya@ti.com>
++Active  arm         armv7          mx5         armadeus        apf51               apf51                              apf51:IMX_CONFIG=board/armadeus/apf51/imximage.cfg                                                                                Eric Jarrige <eric.jarrige@armadeus.org>
+ Active  arm         armv7          mx5         denx            m53evk              m53evk                                m53evk:IMX_CONFIG=board/denx/m53evk/imximage.cfg                                                                                  Marek Vasut <marek.vasut@gmail.com>
+ Active  arm         armv7          mx5         esg             ima3-mx53           ima3-mx53                             ima3-mx53:IMX_CONFIG=board/esg/ima3-mx53/imximage.cfg                                                                             -
+ Active  arm         armv7          mx5         freescale       mx51evk             mx51evk                               mx51evk:IMX_CONFIG=board/freescale/mx51evk/imximage.cfg                                                                           Stefano Babic <sbabic@denx.de>
+1.7.2.5
+

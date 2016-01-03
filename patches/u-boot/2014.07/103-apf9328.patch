@@ -1,0 +1,1153 @@
+apf9328: Add Armadeus Project board APF9328
+
+Add Armadeus Project board APF9328
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+Signed-off-by: Nicolas Colombain <nicolas.colombain@armadeus.com>
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+Cc: Nicolas Colombain <nicolas.colombain@armadeus.com>
+---
+ board/armadeus/apf9328/Makefile        |   51 ++++
+ board/armadeus/apf9328/apf9328.c       |  106 +++++++
+ board/armadeus/apf9328/apf9328fpga.c   |  100 +++++++
+ board/armadeus/apf9328/apf9328fpga.h   |   31 ++
+ board/armadeus/apf9328/eeprom.c        |   88 ++++++
+ board/armadeus/apf9328/fpga.c          |  121 ++++++++
+ board/armadeus/apf9328/fpga.h          |   30 ++
+ board/armadeus/apf9328/i2c.c           |  276 +++++++++++++++++++
+ board/armadeus/apf9328/lowlevel_init.S |  469 ++++++++++++++++++++++++++++++++
+ 9 files changed, 1272 insertions(+), 0 deletions(-)
+ create mode 100644 board/armadeus/apf9328/Makefile
+ create mode 100644 board/armadeus/apf9328/apf9328.c
+ create mode 100644 board/armadeus/apf9328/apf9328fpga.c
+ create mode 100644 board/armadeus/apf9328/apf9328fpga.h
+ create mode 100644 board/armadeus/apf9328/eeprom.c
+ create mode 100644 board/armadeus/apf9328/fpga.c
+ create mode 100644 board/armadeus/apf9328/fpga.h
+ create mode 100644 board/armadeus/apf9328/i2c.c
+ create mode 100644 board/armadeus/apf9328/lowlevel_init.S
+
+diff --git a/board/armadeus/apf9328/Makefile b/board/armadeus/apf9328/Makefile
+new file mode 100644
+index 0000000..0f097cd
+--- /dev/null
++++ b/board/armadeus/apf9328/Makefile
+@@ -0,0 +1,10 @@
++#
++# (C) Copyright 2000-2004
++# Wolfgang Denk, DENX Software Engineering, wd@denx.de.
++#
++# SPDX-License-Identifier:    GPL-2.0+
++#
++
++obj-y	:= apf9328.o i2c.o eeprom.o
++obj-y	+= lowlevel_init.o
++obj-$(CONFIG_FPGA)	+= apf9328fpga.o fpga.o
+diff --git a/board/armadeus/apf9328/apf9328.c b/board/armadeus/apf9328/apf9328.c
+new file mode 100644
+index 0000000..280f749
+--- /dev/null
++++ b/board/armadeus/apf9328/apf9328.c
+@@ -0,0 +1,61 @@
++/*
++ * Copyright (C) 2005-2014
++ * Nicolas Colombain <nicolas.colombain@armadeus.com>
++ * Eric Jarrige <eric.jarrige@armadeus.org>
++ *
++ * SPDX-License-Identifier:    GPL-2.0+
++ */
++
++#include <common.h>
++#include <asm/arch/imx-regs.h>
++#include <flash.h>
++#include <netdev.h>
++#include "apf9328fpga.h"
++
++extern void imx_gpio_mode(int gpio_mode);
++
++DECLARE_GLOBAL_DATA_PTR;
++
++int board_init(void)
++{
++
++	gd->bd->bi_boot_params = PHYS_SDRAM_1 + 0x100;
++
++#ifdef CONFIG_DRIVER_DM9000
++	imx_gpio_mode(GPIO_PORTB | GPIO_DR | GPIO_IN | 14);
++#endif
++
++#ifdef CONFIG_FPGA
++	apf9328_init_fpga();
++#endif
++
++	return 0;
++}
++
++int dram_init(void)
++{
++	/* dram_init must store complete ramsize in gd->ram_size */
++	gd->ram_size = get_ram_size((void *)PHYS_SDRAM_1,
++				    PHYS_SDRAM_1_SIZE);
++	return 0;
++}
++
++void enable_caches(void)
++{
++#ifndef CONFIG_SYS_DCACHE_OFF
++	/* Enable D-cache. I-cache is already enabled in start.S */
++	dcache_enable();
++#endif
++}
++
++void show_boot_progress(int status)
++{
++	return;
++}
++
++#ifdef CONFIG_DRIVER_DM9000
++int board_eth_init(bd_t *bis)
++{
++	return dm9000_initialize(bis);
++}
++#endif
+diff --git a/board/armadeus/apf9328/apf9328fpga.c b/board/armadeus/apf9328/apf9328fpga.c
+new file mode 100644
+index 0000000..9782115
+--- /dev/null
++++ b/board/armadeus/apf9328/apf9328fpga.c
+@@ -0,0 +1,65 @@
++/*
++ * Copyright (C) 2005-2014
++ * Nicolas Colombain <nicolas.colombain@armadeus.com>
++ * Eric Jarrige <eric.jarrige@armadeus.org>
++ *
++ * SPDX-License-Identifier:    GPL-2.0+
++ */
++
++/*
++ * Spartan 3 FPGA configuration support for the APF9328 daughter board
++ */
++
++#include <common.h>
++#include <spartan3.h>
++#include <command.h>
++#include <jffs2/jffs2.h>
++#include <asm/arch/imx-regs.h>
++#include <asm/io.h>
++#include "apf9328fpga.h"
++
++#ifdef CONFIG_FPGA
++DECLARE_GLOBAL_DATA_PTR;
++/* Note that these are pointers to code that is in Flash.  They will be
++ * relocated at runtime.
++ * Spartan3 code is used to download our Spartan 3 :) code is compatible.
++ * Just take care about the file size
++*/
++xilinx_spartan3_slave_serial_fns fpga_fns = {
++	fpga_pre_fn,
++	fpga_pgm_fn,
++	fpga_clk_fn,
++	fpga_init_fn,
++	fpga_done_fn,
++	fpga_wr_fn,
++	fpga_post_fn,
++	NULL,
++	fpga_abort_fn,
++};
++
++xilinx_desc fpga[CONFIG_FPGA_COUNT] = {
++	{xilinx_spartan3,
++	 slave_serial,
++	 XILINX_XC3S400_SIZE,
++	 (void *)&fpga_fns,
++	 0,
++	 &spartan3_op }
++};
++
++/*
++ * Initialize the fpga.  Return 1 on success, 0 on failure.
++ */
++int apf9328_init_fpga(void)
++{
++	int i;
++
++	fpga_init();
++
++	for (i = 0; i < CONFIG_FPGA_COUNT; i++) {
++		fpga_add(fpga_xilinx, &fpga[i]);
++	}
++
++	return 0;
++}
++
++#endif /* CONFIG_FPGA */
+diff --git a/board/armadeus/apf9328/apf9328fpga.h b/board/armadeus/apf9328/apf9328fpga.h
+new file mode 100644
+index 0000000..2a15443
+--- /dev/null
++++ b/board/armadeus/apf9328/apf9328fpga.h
+@@ -0,0 +1,10 @@
++/*
++ * SPDX-License-Identifier:    GPL-2.0+
++ */
++
++/*
++ * Spartan 3 FPGA configuration support for the APF9328 daughter board
++ */
++
++#include "fpga.h"
++extern int apf9328_init_fpga(void);
+diff --git a/board/armadeus/apf9328/eeprom.c b/board/armadeus/apf9328/eeprom.c
+new file mode 100644
+index 0000000..c8165ea
+--- /dev/null
++++ b/board/armadeus/apf9328/eeprom.c
+@@ -0,0 +1,72 @@
++/*
++ * Copyright (C) 2008-2014 Armadeus Project
++ * Copyright (C) 2007
++ * Stefano Babic, DENX Software Engineering, sbabic@denx.de.
++ *
++ * SPDX-License-Identifier:    GPL-2.0+
++ */
++
++#include <common.h>
++#include <command.h>
++#include <dm9000.h>
++
++static int do_read_dm9000_eeprom(cmd_tbl_t *cmdtp, int flag, int argc,
++				 char * const argv[])
++{
++	unsigned int i;
++	u8 data[2];
++
++	for (i = 0; i < 0x40; i++) {
++		if (!(i % 0x10))
++			printf("\n%08x:", i);
++		dm9000_read_srom_word(i, data);
++		printf(" %02x%02x", data[1], data[0]);
++	}
++	printf("\n");
++	return 0;
++}
++
++static int do_write_dm9000_eeprom(cmd_tbl_t *cmdtp, int flag, int argc,
++				  char * const argv[])
++{
++	unsigned long offset, value;
++
++	if (argc < 4) {
++		cmd_usage(cmdtp);
++		return 1;
++	}
++
++	strict_strtoul(argv[2], 16, &offset);
++	strict_strtoul(argv[3], 16, &value);
++	if (offset > 0x40) {
++		printf("Wrong offset : 0x%lx\n", offset);
++		cmd_usage(cmdtp);
++		return 1;
++	}
++	dm9000_write_srom_word(offset, value);
++	return 0;
++}
++
++int do_dm9000_eeprom(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
++{
++	if (argc < 2) {
++		cmd_usage(cmdtp);
++		return 1;
++	}
++
++	if (strcmp(argv[1], "read") == 0) {
++		return do_read_dm9000_eeprom(cmdtp, flag, argc, argv);
++	} else if (strcmp(argv[1], "write") == 0) {
++		return do_write_dm9000_eeprom(cmdtp, flag, argc, argv);
++	} else {
++		cmd_usage(cmdtp);
++		return 1;
++	}
++}
++
++U_BOOT_CMD(dm9000ee, 4, 1, do_dm9000_eeprom,
++	"Read/Write eeprom connected to Ethernet Controller",
++	"\ndm9000ee write <word offset> <value>\n"
++	"\tdm9000ee read\n"
++	"\tword:\t\t00-02 : MAC Address\n"
++	"\t\t\t03-07 : DM9000 Configuration\n" "\t\t\t08-63 : User data");
+diff --git a/board/armadeus/apf9328/fpga.c b/board/armadeus/apf9328/fpga.c
+new file mode 100644
+index 0000000..f3d4f03
+--- /dev/null
++++ b/board/armadeus/apf9328/fpga.c
+@@ -0,0 +1,116 @@
++/*
++ * Copyright (C) 2007
++ * Rich Ireland, Enterasys Networks, rireland@enterasys.com.
++ * Keith Outwater, keith_outwater@mvis.com.
++ *
++ * SPDX-License-Identifier:    GPL-2.0+
++ */
++#include <common.h>
++
++#ifdef CONFIG_FPGA
++
++#include <asm/arch/imx-regs.h>
++#include <asm/io.h>
++#include <config.h>
++
++extern void imx_gpio_mode(int gpio_mode);
++
++#define GPIO_PORT(x)  ((x >> 5) & 3)
++#define GPIO_SET(x)   (DR(GPIO_PORT(x)) |= (1<<(x & GPIO_PIN_MASK)))
++#define GPIO_CLEAR(x) (DR(GPIO_PORT(x)) &= ~(1<<(x & GPIO_PIN_MASK)))
++#define GPIO_WRITE(x, y) (y ? GPIO_SET(x) : GPIO_CLEAR(x))
++#define GPIO_READ(x)  ((SSR(GPIO_PORT(x)) & (1<<(x & GPIO_PIN_MASK))))
++
++/*
++ * Port bit numbers for the serial slave controls
++ */
++#define FPGA_INIT	CONFIG_SYS_FPGA_INIT
++#define FPGA_DONE	CONFIG_SYS_FPGA_DONE
++#define FPGA_DIN	CONFIG_SYS_FPGA_DATA
++#define FPGA_PROGRAM	CONFIG_SYS_FPGA_PRG
++#define FPGA_CLOCK	CONFIG_SYS_FPGA_CLK
++
++/* Note that these are pointers to code that is in Flash.  They will be
++ * relocated at runtime.
++ * Spartan2 code is used to download our Spartan 3 :) code is compatible.
++ * Just take care about the file size
++*/
++
++/*
++ * nitialize GPIO port B before download
++ */
++int fpga_pre_fn(int cookie)
++{
++	debug("%s:%d: FPGA PRE ", __func__, __LINE__);
++
++	/* Initialize GPIO pins */
++	imx_gpio_mode(FPGA_INIT | GPIO_DR | GPIO_IN);
++	imx_gpio_mode(FPGA_DONE | GPIO_DR | GPIO_IN);
++	imx_gpio_mode(FPGA_DIN | GPIO_DR | GPIO_OUT);
++	imx_gpio_mode(FPGA_PROGRAM | GPIO_DR | GPIO_OUT);
++	imx_gpio_mode(FPGA_CLOCK | GPIO_DR | GPIO_OUT);
++	return cookie;
++}
++
++/*
++ * Set the FPGA's active-low program line to the specified level
++ */
++int fpga_pgm_fn(int assert, int flush, int cookie)
++{
++	debug("%s:%d: FPGA PROGRAM %s", __func__, __LINE__,
++	       assert ? "high" : "low");
++	GPIO_WRITE(FPGA_PROGRAM, !assert);
++	return assert;
++}
++
++/*
++ * Set the FPGA's active-high clock line to the specified level
++ */
++int fpga_clk_fn(int assert_clk, int flush, int cookie)
++{
++	debug("%s:%d: FPGA CLOCK %s", __func__, __LINE__,
++	       assert_clk ? "high" : "low");
++	GPIO_WRITE(FPGA_CLOCK, assert_clk);
++	return assert_clk;
++}
++
++/*
++ * Test the state of the active-low FPGA INIT line.  Return 1 on INIT
++ * asserted (low).
++ */
++int fpga_init_fn(int cookie)
++{
++	debug("%s:%d: INIT check... ", __func__, __LINE__);
++	return !GPIO_READ(FPGA_INIT);
++}
++
++/*
++ * Test the state of the active-high FPGA DONE pin
++ */
++int fpga_done_fn(int cookie)
++{
++	debug("%s:%d: DONE check... ", __func__, __LINE__);
++	return GPIO_READ(FPGA_DONE);
++}
++
++/*
++ * Set the FPGA's data line to the specified level
++ */
++int fpga_wr_fn(int assert_write, int flush, int cookie)
++{
++	debug("%s:%d: DATA write... ", __func__, __LINE__);
++	GPIO_WRITE(FPGA_DIN, assert_write);
++	return assert_write;
++}
++
++int fpga_post_fn(int cookie)
++{
++	return cookie;
++}
++
++int fpga_abort_fn(int cookie)
++{
++	return fpga_post_fn(cookie);
++}
++
++#endif /* CONFIG_FPGA */
+diff --git a/board/armadeus/apf9328/fpga.h b/board/armadeus/apf9328/fpga.h
+new file mode 100644
+index 0000000..3b226d7
+--- /dev/null
++++ b/board/armadeus/apf9328/fpga.h
+@@ -0,0 +1,15 @@
++/*
++ * Copyright (C) 2002
++ * Rich Ireland, Enterasys Networks, rireland@enterasys.com.
++ * Keith Outwater, keith_outwater@mvis.com.
++ *
++ * SPDX-License-Identifier:    GPL-2.0+
++ */
++extern int fpga_pre_fn(int cookie);
++extern int fpga_pgm_fn(int assert_pgm, int flush, int cookie);
++extern int fpga_init_fn(int cookie);
++extern int fpga_done_fn(int cookie);
++extern int fpga_clk_fn(int assert_clk, int flush, int cookie);
++extern int fpga_wr_fn(int assert_write, int flush, int cookie);
++extern int fpga_post_fn(int cookie);
++extern int fpga_abort_fn(int cookie);
+diff --git a/board/armadeus/apf9328/i2c.c b/board/armadeus/apf9328/i2c.c
+new file mode 100644
+index 0000000..0ba0a8d
+--- /dev/null
++++ b/board/armadeus/apf9328/i2c.c
+@@ -0,0 +1,260 @@
++/*
++ * Copyright (C) 2005-2014 Eric Jarrige <eric.jarrige@armadeus.org>
++ *
++ * SPDX-License-Identifier:    GPL-2.0+
++ */
++
++#include <common.h>
++
++#ifdef CONFIG_HARD_I2C
++
++#include <asm/io.h>
++#include <asm/arch/imx-regs.h>
++#include <i2c.h>
++
++extern void imx_gpio_mode(int gpio_mode);
++
++/*-----------------------------------------------------------------------
++ * Definitions
++ */
++
++#define I2C_ACK		0	/* level to ack a byte */
++#define I2C_NOACK	1	/* level to noack a byte */
++
++/*-----------------------------------------------------------------------
++ * Local functions
++ */
++
++/*-----------------------------------------------------------------------
++ * START: High -> Low on SDA while SCL is High
++ * after check for a bus free
++ */
++static void imxi2c_send_start(void)
++{
++	while (I2SR & I2SR_IBB)
++		udelay(1);
++
++	I2CR |= I2CR_MSTA;
++	I2SR &= ~I2SR_IIF;
++}
++
++/*-----------------------------------------------------------------------
++ * STOP: Low -> High on SDA while SCL is High
++ * after the end of previous transfer
++ */
++static void imxi2c_send_stop(void)
++{
++	while (!(I2SR & I2SR_ICF))
++		udelay(1);
++
++	I2CR &= ~I2CR_MSTA;
++}
++
++/*-----------------------------------------------------------------------
++ * Send 8 bits and look for an acknowledgement.
++ */
++static int imxi2c_write_byte(uchar data)
++{
++	while (!(I2SR & I2SR_ICF))	/* Wait end of transfer */
++		udelay(1);
++
++	I2CR |= I2CR_MTX;
++	I2SR &= ~I2SR_IIF;
++	I2DR = data;
++
++	while (!(I2SR & I2SR_IIF))	/* checking IIF before ICF: FIXME */
++		udelay(1);
++
++	I2SR &= ~I2SR_IIF;
++
++	while (!(I2SR & I2SR_ICF))	/* Wait end of transfer */
++		udelay(1);
++
++	return I2SR & I2SR_RXAK;	/* not a nack is an ack */
++}
++
++/*-----------------------------------------------------------------------
++ * if ack == I2C_ACK, ACK the byte so can continue reading, else
++ * send I2C_NOACK to end the read.
++ */
++static uchar imxi2c_read_byte(int ack)
++{
++	int data;
++
++	while (!(I2SR & I2SR_ICF))
++		udelay(1);
++
++	I2CR &= ~I2CR_MTX;
++
++	if (ack)
++		I2CR |= I2CR_TXAK;
++	else
++		I2CR &= ~I2CR_TXAK;
++
++	data = I2DR;
++	return data;
++}
++
++/* ------------------------------------------------------------------------
++ * API Functions
++ * ------------------------------------------------------------------------
++ */
++
++/*-----------------------------------------------------------------------
++ * i2c_init compute the i2c divider to reach the requested speed
++ * see mxl reference manual
++ */
++void i2c_init(int speed, int slaveaddr)
++{
++	int hclk_dividers[] = {
++		30, 32, 36, 42, 48, 52, 60, 72,
++		80, 88, 104, 128, 144, 160, 192, 240,
++		288, 320, 384, 480, 576, 640, 768, 960,
++		1152, 1280, 1536, 1920, 2304, 2560, 3072, 3840,
++		22, 24, 26, 26, 32, 36, 40, 44,
++		48, 56, 64, 72, 80, 96, 112, 128,
++		160, 192, 224, 256, 320, 384, 448, 512,
++		640, 768, 896, 1024, 1280, 1536, 1792, 2048
++	};
++	int refDiv = get_HCLK() / speed;
++	int i, tmpIC;
++
++	imx_gpio_mode(PA15_PF_I2C_SDA);
++	imx_gpio_mode(PA16_PF_I2C_SCL);
++
++	tmpIC = (sizeof(hclk_dividers) / sizeof(int)) - 1;
++	for (i = tmpIC; i >= 0; i--) {
++		if ((hclk_dividers[i] >= refDiv)
++		    && (hclk_dividers[i] < hclk_dividers[tmpIC])) {
++			tmpIC = i;
++		}
++	}
++
++	IFDR = tmpIC;
++	IADR = slaveaddr << 1;
++
++	if (I2SR & I2SR_IBB)
++		imxi2c_send_stop();
++
++	I2CR |= I2CR_IEN;
++}
++
++/*-----------------------------------------------------------------------
++ * Probe to see if a chip is present. Also good for checking for the
++ * completion of EEPROM writes since the chip stops responding until
++ * the write completes (typically 10mSec).
++ * probe sends a read command to probe a an address
++ */
++int i2c_probe(uchar addr)
++{
++	int rc;
++
++	imxi2c_send_start();
++	rc = imxi2c_write_byte((addr << 1) | 0);
++	imxi2c_send_stop();
++
++	return rc ? 1 : 0;
++}
++
++/*-----------------------------------------------------------------------
++ * Read bytes
++ */
++int i2c_read(uchar chip, uint addr, int alen, uchar *buffer, int len)
++{
++	int shift;
++	debug("i2c_read: chip %02X addr %02X alen %d buffer %p len %d\n",
++	       chip, addr, alen, buffer, len);
++
++#ifdef CONFIG_SYS_I2C_EEPROM_ADDR_OVERFLOW
++	/*
++	 * EEPROM chips that implement "address overflow" are ones
++	 * like Catalyst 24WC04/08/16 which has 9/10/11 bits of
++	 * address and the extra bits end up in the "chip address"
++	 * bit slots. This makes a 24WC08 (1Kbyte) chip look like
++	 * four 256 byte chips.
++	 *
++	 * Note that we consider the length of the address field to
++	 * still be one byte because the extra address bits are
++	 * hidden in the chip address.
++	 */
++	chip |= ((addr >> (alen * 8)) & CONFIG_SYS_I2C_EEPROM_ADDR_OVERFLOW);
++
++	debug("i2c_read: fix addr_overflow: chip %02X addr %02X\n",
++	       chip, addr);
++#endif
++
++	/*
++	 * Do the addressing portion of a write cycle to set the
++	 * chip's address pointer. If the address length is zero,
++	 * don't do the normal write cycle to set the address pointer,
++	 * there is no address pointer in this chip.
++	 */
++	imxi2c_send_start();
++	if (alen > 0) {
++		if (imxi2c_write_byte(chip << 1)) {	/* write cycle */
++			imxi2c_send_stop();
++			debug("i2c_read, no chip responded %02X\n", chip);
++			return 1;
++		}
++		shift = (alen - 1) * 8;
++		while (alen-- > 0) {
++			if (imxi2c_write_byte(addr >> shift)) {
++				debug("i2c_read, address not <ACK>ed\n");
++				return 1;
++			}
++			shift -= 8;
++		}
++
++		/* reportedly some chips need a full stop */
++		imxi2c_send_stop();
++		imxi2c_send_start();
++	}
++	/*
++	 * Send the chip address again, this time for a read cycle.
++	 * Then read the data. On the last byte, we do a NACK instead
++	 * of an ACK(len == 0) to terminate the read.
++	 */
++	imxi2c_write_byte((chip << 1) | 1);	/* read cycle */
++	imxi2c_read_byte(len <= 2);
++	while (len-- > 1)
++		*buffer++ = imxi2c_read_byte(len == 1);
++
++	imxi2c_send_stop();
++	*buffer++ = imxi2c_read_byte(0);
++	return 0;
++}
++
++/*-----------------------------------------------------------------------
++ * Write bytes
++ */
++int i2c_write(uchar chip, uint addr, int alen, uchar *buffer, int len)
++{
++	int shift, failures = 0;
++
++	debug("i2c_write: chip %02X addr %02X alen %d buffer %p len %d\n",
++	       chip, addr, alen, buffer, len);
++
++	imxi2c_send_start();
++	if (imxi2c_write_byte(chip << 1)) {	/* write cycle */
++		imxi2c_send_stop();
++		debug("i2c_write, no chip responded %02X\n", chip);
++		return 1;
++	}
++	shift = (alen - 1) * 8;
++	while (alen-- > 0) {
++		if (imxi2c_write_byte(addr >> shift)) {
++			debug("i2c_write, address not <ACK>ed\n");
++			return 1;
++		}
++		shift -= 8;
++	}
++
++	while (len-- > 0) {
++		if (imxi2c_write_byte(*buffer++))
++			failures++;
++	}
++	imxi2c_send_stop();
++	return failures;
++}
++
++#endif /* CONFIG_HARD_I2C */
+diff --git a/board/armadeus/apf9328/lowlevel_init.S b/board/armadeus/apf9328/lowlevel_init.S
+new file mode 100644
+index 0000000..f080423
+--- /dev/null
++++ b/board/armadeus/apf9328/lowlevel_init.S
+@@ -0,0 +1,458 @@
++/*
++ * Copyright (C) 2005-2014 Eric Jarrige <eric.jarrige@armadeus.org>
++ * Copyright (C) 2004 Sascha Hauer, Synertronixx GmbH
++ *
++ * SPDX-License-Identifier:    GPL-2.0+
++ */
++
++#include <config.h>
++#include <version.h>
++#include <asm/arch/imx-regs.h>
++
++.globl lowlevel_init
++lowlevel_init:
++/* Change PERCLK1DIV to 14 ie 14+1 */
++	ldr		r0,	=PCDR
++	ldr		r1,	=CONFIG_SYS_PCDR_VAL
++	str		r1,	[r0]
++
++/* set MCU PLL Control Register 0 */
++
++	ldr		r0,	=MPCTL0
++	ldr		r1,	=CONFIG_SYS_MPCTL0_VAL
++	str		r1,	[r0]
++
++/* set MCU PLL Control Register 1 */
++
++	ldr		r0,	=MPCTL1
++	ldr		r1,	=CONFIG_SYS_MPCTL1_VAL
++	str		r1,	[r0]
++
++/* set mpll restart bit */
++	ldr		r0, =CSCR
++	ldr		r1, [r0]
++	orr		r1,r1,#(1<<21)
++	str		r1, [r0]
++
++	mov		r2,#0x10
++1:
++	mov		r3,#0x2000
++2:
++	subs	r3,r3,#1
++	bne		2b
++
++	subs	r2,r2,#1
++	bne		1b
++
++/* set System PLL Control Register 0 */
++
++	ldr		r0,	=SPCTL0
++	ldr		r1,	=CONFIG_SYS_SPCTL0_VAL
++	str		r1,	[r0]
++
++/* set System PLL Control Register 1 */
++
++	ldr		r0,	=SPCTL1
++	ldr		r1,	=CONFIG_SYS_SPCTL1_VAL
++	str		r1,	[r0]
++
++/* set spll restart bit */
++	ldr		r0, =CSCR
++	ldr		r1, [r0]
++	orr		r1,r1,#(1<<22)
++	str		r1, [r0]
++
++	mov		r2,#0x10
++1:
++	mov		r3,#0x2000
++2:
++	subs	r3,r3,#1
++	bne		2b
++
++	subs	r2,r2,#1
++	bne		1b
++
++	ldr		r0,	=CSCR
++	ldr		r1,	=CONFIG_SYS_CSCR_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=GPCR
++	ldr		r1,	=CONFIG_SYS_GPCR_VAL
++	str		r1,	[r0]
++
++/* I have now read the ARM920 DataSheet back-to-Back, and have stumbled upon
++ *this.....
++ *
++ * It would appear that from a Cold-Boot the ARM920T enters "FastBus" mode CP15
++ * register 1, this stops it using the output of the PLL and thus runs at the
++ * slow rate. Unless you place the Core into "Asynch" mode, the CPU will never
++ * use the value set in the CM_OSC registers...regardless of what you set it
++ * too!  Thus, although i thought i was running at 140MHz, i'm actually running
++ * at 40!..
++
++ * Slapping this into my bootloader does the trick...
++
++ * MRC p15,0,r0,c1,c0,0	 ; read core configuration register
++ * ORR r0,r0,#0xC0000000	; set asynchronous clocks and not fastbus mode
++ * MCR p15,0,r0,c1,c0,0	 ; write modified value to core configuration
++ * register
++ */
++	MRC p15,0,r0,c1,c0,0
++	ORR r0,r0,#0xC0000000
++	MCR p15,0,r0,c1,c0,0
++
++/*	ldr		r0,	=GPR(0)
++	ldr		r1,	=CONFIG_SYS_GPR_A_VAL
++	str		r1,	[r0]
++*/
++
++	ldr		r0,	=DR(0)
++	ldr		r1,	=CONFIG_SYS_DR_A_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=OCR1(0)
++	ldr		r1,	=CONFIG_SYS_OCR1_A_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=OCR2(0)
++	ldr		r1,	=CONFIG_SYS_OCR2_A_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=ICONFA1(0)
++	ldr		r1,	=CONFIG_SYS_ICFA1_A_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=ICONFA2(0)
++	ldr		r1,	=CONFIG_SYS_ICFA2_A_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=ICONFB1(0)
++	ldr		r1,	=CONFIG_SYS_ICFB1_A_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=ICONFB2(0)
++	ldr		r1,	=CONFIG_SYS_ICFB2_A_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=ICR1(0)
++	ldr		r1,	=CONFIG_SYS_ICR1_A_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=ICR2(0)
++	ldr		r1,	=CONFIG_SYS_ICR2_A_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=IMR(0)
++	ldr		r1,	=CONFIG_SYS_IMR_A_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=DDIR(0)
++	ldr		r1,	=CONFIG_SYS_DDIR_A_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=GPR(0)
++	ldr		r1,	=CONFIG_SYS_GPR_A_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=PUEN(0)
++	ldr		r1,	=CONFIG_SYS_PUEN_A_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=GIUS(0)
++	ldr		r1,	=CONFIG_SYS_GIUS_A_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=DR(1)
++	ldr		r1,	=CONFIG_SYS_DR_B_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=OCR1(1)
++	ldr		r1,	=CONFIG_SYS_OCR1_B_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=OCR2(1)
++	ldr		r1,	=CONFIG_SYS_OCR2_B_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=ICONFA1(1)
++	ldr		r1,	=CONFIG_SYS_ICFA1_B_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=ICONFA2(1)
++	ldr		r1,	=CONFIG_SYS_ICFA2_B_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=ICONFB1(1)
++	ldr		r1,	=CONFIG_SYS_ICFB1_B_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=ICONFB2(1)
++	ldr		r1,	=CONFIG_SYS_ICFB2_B_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=ICR1(1)
++	ldr		r1,	=CONFIG_SYS_ICR1_B_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=ICR2(1)
++	ldr		r1,	=CONFIG_SYS_ICR2_B_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=IMR(1)
++	ldr		r1,	=CONFIG_SYS_IMR_B_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=DDIR(1)
++	ldr		r1,	=CONFIG_SYS_DDIR_B_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=GPR(1)
++	ldr		r1,	=CONFIG_SYS_GPR_B_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=PUEN(1)
++	ldr		r1,	=CONFIG_SYS_PUEN_B_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=GIUS(1)
++	ldr		r1,	=CONFIG_SYS_GIUS_B_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=DR(2)
++	ldr		r1,	=CONFIG_SYS_DR_C_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=OCR1(2)
++	ldr		r1,	=CONFIG_SYS_OCR1_C_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=OCR2(2)
++	ldr		r1,	=CONFIG_SYS_OCR2_C_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=ICONFA1(2)
++	ldr		r1,	=CONFIG_SYS_ICFA1_C_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=ICONFA2(2)
++	ldr		r1,	=CONFIG_SYS_ICFA2_C_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=ICONFB1(2)
++	ldr		r1,	=CONFIG_SYS_ICFB1_C_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=ICONFB2(2)
++	ldr		r1,	=CONFIG_SYS_ICFB2_C_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=ICR1(2)
++	ldr		r1,	=CONFIG_SYS_ICR1_C_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=ICR2(2)
++	ldr		r1,	=CONFIG_SYS_ICR2_C_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=IMR(2)
++	ldr		r1,	=CONFIG_SYS_IMR_C_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=DDIR(2)
++	ldr		r1,	=CONFIG_SYS_DDIR_C_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=GPR(2)
++	ldr		r1,	=CONFIG_SYS_GPR_C_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=PUEN(2)
++	ldr		r1,	=CONFIG_SYS_PUEN_C_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=GIUS(2)
++	ldr		r1,	=CONFIG_SYS_GIUS_C_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=DR(3)
++	ldr		r1,	=CONFIG_SYS_DR_D_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=OCR1(3)
++	ldr		r1,	=CONFIG_SYS_OCR1_D_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=OCR2(3)
++	ldr		r1,	=CONFIG_SYS_OCR2_D_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=ICONFA1(3)
++	ldr		r1,	=CONFIG_SYS_ICFA1_D_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=ICONFA2(3)
++	ldr		r1,	=CONFIG_SYS_ICFA2_D_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=ICONFB1(3)
++	ldr		r1,	=CONFIG_SYS_ICFB1_D_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=ICONFB2(3)
++	ldr		r1,	=CONFIG_SYS_ICFB2_D_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=ICR1(3)
++	ldr		r1,	=CONFIG_SYS_ICR1_D_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=ICR2(3)
++	ldr		r1,	=CONFIG_SYS_ICR2_D_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=IMR(3)
++	ldr		r1,	=CONFIG_SYS_IMR_D_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=DDIR(3)
++	ldr		r1,	=CONFIG_SYS_DDIR_D_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=GPR(3)
++	ldr		r1,	=CONFIG_SYS_GPR_D_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=PUEN(3)
++	ldr		r1,	=CONFIG_SYS_PUEN_D_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=GIUS(3)
++	ldr		r1,	=CONFIG_SYS_GIUS_D_VAL
++	str		r1,	[r0]
++
++/* CS3 becomes CS3 by clearing reset default bit 1 in FMCR */
++
++	ldr		r0,	=FMCR
++	ldr		r1,	=CONFIG_SYS_FMCR_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=CS0U
++	ldr		r1,	=CONFIG_SYS_CS0U_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=CS0L
++	ldr		r1,	=CONFIG_SYS_CS0L_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=CS1U
++	ldr		r1,	=CONFIG_SYS_CS1U_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=CS1L
++	ldr		r1,	=CONFIG_SYS_CS1L_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=CS2U
++	ldr		r1,	=CONFIG_SYS_CS2U_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=CS2L
++	ldr		r1,	=CONFIG_SYS_CS2L_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=CS3U
++	ldr		r1,	=CONFIG_SYS_CS3U_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=CS3L
++	ldr		r1,	=CONFIG_SYS_CS3L_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=CS4U
++	ldr		r1,	=CONFIG_SYS_CS4U_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=CS4L
++	ldr		r1,	=CONFIG_SYS_CS4L_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=CS5U
++	ldr		r1,	=CONFIG_SYS_CS5U_VAL
++	str		r1,	[r0]
++
++	ldr		r0,	=CS5L
++	ldr		r1,	=CONFIG_SYS_CS5L_VAL
++	str		r1,	[r0]
++
++	adr	r0, sdramsetup	/* r0 <- current position of code */
++	/* test if we run from flash or RAM */
++	ldr	r1, =PHYS_SDRAM_1
++	cmp	r1, r0		/* don't reloc during debug*/
++	bhi		sdramsetup
++	/* test if we run from flash or RAM */
++	ldr	r1, =CONFIG_SYS_FLASH_BASE
++	cmp	r0, r1		/* don't reloc during debug */
++	bmi		copy2ram
++
++/* SDRAM Setup */
++sdramsetup:
++	ldr		r0, =SDCTL0
++	ldr		r1, =CONFIG_SYS_PRECHARGE_CMD
++	str		r1,	[r0]
++
++	ldr		r1, =PHYS_SDRAM_1			\
++				+CONFIG_SYS_SDRAM_PRECHARGE_ALL_VAL
++	ldr		r2,	[r1]
++
++	ldr		r1, =CONFIG_SYS_AUTOREFRESH_CMD
++	str		r1,	[r0]
++
++	ldr		r1, =PHYS_SDRAM_1
++	ldr		r2,	[r1] /* Issue AutoRefresh Command */
++	ldr		r2,	[r1]
++	ldr		r2,	[r1]
++	ldr		r2,	[r1]
++	ldr		r2,	[r1]
++	ldr		r2,	[r1]
++	ldr		r2,	[r1]
++	ldr		r2,	[r1]
++
++	ldr		r1, =CONFIG_SYS_SET_MODE_REG_CMD
++	str		r1,	[r0]
++
++	ldr		r1, =PHYS_SDRAM_1			\
++				+CONFIG_SYS_SDRAM_MODE_REGISTER_VAL
++	str		r2,	[r1]
++
++	ldr		r1, =CONFIG_SYS_NORMAL_RW_CMD
++	str		r1,	[r0]
++/* make U-Boot runnable form "almost" anywhere */
++/* but SYS_TEXT_BASE should be in RAM */
++copy2ram:		/* populate _TEXT_BASE with U-Boot from load addr */
++	ldr	r0, _start_adr
++	ldr	r1, _copy2ram
++	sub	r1, r1, r0
++	adr	r0, copy2ram
++	sub	r0, r0, r1
++	ldr	r1, =CONFIG_SYS_TEXT_BASE
++	cmp	r0, r1
++	beq	end_of_copy2ram		/* skip U-Boot copy */
++	ldr	r2, =CONFIG_SYS_MONITOR_LEN
++	add	r2, r2, r0		/* r2 <- source end address	    */
++
++copy_loop:
++	ldmia	r0!, {r9-r10}		/* copy from source address [r0]    */
++	stmia	r1!, {r9-r10}		/* copy to   target address [r1]    */
++	cmp	r0, r2			/* until source end address [r2]    */
++	blo	copy_loop
++	ldr	pc, =CONFIG_SYS_TEXT_BASE /* reboot from RAM */
++	nop
++	nop
++
++end_of_copy2ram:
++	mov	pc,lr
++
++_copy2ram:
++	.word copy2ram
++_start_adr:
++	.word _start
+-- 
+1.7.2.5
+

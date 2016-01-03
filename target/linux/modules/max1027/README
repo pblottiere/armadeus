@@ -1,0 +1,20 @@
+Max1027 analog to digital driver
+================================
+
+Compilation
+-----------
+To compile, use make in this directory:
+
+> make
+
+Usage
+-----
+First create all nodes using loadmax.sh script
+> ./loadmax.sh
+
+TODO
+
+Links
+-----
+Drivers usages are described on [ARMadeus Wiki](http://www.armadeus.com/wiki/index.php?title=ADC_max1027)
+

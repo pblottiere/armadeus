@@ -1,0 +1,23 @@
+Index: linux-2.6.35.3/drivers/i2c/busses/i2c-mxs.c
+===================================================================
+--- linux-2.6.35.3.orig/drivers/i2c/busses/i2c-mxs.c	2013-01-31 18:15:38.000000000 +0100
++++ linux-2.6.35.3/drivers/i2c/busses/i2c-mxs.c	2013-01-31 18:15:38.000000000 +0100
+@@ -499,8 +499,6 @@ static int mxs_i2c_probe(struct platform
+ 		goto no_dma_irq;
+ 	}
+ 
+-	/* reset I2C module */
+-	mxs_reset_block((void __iomem *)mxs_i2c->regbase, 1);
+ 	platform_set_drvdata(pdev, mxs_i2c);
+ 
+ 	if (mxs_i2c->flags & MXS_I2C_PIOQUEUE_MODE)
+@@ -518,6 +516,9 @@ static int mxs_i2c_probe(struct platform
+ 		}
+ 	}
+ 
++	/* reset I2C module */
++	mxs_i2c_reset(mxs_i2c);
++
+ 	/* Will catch all error (IRQ mask) */
+ 	__raw_writel(0x0000FF00, mxs_i2c->regbase + HW_I2C_CTRL1_SET);
+ 

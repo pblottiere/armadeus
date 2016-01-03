@@ -1,0 +1,84 @@
+From f694c0761d15901b74e972b08938fecfda3b510b Mon Sep 17 00:00:00 2001
+From: Thomas De Schampheleire <patrickdepinguin+buildroot@gmail.com>
+Date: Wed, 19 Oct 2011 07:25:47 +0000
+Subject: Add support for packages stored in Mercurial (hg) repositories
+
+Add support for packages stored in Mercurial (hg) repositories.
+
+Signed-off-by: Thomas De Schampheleire <thomas.de.schampheleire@gmail.com>
+Signed-off-by: Peter Korsgaard <jacmet@sunsite.dk>
+---
+(limited to 'package/Makefile.package.in')
+
+Index: buildroot/package/Makefile.package.in
+===================================================================
+--- buildroot.orig/package/Makefile.package.in	2012-01-03 19:24:09.000000000 +0100
++++ buildroot/package/Makefile.package.in	2012-01-03 19:24:09.000000000 +0100
+@@ -73,6 +73,7 @@
+ SVN:=$(call qstrip,$(BR2_SVN)) $(QUIET)
+ BZR:=$(call qstrip,$(BR2_BZR)) $(QUIET)
+ GIT:=$(call qstrip,$(BR2_GIT)) $(QUIET)
++HG:=$(call qstrip,$(BR2_HG)) $(QUIET)
+ COPY:=$(call qstrip,$(BR2_COPY)) $(QUIET)
+ 
+ # Default spider mode is 'DOWNLOAD'. Other possible values are 'SOURCE_CHECK'
+@@ -158,6 +159,27 @@
+ endef
+ 
+ 
++define DOWNLOAD_HG
++	test -e $(DL_DIR)/$($(PKG)_SOURCE) || \
++	(pushd $(DL_DIR) > /dev/null && \
++	$(HG) clone --noupdate --rev $($(PKG)_DL_VERSION) $($(PKG)_SITE) $($(PKG)_BASE_NAME) && \
++	$(HG) archive --repository $($(PKG)_BASE_NAME) --type tgz --prefix $($(PKG)_BASE_NAME)/ \
++	              --rev $($(PKG)_DL_VERSION) $(DL_DIR)/$($(PKG)_SOURCE) && \
++	rm -rf $($(PKG)_DL_DIR) && \
++	popd > /dev/null)
++endef
++
++# TODO: improve to check that the given PKG_DL_VERSION exists on the remote
++# repository
++define SOURCE_CHECK_HG
++  $(HG) incoming --force -l1 $($(PKG)_SITE) > /dev/null
++endef
++
++define SHOW_EXTERNAL_DEPS_HG
++  echo $($(PKG)_SOURCE)
++endef
++
++
+ define DOWNLOAD_WGET
+ 	test -e $(DL_DIR)/$(2) || \
+ 	$(WGET) -P $(DL_DIR) $(call qstrip,$(1))/$(2)
+@@ -212,6 +234,7 @@
+ 			svn) $($(DL_MODE)_SVN) && exit ;; \
+ 			bzr) $($(DL_MODE)_BZR) && exit ;; \
+ 			copy) $($(DL_MODE)_COPY) && exit ;; \
++			hg) $($(DL_MODE)_HG) && exit ;; \
+ 			*) $(call $(DL_MODE)_WGET,$(1),$(2)) && exit ;; \
+ 		esac ; \
+ 	fi ; \
+@@ -535,6 +558,8 @@
+ DL_TOOLS_DEPENDENCIES += git
+ else ifeq ($$($(2)_SITE_METHOD),bzr)
+ DL_TOOLS_DEPENDENCIES += bzr
++else ifeq ($$($(2)_SITE_METHOD),hg)
++DL_TOOLS_DEPENDENCIES += hg
+ endif # SITE_METHOD
+ 
+ endif # BR2_PACKAGE_$(2)
+Index: buildroot/Config.in
+===================================================================
+--- buildroot.orig/Config.in	2012-01-03 19:38:35.000000000 +0100
++++ buildroot/Config.in	2012-01-03 19:39:07.000000000 +0100
+@@ -36,6 +36,10 @@
+ 	string "Git command"
+ 	default "git"
+ 
++config BR2_HG
++	string "Mercurial (hg) command"
++	default "hg"
++
+ config BR2_ZCAT
+ 	string "zcat command"
+ 	default "gzip -d -c"

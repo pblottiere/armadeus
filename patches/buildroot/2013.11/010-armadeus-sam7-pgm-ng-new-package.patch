@@ -1,0 +1,50 @@
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2014-04-28 19:58:00.810406963 +0200
++++ buildroot/package/Config.in	2014-04-28 19:59:07.122735790 +0200
+@@ -347,6 +347,7 @@
+ source "package/rng-tools/Config.in"
+ source "package/rpi-userland/Config.in"
+ source "package/sane-backends/Config.in"
++source "package/sam7-pgm-ng/Config.in"
+ source "package/sdparm/Config.in"
+ source "package/setserial/Config.in"
+ source "package/sg3_utils/Config.in"
+Index: buildroot/package/sam7-pgm-ng/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/sam7-pgm-ng/Config.in	2014-04-28 21:14:16.129094736 +0200
+@@ -0,0 +1,7 @@
++config BR2_PACKAGE_SAM7_PGM_NG
++	bool "sam7_pgm-ng"
++	help
++	  Armadeus fork of SAM7_PGM (with some cleanup).
++
++	  https://github.com/Martoni/SAM7_PGM-NG
++	  http://www.pjrc.com/arm/sam7_pgm/
+Index: buildroot/package/sam7-pgm-ng/sam7-pgm-ng.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/sam7-pgm-ng/sam7-pgm-ng.mk	2014-04-28 21:11:59.856418999 +0200
+@@ -0,0 +1,21 @@
++################################################################################
++#
++# sam7-pgm-ng
++#
++################################################################################
++
++SAM7_PGM_NG_VERSION = 3a837382ae2deda6796aedd594be18503ad8ad96
++SAM7_PGM_NG_SITE = https://github.com/Martoni/SAM7_PGM-NG
++SAM7_PGM_NG_SITE_METHOD = git
++SAM7_PGM_NG_LICENSE = GPLv2+
++SAM7_PGM_NG_LICENSE_FILES = COPYING
++
++define SAM7_PGM_NG_BUILD_CMDS
++	$(MAKE) $(TARGET_CONFIGURE_OPTS) -C $(@D)
++endef
++
++define SAM7_PGM_NG_INSTALL_TARGET_CMDS
++	$(INSTALL) -D -m 0755 $(@D)/sam7_pgm $(TARGET_DIR)/usr/bin/sam7_pgm
++endef
++
++$(eval $(generic-package))

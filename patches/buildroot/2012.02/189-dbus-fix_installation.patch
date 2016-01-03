@@ -1,0 +1,21 @@
+Dbus creates a target/var/run/dbus directory which prevents
+post-build.sh from symlinking /var/run to /tmp, so /var/run is no more
+clean at reboot. The S30dbus scripts handles the creation
+of /var/run/dbus at boot time, so it can be removed from target.
+
+I'll send the patch on the buildroot list, but in case it would be
+rejected upstream, I send it here too.
+
+Signed-off-by: Vincent Besse <vincent@ouhena.org>
+Index: buildroot/package/dbus/dbus.mk
+===================================================================
+--- buildroot.orig/package/dbus/dbus.mk	2012-08-07 16:19:30.000000000 +0200
++++ buildroot/package/dbus/dbus.mk	2012-08-07 16:20:25.000000000 +0200
+@@ -55,6 +55,7 @@
+ endif
+ 
+ define DBUS_INSTALL_TARGET_FIXUP
++	rm -rf $(TARGET_DIR)/var/run
+ 	rm -rf $(TARGET_DIR)/var/lib/dbus
+ 	ln -sf /tmp/dbus $(TARGET_DIR)/var/lib/dbus
+ 	$(INSTALL) -m 0755 -D package/dbus/S30dbus $(TARGET_DIR)/etc/init.d/S30dbus

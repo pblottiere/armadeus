@@ -1,0 +1,24 @@
+
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+---
+Index: linux-3.11-rc3/arch/arm/boot/dts/imx27-apf27dev.dts
+===================================================================
+--- linux-3.11-rc3.orig/arch/arm/boot/dts/imx27-apf27dev.dts
++++ linux-3.11-rc3/arch/arm/boot/dts/imx27-apf27dev.dts
+@@ -63,3 +63,16 @@
+ &i2c2 {
+ 	status = "okay";
+ };
++
++&iomuxc {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_hog>;
++
++	hog {
++		pinctrl_hog: hoggrp {
++			fsl,pins = <
++				MX27_PAD_PC_VS1__GPIO6_14 0
++			>;
++		};
++	};
++};

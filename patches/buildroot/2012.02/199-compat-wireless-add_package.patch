@@ -1,0 +1,120 @@
+Add compat-wireless package.
+Note: meanwhile project has moved to compat-drivers...
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/compat-wireless/compat-wireless.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/compat-wireless/compat-wireless.mk	2012-11-25 17:21:58.000000000 +0100
+@@ -0,0 +1,42 @@
++#############################################################
++#
++# compat-wireless: latest Linux kernel wireless drivers
++#
++#############################################################
++
++COMPAT_WIRELESS_VERSION = $(call qstrip,$(BR2_PACKAGE_COMPAT_WIRELESS_VERSION))
++COMPAT_WIRELESS_SITE = http://wireless.kernel.org/download/compat-wireless-2.6/
++COMPAT_WIRELESS_SOURCE = compat-wireless-$(COMPAT_WIRELESS_VERSION).tar.bz2
++
++COMPAT_WIRELESS_DEPENDENCIES += linux
++
++define COMPAT_WIRELESS_CONFIGURE_CMDS
++	( cd $(@D); ./scripts/driver-select $(BR2_PACKAGE_COMPAT_WIRELESS_DRIVER) )
++endef
++
++define COMPAT_WIRELESS_BUILD_CMDS
++	$(MAKE) CC="$(TARGET_CC)" LD="$(TARGET_LD)" COPTS="$(TARGET_CFLAGS)" \
++		KLIB_BUILD="$(BUILD_DIR)/linux-$(BR2_LINUX_KERNEL_VERSION)" \
++		KLIB="$(TARGET_DIR)/lib/modules/$(BR2_LINUX_KERNEL_VERSION)" \
++		ARCH=$(BR2_ARCH) \
++		-C $(@D) modules
++endef
++
++define COMPAT_WIRELESS_CLEAN_CMDS
++	$(MAKE) -C $(@D) clean
++endef
++
++define COMPAT_WIRELESS_UNINSTALL_TARGET_CMDS
++	$(MAKE)	KLIB="$(TARGET_DIR)/lib/modules/$(BR2_LINUX_KERNEL_VERSION)" \
++		-C $(@D) uninstall
++endef
++
++define COMPAT_WIRELESS_INSTALL_TARGET_CMDS
++	$(MAKE) CC="$(TARGET_CC)" LD="$(TARGET_LD)" COPTS="$(TARGET_CFLAGS)" \
++		KLIB_BUILD="$(BUILD_DIR)/linux-$(BR2_LINUX_KERNEL_VERSION)" \
++		KLIB="$(TARGET_DIR)" \
++		DEPMOD=$(HOST_DIR)/usr/sbin/depmod DESTDIR=$(TARGET_DIR) INSTALL_MOD_PATH=$(TARGET_DIR) \
++		LDFLAGS="" -C $(@D) install-modules
++endef
++
++$(eval $(call GENTARGETS))
+Index: buildroot/package/compat-wireless/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/compat-wireless/Config.in	2012-11-25 17:12:17.000000000 +0100
+@@ -0,0 +1,22 @@
++config BR2_PACKAGE_COMPAT_WIRELESS
++	bool "compat-wireless"
++	help
++	  Latest Linux wireless drivers for use with older kernels.
++
++	  http://wireless.kernel.org/en/users/Download/stable/
++
++if BR2_PACKAGE_COMPAT_WIRELESS
++
++config BR2_PACKAGE_COMPAT_WIRELESS_VERSION
++	string "compat-wireless version"
++	default "2012-11-18"
++	help
++	  Version of the compat-wireless package to use.
++
++config BR2_PACKAGE_COMPAT_WIRELESS_DRIVER
++	string "compat-wireless driver"
++	default "wl12xx"
++	help
++	  Driver of the compat-wireless package to build & install.
++
++endif
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2012-11-25 17:12:17.000000000 +0100
++++ buildroot/package/Config.in	2012-11-25 17:12:17.000000000 +0100
+@@ -180,6 +180,7 @@
+ menu "Hardware handling"
+ source "package/acpid/Config.in"
+ source "package/cdrkit/Config.in"
++source "package/compat-wireless/Config.in"
+ source "package/cramfs/Config.in"
+ source "package/cwiid/Config.in"
+ source "package/dbus/Config.in"
+Index: buildroot/package/compat-wireless/compat-wireless-2012-11-18/compat-wireless-2012-11-18-hacks.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/compat-wireless/compat-wireless-2012-11-18/compat-wireless-2012-11-18-hacks.patch	2012-11-25 17:12:17.000000000 +0100
+@@ -0,0 +1,24 @@
++Remove x86 specific stuff.
++Better way has to be found IMHO before sending to BR mainline.
++
++Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
++
++diff -urN compat-wireless-2012-11-18/Makefile compat-wireless-2012-11-18.mod//Makefile
++--- compat-wireless-2012-11-18/Makefile	2012-11-20 11:25:37.000000000 +0100
+++++ compat-wireless-2012-11-18.mod//Makefile	2012-11-20 10:53:19.000000000 +0100
++@@ -41,7 +41,6 @@
++ obj-y := compat/
++ 
++ obj-$(CONFIG_COMPAT_RFKILL) += net/rfkill/
++-obj-$(CONFIG_COMPAT_VIDEO_MODULES) += drivers/gpu/drm/
++ 
++ ifeq ($(BT),)
++ obj-$(CONFIG_COMPAT_WIRELESS) += net/wireless/ net/mac80211/
++@@ -235,7 +234,6 @@
++ 	@rm -f $(KLIB)/$(KMODDIR)/drivers/misc/eeprom/eeprom_93cx6.ko*
++ 	@rm -f $(KLIB)/$(KMODDIR)/drivers/misc/eeprom_93cx6.ko*
++ 	@rm -f $(KLIB)/$(KMODDIR)/drivers/net/b44.ko*
++-	@/sbin/depmod -a
++ 	@./scripts/update-initramfs
++ 	@echo 
++ 

@@ -1,0 +1,18 @@
+
+#
+# Armadeus custom drivers configuration
+                     
+#
+config ARMADEUS_FPGA_BOARD_DESIGNS_WISHBONE_EXAMPLE
+	boolean "board drivers for wishbone example"
+	default n
+	depends on ARMADEUS_FPGA_BOARD_DESIGNS
+	select ARMADEUS_FPGA_VIRTUAL_COMPONENTS
+	---help---
+	  Drivers used for wishbone example design that can be
+	  found in firmware/wishbone_example/
+
+source "drivers/armadeus/fpga/board_designs/wishbone_example/wb_button/Kconfig"
+source "drivers/armadeus/fpga/board_designs/wishbone_example/wb_led/Kconfig"
+source "drivers/armadeus/fpga/board_designs/wishbone_example/wb_irq_mngr/Kconfig"
+

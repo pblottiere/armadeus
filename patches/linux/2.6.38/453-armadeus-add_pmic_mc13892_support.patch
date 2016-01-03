@@ -1,0 +1,1005 @@
+Index: linux-2.6.38.8/drivers/mfd/mc13xxx-core.c
+===================================================================
+--- linux-2.6.38.8.orig/drivers/mfd/mc13xxx-core.c
++++ linux-2.6.38.8/drivers/mfd/mc13xxx-core.c
+@@ -14,15 +14,22 @@
+ #include <linux/module.h>
+ #include <linux/platform_device.h>
+ #include <linux/mutex.h>
++#include <linux/i2c.h>
+ #include <linux/interrupt.h>
+-#include <linux/spi/spi.h>
+ #include <linux/mfd/core.h>
+ #include <linux/mfd/mc13xxx.h>
+ 
++enum mc13xxx_id {
++	MC13XXX_ID_MC13783,
++	MC13XXX_ID_MC13892,
++	MC13XXX_ID_INVALID,
++};
++
+ struct mc13xxx {
+-	struct spi_device *spidev;
++	struct i2c_client *client;
+ 	struct mutex lock;
+ 	int irq;
++	enum mc13xxx_id id;
+ 
+ 	irq_handler_t irqhandler[MC13XXX_NUM_IRQ];
+ 	void *irqdata[MC13XXX_NUM_IRQ];
+@@ -40,7 +47,7 @@ struct mc13xxx *mc13783_to_mc13xxx(struc
+ }
+ EXPORT_SYMBOL(mc13783_to_mc13xxx);
+ 
+-#define MC13XXX_IRQSTAT0	0
++#define MC13XXX_IRQSTAT0		0
+ #define MC13XXX_IRQSTAT0_ADCDONEI	(1 << 0)
+ #define MC13XXX_IRQSTAT0_ADCBISDONEI	(1 << 1)
+ #define MC13XXX_IRQSTAT0_TSI		(1 << 2)
+@@ -62,7 +69,7 @@ EXPORT_SYMBOL(mc13783_to_mc13xxx);
+ #define MC13783_IRQSTAT0_CKDETI		(1 << 22)
+ #define MC13783_IRQSTAT0_UDMI		(1 << 23)
+ 
+-#define MC13XXX_IRQMASK0	1
++#define MC13XXX_IRQMASK0		1
+ #define MC13XXX_IRQMASK0_ADCDONEM	MC13XXX_IRQSTAT0_ADCDONEI
+ #define MC13XXX_IRQMASK0_ADCBISDONEM	MC13XXX_IRQSTAT0_ADCBISDONEI
+ #define MC13XXX_IRQMASK0_TSM		MC13XXX_IRQSTAT0_TSI
+@@ -84,7 +91,7 @@ EXPORT_SYMBOL(mc13783_to_mc13xxx);
+ #define MC13783_IRQMASK0_CKDETM		MC13783_IRQSTAT0_CKDETI
+ #define MC13783_IRQMASK0_UDMM		MC13783_IRQSTAT0_UDMI
+ 
+-#define MC13XXX_IRQSTAT1	3
++#define MC13XXX_IRQSTAT1		3
+ #define MC13XXX_IRQSTAT1_1HZI		(1 << 0)
+ #define MC13XXX_IRQSTAT1_TODAI		(1 << 1)
+ #define MC13783_IRQSTAT1_ONOFD1I	(1 << 3)
+@@ -106,7 +113,7 @@ EXPORT_SYMBOL(mc13783_to_mc13xxx);
+ #define MC13783_IRQSTAT1_ALSPTHI	(1 << 20)
+ #define MC13783_IRQSTAT1_AHSSHORTI	(1 << 21)
+ 
+-#define MC13XXX_IRQMASK1	4
++#define MC13XXX_IRQMASK1		4
+ #define MC13XXX_IRQMASK1_1HZM		MC13XXX_IRQSTAT1_1HZI
+ #define MC13XXX_IRQMASK1_TODAM		MC13XXX_IRQSTAT1_TODAI
+ #define MC13783_IRQMASK1_ONOFD1M	MC13783_IRQSTAT1_ONOFD1I
+@@ -128,7 +135,7 @@ EXPORT_SYMBOL(mc13783_to_mc13xxx);
+ #define MC13783_IRQMASK1_ALSPTHM	MC13783_IRQSTAT1_ALSPTHI
+ #define MC13783_IRQMASK1_AHSSHORTM	MC13783_IRQSTAT1_AHSSHORTI
+ 
+-#define MC13XXX_REVISION	7
++#define MC13XXX_REVISION		7
+ #define MC13XXX_REVISION_REVMETAL	(0x07 <<  0)
+ #define MC13XXX_REVISION_REVFULL	(0x03 <<  3)
+ #define MC13XXX_REVISION_ICID		(0x07 <<  6)
+@@ -136,43 +143,46 @@ EXPORT_SYMBOL(mc13783_to_mc13xxx);
+ #define MC13XXX_REVISION_FAB		(0x03 << 11)
+ #define MC13XXX_REVISION_ICIDCODE	(0x3f << 13)
+ 
+-#define MC13783_ADC1		44
++#define MC13XXX_PWRCTRL2		15
++#define MC13XXX_PWRCTRL2_PWRON3RSTEN	(1 << 3)
++
++#define MC13783_ADC1			44
+ #define MC13783_ADC1_ADEN		(1 << 0)
+ #define MC13783_ADC1_RAND		(1 << 1)
+ #define MC13783_ADC1_ADSEL		(1 << 3)
+ #define MC13783_ADC1_ASC		(1 << 20)
+ #define MC13783_ADC1_ADTRIGIGN		(1 << 21)
+ 
+-#define MC13783_ADC2		45
++#define MC13783_ADC2			45
++
++#define MC13XXX_ADC3			46
+ 
+-#define MC13XXX_NUMREGS 0x3f
++#define MC13XXX_NUMREGS 		0x3f
+ 
+ void mc13xxx_lock(struct mc13xxx *mc13xxx)
+ {
+ 	if (!mutex_trylock(&mc13xxx->lock)) {
+-		dev_dbg(&mc13xxx->spidev->dev, "wait for %s from %pf\n",
++		dev_dbg(&mc13xxx->client->dev, "wait for %s from %pf\n",
+ 				__func__, __builtin_return_address(0));
+ 
+ 		mutex_lock(&mc13xxx->lock);
+ 	}
+-	dev_dbg(&mc13xxx->spidev->dev, "%s from %pf\n",
++	dev_dbg(&mc13xxx->client->dev, "%s from %pf\n",
+ 			__func__, __builtin_return_address(0));
+ }
+ EXPORT_SYMBOL(mc13xxx_lock);
+ 
+ void mc13xxx_unlock(struct mc13xxx *mc13xxx)
+ {
+-	dev_dbg(&mc13xxx->spidev->dev, "%s from %pf\n",
++	dev_dbg(&mc13xxx->client->dev, "%s from %pf\n",
+ 			__func__, __builtin_return_address(0));
+ 	mutex_unlock(&mc13xxx->lock);
+ }
+ EXPORT_SYMBOL(mc13xxx_unlock);
+ 
+-#define MC13XXX_REGOFFSET_SHIFT 25
+ int mc13xxx_reg_read(struct mc13xxx *mc13xxx, unsigned int offset, u32 *val)
+ {
+-	struct spi_transfer t;
+-	struct spi_message m;
++	u8 buf[3];
+ 	int ret;
+ 
+ 	BUG_ON(!mutex_is_locked(&mc13xxx->lock));
+@@ -180,28 +190,15 @@ int mc13xxx_reg_read(struct mc13xxx *mc1
+ 	if (offset > MC13XXX_NUMREGS)
+ 		return -EINVAL;
+ 
+-	*val = offset << MC13XXX_REGOFFSET_SHIFT;
+-
+-	memset(&t, 0, sizeof(t));
+-
+-	t.tx_buf = val;
+-	t.rx_buf = val;
+-	t.len = sizeof(u32);
+-
+-	spi_message_init(&m);
+-	spi_message_add_tail(&t, &m);
+-
+-	ret = spi_sync(mc13xxx->spidev, &m);
+-
+-	/* error in message.status implies error return from spi_sync */
+-	BUG_ON(!ret && m.status);
+-
+-	if (ret)
++	ret = i2c_smbus_read_i2c_block_data(mc13xxx->client, offset, 3, buf);
++	if (ret < 0) {
++		dev_dbg(&mc13xxx->client->dev, "failed reading at 0x%02x", offset);
+ 		return ret;
++	}
+ 
+-	*val &= 0xffffff;
++	*val = ((buf[0] << 16) | (buf[1] << 8) | (buf[2]));
+ 
+-	dev_vdbg(&mc13xxx->spidev->dev, "[0x%02x] -> 0x%06x\n", offset, *val);
++	dev_vdbg(&mc13xxx->client->dev, "[0x%02x] -> 0x%06x\n", offset, *val);
+ 
+ 	return 0;
+ }
+@@ -209,35 +206,25 @@ EXPORT_SYMBOL(mc13xxx_reg_read);
+ 
+ int mc13xxx_reg_write(struct mc13xxx *mc13xxx, unsigned int offset, u32 val)
+ {
+-	u32 buf;
+-	struct spi_transfer t;
+-	struct spi_message m;
++	u8 buf[3];
+ 	int ret;
+ 
+ 	BUG_ON(!mutex_is_locked(&mc13xxx->lock));
+ 
+-	dev_vdbg(&mc13xxx->spidev->dev, "[0x%02x] <- 0x%06x\n", offset, val);
++	dev_vdbg(&mc13xxx->client->dev, "[0x%02x] <- 0x%06x\n", offset, val);
+ 
+ 	if (offset > MC13XXX_NUMREGS || val > 0xffffff)
+ 		return -EINVAL;
+ 
+-	buf = 1 << 31 | offset << MC13XXX_REGOFFSET_SHIFT | val;
+-
+-	memset(&t, 0, sizeof(t));
+-
+-	t.tx_buf = &buf;
+-	t.rx_buf = &buf;
+-	t.len = sizeof(u32);
+-
+-	spi_message_init(&m);
+-	spi_message_add_tail(&t, &m);
+-
+-	ret = spi_sync(mc13xxx->spidev, &m);
+-
+-	BUG_ON(!ret && m.status);
+-
+-	if (ret)
++	buf[0] = (val >> 16) & 0xff;
++	buf[1] = (val >> 8) & 0xff;
++	buf[2] = val & 0xff;
++
++	ret = i2c_smbus_write_i2c_block_data(mc13xxx->client, offset, 3, buf);
++	if (ret < 0) {
++		dev_dbg(&mc13xxx->client->dev, "failed writing 0x%06x at 0x%02x", val, offset);
+ 		return ret;
++	}
+ 
+ 	return 0;
+ }
+@@ -445,7 +432,7 @@ static int mc13xxx_irq_handle(struct mc1
+ 			if (handled == IRQ_HANDLED)
+ 				num_handled++;
+ 		} else {
+-			dev_err(&mc13xxx->spidev->dev,
++			dev_err(&mc13xxx->client->dev,
+ 					"BUG: irq %u but no handler\n",
+ 					baseirq + irq);
+ 
+@@ -481,26 +468,20 @@ static irqreturn_t mc13xxx_irq_thread(in
+ 	return IRQ_RETVAL(handled);
+ }
+ 
+-enum mc13xxx_id {
+-	MC13XXX_ID_MC13783,
+-	MC13XXX_ID_MC13892,
+-	MC13XXX_ID_INVALID,
+-};
+-
+ const char *mc13xxx_chipname[] = {
+ 	[MC13XXX_ID_MC13783] = "mc13783",
+ 	[MC13XXX_ID_MC13892] = "mc13892",
+ };
+ 
+ #define maskval(reg, mask)	(((reg) & (mask)) >> __ffs(mask))
+-static int mc13xxx_identify(struct mc13xxx *mc13xxx, enum mc13xxx_id *id)
++static int mc13xxx_identify(struct mc13xxx *mc13xxx)
+ {
+ 	u32 icid;
+ 	u32 revision;
+-	const char *name;
++	enum mc13xxx_id id;
+ 	int ret;
+ 
+-	ret = mc13xxx_reg_read(mc13xxx, 46, &icid);
++	ret = mc13xxx_reg_read(mc13xxx, MC13XXX_ADC3, &icid);
+ 	if (ret)
+ 		return ret;
+ 
+@@ -508,26 +489,24 @@ static int mc13xxx_identify(struct mc13x
+ 
+ 	switch (icid) {
+ 	case 2:
+-		*id = MC13XXX_ID_MC13783;
+-		name = "mc13783";
++		id = MC13XXX_ID_MC13783;
+ 		break;
+ 	case 7:
+-		*id = MC13XXX_ID_MC13892;
+-		name = "mc13892";
++		id = MC13XXX_ID_MC13892;
+ 		break;
+ 	default:
+-		*id = MC13XXX_ID_INVALID;
++		id = MC13XXX_ID_INVALID;
+ 		break;
+ 	}
+ 
+-	if (*id == MC13XXX_ID_MC13783 || *id == MC13XXX_ID_MC13892) {
++	if (id == MC13XXX_ID_MC13783 || id == MC13XXX_ID_MC13892) {
+ 		ret = mc13xxx_reg_read(mc13xxx, MC13XXX_REVISION, &revision);
+ 		if (ret)
+ 			return ret;
+ 
+-		dev_info(&mc13xxx->spidev->dev, "%s: rev: %d.%d, "
++		dev_info(&mc13xxx->client->dev, "%s: rev: %d.%d, "
+ 				"fin: %d, fab: %d, icid: %d/%d\n",
+-				mc13xxx_chipname[*id],
++				mc13xxx_chipname[id],
+ 				maskval(revision, MC13XXX_REVISION_REVFULL),
+ 				maskval(revision, MC13XXX_REVISION_REVMETAL),
+ 				maskval(revision, MC13XXX_REVISION_FIN),
+@@ -536,11 +515,11 @@ static int mc13xxx_identify(struct mc13x
+ 				maskval(revision, MC13XXX_REVISION_ICIDCODE));
+ 	}
+ 
+-	if (*id != MC13XXX_ID_INVALID) {
+-		const struct spi_device_id *devid =
+-			spi_get_device_id(mc13xxx->spidev);
+-		if (!devid || devid->driver_data != *id)
+-			dev_warn(&mc13xxx->spidev->dev, "device id doesn't "
++	if (id != MC13XXX_ID_INVALID) {
++		enum mc13xxx_id devid = mc13xxx->id;
++
++		if (devid != id)
++			dev_warn(&mc13xxx->client->dev, "device id doesn't "
+ 					"match auto detection!\n");
+ 	}
+ 
+@@ -549,13 +528,9 @@ static int mc13xxx_identify(struct mc13x
+ 
+ static const char *mc13xxx_get_chipname(struct mc13xxx *mc13xxx)
+ {
+-	const struct spi_device_id *devid =
+-		spi_get_device_id(mc13xxx->spidev);
+-
+-	if (!devid)
+-		return NULL;
++	enum mc13xxx_id devid = mc13xxx->id;
+ 
+-	return mc13xxx_chipname[devid->driver_data];
++	return mc13xxx_chipname[devid];
+ }
+ 
+ #include <linux/mfd/mc13783.h>
+@@ -563,7 +538,7 @@ static const char *mc13xxx_get_chipname(
+ int mc13xxx_get_flags(struct mc13xxx *mc13xxx)
+ {
+ 	struct mc13xxx_platform_data *pdata =
+-		dev_get_platdata(&mc13xxx->spidev->dev);
++		dev_get_platdata(&mc13xxx->client->dev);
+ 
+ 	return pdata->flags;
+ }
+@@ -601,7 +576,7 @@ int mc13783_adc_do_conversion(struct mc1
+ 	};
+ 	init_completion(&adcdone_data.done);
+ 
+-	dev_dbg(&mc13xxx->spidev->dev, "%s\n", __func__);
++	dev_dbg(&mc13xxx->client->dev, "%s\n", __func__);
+ 
+ 	mc13xxx_lock(mc13xxx);
+ 
+@@ -643,7 +618,7 @@ int mc13783_adc_do_conversion(struct mc1
+ 		return -EINVAL;
+ 	}
+ 
+-	dev_dbg(&mc13783->mc13xxx.spidev->dev, "%s: request irq\n", __func__);
++	dev_dbg(&mc13783->mc13xxx.client->dev, "%s: request irq\n", __func__);
+ 	mc13xxx_irq_request(mc13xxx, MC13783_IRQ_ADCDONE,
+ 			mc13783_handler_adcdone, __func__, &adcdone_data);
+ 	mc13xxx_irq_ack(mc13xxx, MC13783_IRQ_ADCDONE);
+@@ -701,7 +676,7 @@ static int mc13xxx_add_subdevice_pdata(s
+ 	if (!cell.name)
+ 		return -ENOMEM;
+ 
+-	return mfd_add_devices(&mc13xxx->spidev->dev, -1, &cell, 1, NULL, 0);
++	return mfd_add_devices(&mc13xxx->client->dev, -1, &cell, 1, NULL, 0);
+ }
+ 
+ static int mc13xxx_add_subdevice(struct mc13xxx *mc13xxx, const char *format)
+@@ -709,31 +684,41 @@ static int mc13xxx_add_subdevice(struct
+ 	return mc13xxx_add_subdevice_pdata(mc13xxx, format, NULL, 0);
+ }
+ 
+-static int mc13xxx_probe(struct spi_device *spi)
++static int mc13xxx_probe(struct i2c_client *i2c,
++			 const struct i2c_device_id *i2c_id)
+ {
+ 	struct mc13xxx *mc13xxx;
+-	struct mc13xxx_platform_data *pdata = dev_get_platdata(&spi->dev);
+-	enum mc13xxx_id id;
++	struct mc13xxx_platform_data *pdata = dev_get_platdata(&i2c->dev);
+ 	int ret;
+ 
++	if (!i2c_check_functionality(i2c->adapter, I2C_FUNC_SMBUS_BYTE_DATA))
++		return -EINVAL;
++
+ 	mc13xxx = kzalloc(sizeof(*mc13xxx), GFP_KERNEL);
+ 	if (!mc13xxx)
+ 		return -ENOMEM;
+ 
+-	dev_set_drvdata(&spi->dev, mc13xxx);
+-	spi->mode = SPI_MODE_0 | SPI_CS_HIGH;
+-	spi->bits_per_word = 32;
+-	spi_setup(spi);
+-
+-	mc13xxx->spidev = spi;
+-
+ 	mutex_init(&mc13xxx->lock);
+ 	mc13xxx_lock(mc13xxx);
+ 
+-	ret = mc13xxx_identify(mc13xxx, &id);
+-	if (ret || id == MC13XXX_ID_INVALID)
++	dev_set_drvdata(&i2c->dev, mc13xxx);
++	mc13xxx->client = i2c;
++
++	if (!i2c_id)
++		return -EINVAL;
++
++	mc13xxx->id = i2c_id->driver_data;
++
++	ret = mc13xxx_identify(mc13xxx);
++	if (ret)
+ 		goto err_revision;
+ 
++	/* enable reset on PWRON3 pin */
++	ret = mc13xxx_reg_rmw(mc13xxx, MC13XXX_PWRCTRL2, MC13XXX_PWRCTRL2_PWRON3RSTEN,
++				MC13XXX_PWRCTRL2_PWRON3RSTEN);
++	if (ret)
++		goto err_mask;
++
+ 	/* mask all irqs */
+ 	ret = mc13xxx_reg_write(mc13xxx, MC13XXX_IRQMASK0, 0x00ffffff);
+ 	if (ret)
+@@ -743,14 +728,14 @@ static int mc13xxx_probe(struct spi_devi
+ 	if (ret)
+ 		goto err_mask;
+ 
+-	ret = request_threaded_irq(spi->irq, NULL, mc13xxx_irq_thread,
++	ret = request_threaded_irq(i2c->irq, NULL, mc13xxx_irq_thread,
+ 			IRQF_ONESHOT | IRQF_TRIGGER_HIGH, "mc13xxx", mc13xxx);
+ 
+ 	if (ret) {
+ err_mask:
+ err_revision:
+ 		mc13xxx_unlock(mc13xxx);
+-		dev_set_drvdata(&spi->dev, NULL);
++		dev_set_drvdata(&i2c->dev, NULL);
+ 		kfree(mc13xxx);
+ 		return ret;
+ 	}
+@@ -784,54 +769,57 @@ err_revision:
+ 					pdata->leds, sizeof(*pdata->leds));
+ 	}
+ 
++	if (pdata->flags & MC13XXX_USE_GPO)
++		mc13xxx_add_subdevice(mc13xxx, "%s-gpio");
++
+ 	return 0;
+ }
+ 
+-static int __devexit mc13xxx_remove(struct spi_device *spi)
++static int __devexit mc13xxx_remove(struct i2c_client *i2c)
+ {
+-	struct mc13xxx *mc13xxx = dev_get_drvdata(&spi->dev);
++	struct mc13xxx *mc13xxx = dev_get_drvdata(&i2c->dev);
+ 
+-	free_irq(mc13xxx->spidev->irq, mc13xxx);
++	free_irq(mc13xxx->client->irq, mc13xxx);
+ 
+-	mfd_remove_devices(&spi->dev);
++	mfd_remove_devices(&i2c->dev);
+ 
+ 	kfree(mc13xxx);
+ 
+ 	return 0;
+ }
+ 
+-static const struct spi_device_id mc13xxx_device_id[] = {
+-	{
+-		.name = "mc13783",
+-		.driver_data = MC13XXX_ID_MC13783,
+-	}, {
+-		.name = "mc13892",
+-		.driver_data = MC13XXX_ID_MC13892,
+-	}, {
+-		/* sentinel */
+-	}
++static const struct i2c_device_id mc13xxx_device_id[] = {
++	{ "mc13783", MC13XXX_ID_MC13783 },
++	{ "mc13892", MC13XXX_ID_MC13892 },
++	{ /* sentinel */ },
+ };
++MODULE_DEVICE_TABLE(i2c, mc13xxx_device_id);
+ 
+-static struct spi_driver mc13xxx_driver = {
+-	.id_table = mc13xxx_device_id,
++static struct i2c_driver mc13xxx_driver = {
+ 	.driver = {
+ 		.name = "mc13xxx",
+-		.bus = &spi_bus_type,
+ 		.owner = THIS_MODULE,
+ 	},
+ 	.probe = mc13xxx_probe,
+ 	.remove = __devexit_p(mc13xxx_remove),
++	.id_table = mc13xxx_device_id,
+ };
+ 
+ static int __init mc13xxx_init(void)
+ {
+-	return spi_register_driver(&mc13xxx_driver);
++	int ret;
++
++	ret = i2c_add_driver(&mc13xxx_driver);
++	if (ret != 0)
++		pr_err("Failed to register mc13xxx I2C driver: %d\n", ret);
++
++	return ret;
+ }
+ subsys_initcall(mc13xxx_init);
+ 
+ static void __exit mc13xxx_exit(void)
+ {
+-	spi_unregister_driver(&mc13xxx_driver);
++	i2c_del_driver(&mc13xxx_driver);
+ }
+ module_exit(mc13xxx_exit);
+ 
+Index: linux-2.6.38.8/drivers/mfd/Kconfig
+===================================================================
+--- linux-2.6.38.8.orig/drivers/mfd/Kconfig
++++ linux-2.6.38.8/drivers/mfd/Kconfig
+@@ -429,7 +429,7 @@ config MFD_MC13783
+ 
+ config MFD_MC13XXX
+ 	tristate "Support Freescale MC13783 and MC13892"
+-	depends on SPI_MASTER
++	depends on I2C
+ 	select MFD_CORE
+ 	select MFD_MC13783
+ 	help
+Index: linux-2.6.38.8/arch/arm/mach-mx5/board-apf51.c
+===================================================================
+--- linux-2.6.38.8.orig/arch/arm/mach-mx5/board-apf51.c
++++ linux-2.6.38.8/arch/arm/mach-mx5/board-apf51.c
+@@ -21,6 +21,7 @@
+ #include <linux/usb/otg.h>
+ #include <linux/fec.h>
+ #include <linux/i2c.h>
++#include <linux/mfd/mc13xxx.h>
+ #include <linux/mfd/wm831x/core.h>
+ #include <linux/mfd/wm831x/pdata.h>
+ #include <linux/irq.h>
+@@ -313,11 +314,12 @@ static inline void apf51_fec_reset(void)
+ #endif
+ 
+ /* APF51 has a Wolfson PMIC on I2C2 */
++/* APF51v2 has a Freescale MC13892 PMIC on I2C2 */
+ static const struct imxi2c_platform_data apf51_i2c_data __initconst = {
+ 	.bitrate = 400000,
+ };
+ 
+-#define APF51_WM8311_IRQ_GPIO		(0*32 + 7)	/* GPIO1_7 */
++#define APF51_PMIC_IRQ_GPIO		(0*32 + 7)	/* GPIO1_7 */
+ #define APF51_WM8311_TOUCH_DETECT_GPIO	(0*32 + 4)	/* GPIO1_4 */
+ #define APF51_WM8311_TOUCH_EOC_GPIO	(0*32 + 6)	/* GPIO1_6 */
+ 
+@@ -326,9 +328,9 @@ static int apf51_wm8311_pre_init(struct
+ 	int ret = 0;
+ 
+ 	/* PMIC_IRQ line */
+-	gpio_request(APF51_WM8311_IRQ_GPIO, "wm8311_irq");
+-	gpio_direction_input(APF51_WM8311_IRQ_GPIO);
+-	set_irq_type(gpio_to_irq(APF51_WM8311_IRQ_GPIO), IRQF_TRIGGER_FALLING);
++	gpio_request(APF51_PMIC_IRQ_GPIO, "wm8311_irq");
++	gpio_direction_input(APF51_PMIC_IRQ_GPIO);
++	set_irq_type(gpio_to_irq(APF51_PMIC_IRQ_GPIO), IRQF_TRIGGER_FALLING);
+ 
+ 	/* TOUCH_DETECT line */
+ 	gpio_request(APF51_WM8311_TOUCH_DETECT_GPIO, "wm8311_touch_detect");
+@@ -394,7 +396,19 @@ static struct i2c_board_info apf51_i2c1_
+ 		I2C_BOARD_INFO("wm8311", 0x36),
+ #endif
+ 		.platform_data = &apf51_wm8311_pdata,
+-		.irq = gpio_to_irq(APF51_WM8311_IRQ_GPIO),
++		.irq = gpio_to_irq(APF51_PMIC_IRQ_GPIO),
++	},
++};
++
++static struct mc13xxx_platform_data apf51_mc13xxx_pdata = {
++	.flags = MC13XXX_USE_RTC | MC13XXX_USE_GPO,
++};
++
++static struct i2c_board_info apf51v2_i2c1_devices[] __initdata = {
++	{
++		I2C_BOARD_INFO("mc13892", 0x09),
++		.platform_data = &apf51_mc13xxx_pdata,
++		.irq = gpio_to_irq(APF51_PMIC_IRQ_GPIO),
+ 	},
+ };
+ 
+@@ -437,6 +451,7 @@ static int apf51_fpga_init(void)
+ 	return 0;
+ }
+ 
++#define APF51_VERSION_GPIO (2*32 + 12)	/* GPIO3_12 */
+ 
+ /*
+  * Board specific initialization.
+@@ -456,7 +471,17 @@ static void __init apf51_board_init(void
+ #endif
+ 
+ 	imx51_add_imx_i2c(1, &apf51_i2c_data);
+-	i2c_register_board_info(1, apf51_i2c1_devices, ARRAY_SIZE(apf51_i2c1_devices));
++
++	gpio_request(APF51_VERSION_GPIO, "apf51-version");
++	gpio_direction_input(APF51_VERSION_GPIO);
++	if (gpio_get_value(APF51_VERSION_GPIO)) {
++		printk("APF51 v1 detected.\n");
++		i2c_register_board_info(1, apf51_i2c1_devices, ARRAY_SIZE(apf51_i2c1_devices));
++	}
++	else {
++		printk("APF51 v2 detected.\n");
++		i2c_register_board_info(1, apf51v2_i2c1_devices, ARRAY_SIZE(apf51v2_i2c1_devices));
++	}
+ 
+ 	/* APF51 has an Ethernet PHY connected on internal FEC */
+ 	imx51_add_fec(NULL);
+Index: linux-2.6.38.8/drivers/gpio/mc13892-gpio.c
+===================================================================
+--- /dev/null
++++ linux-2.6.38.8/drivers/gpio/mc13892-gpio.c
+@@ -0,0 +1,147 @@
++/*
++ * mc13892-gpio.c  --  gpiolib support for Freescale MC13892 PMIC
++ *
++ * Copyright 2014 Armadeus Systems
++ *
++ * Author: Sébastien Szymanski <sebastien.szymanski@armadeus.com>
++ *
++ *  This program is free software; you can redistribute  it and/or modify it
++ *  under  the terms of  the GNU General  Public License as published by the
++ *  Free Software Foundation;  either version 2 of the  License, or (at your
++ *  option) any later version.
++ *
++ */
++
++#include <linux/kernel.h>
++#include <linux/slab.h>
++#include <linux/module.h>
++#include <linux/gpio.h>
++#include <linux/mfd/core.h>
++#include <linux/mfd/mc13xxx.h>
++#include <linux/platform_device.h>
++#include <linux/seq_file.h>
++
++#define MC13892_POWERMISC		34
++#define MC13892_POWERMISC_GPO1EN	(1 << 6)
++
++struct mc13892_gpio {
++	struct mc13xxx *mc13xxx;
++	struct gpio_chip gpio_chip;
++};
++
++static inline struct mc13892_gpio *to_mc13892_gpio(struct gpio_chip *chip)
++{
++	return container_of(chip, struct mc13892_gpio, gpio_chip);
++}
++
++static int mc13892_gpio_get(struct gpio_chip *chip, unsigned offset)
++{
++	struct mc13892_gpio *mc13892_gpio = to_mc13892_gpio(chip);
++	struct mc13xxx *mc13xxx = mc13892_gpio->mc13xxx;
++	u32 valread;
++	int ret;
++
++	mc13xxx_lock(mc13xxx);
++	ret = mc13xxx_reg_read(mc13xxx, MC13892_POWERMISC, &valread);
++	mc13xxx_unlock(mc13xxx);
++
++	if (ret < 0)
++		return ret;
++
++	if (valread & (MC13892_POWERMISC_GPO1EN << (offset << 1)))
++		return 1;
++
++	return 0;
++}
++
++static void mc13892_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
++{
++	struct mc13892_gpio *mc13892_gpio = to_mc13892_gpio(chip);
++	struct mc13xxx *mc13xxx = mc13892_gpio->mc13xxx;
++	u32 mask = (MC13892_POWERMISC_GPO1EN << (offset << 1));
++
++	mc13xxx_lock(mc13xxx);
++	mc13xxx_reg_rmw(mc13xxx, MC13892_POWERMISC, mask, value ? mask : 0);
++	mc13xxx_unlock(mc13xxx);
++}
++
++static int mc13892_gpio_direction_out(struct gpio_chip *chip,
++				     unsigned offset, int value)
++{
++	return 0;
++}
++
++static struct gpio_chip template_chip = {
++	.label			= "mc13892",
++	.owner			= THIS_MODULE,
++	.direction_output	= mc13892_gpio_direction_out,
++	.get			= mc13892_gpio_get,
++	.set			= mc13892_gpio_set,
++	.ngpio			= 4,
++	.base			= -1,
++};
++
++static int __devinit mc13892_gpio_probe(struct platform_device *pdev)
++{
++	struct mc13xxx *mc13xxx = dev_get_drvdata(pdev->dev.parent);
++	struct mc13892_gpio *mc13892_gpio;
++	int ret;
++
++	mc13892_gpio = kzalloc(sizeof(*mc13892_gpio), GFP_KERNEL);
++	if (mc13892_gpio == NULL)
++		return -ENOMEM;
++
++	mc13892_gpio->mc13xxx = mc13xxx;
++	mc13892_gpio->gpio_chip = template_chip;
++
++	ret = gpiochip_add(&mc13892_gpio->gpio_chip);
++	if (ret < 0) {
++		dev_err(&pdev->dev, "Could not register gpiochip, %d\n",
++			ret);
++		goto err;
++	}
++
++	platform_set_drvdata(pdev, mc13892_gpio);
++
++	return ret;
++
++err:
++	kfree(mc13892_gpio);
++	return ret;
++}
++
++static int __devexit mc13892_gpio_remove(struct platform_device *pdev)
++{
++	struct mc13892_gpio *mc13892_gpio = platform_get_drvdata(pdev);
++	int ret;
++
++	ret = gpiochip_remove(&mc13892_gpio->gpio_chip);
++	if (ret == 0)
++		kfree(mc13892_gpio);
++
++	return ret;
++}
++
++static struct platform_driver mc13892_gpio_driver = {
++	.driver.name	= "mc13892-gpio",
++	.driver.owner	= THIS_MODULE,
++	.probe		= mc13892_gpio_probe,
++	.remove		= __devexit_p(mc13892_gpio_remove),
++};
++
++static int __init mc13892_gpio_init(void)
++{
++	return platform_driver_register(&mc13892_gpio_driver);
++}
++subsys_initcall(mc13892_gpio_init);
++
++static void __exit mc13892_gpio_exit(void)
++{
++	platform_driver_unregister(&mc13892_gpio_driver);
++}
++module_exit(mc13892_gpio_exit);
++
++MODULE_AUTHOR("Sébastien Szymanski <sebastien.szymanski@armadeus.com>");
++MODULE_DESCRIPTION("GPO interface for MC13892 PMIC");
++MODULE_LICENSE("GPL");
++MODULE_ALIAS("platform:mc13892-gpio");
+Index: linux-2.6.38.8/drivers/gpio/Kconfig
+===================================================================
+--- linux-2.6.38.8.orig/drivers/gpio/Kconfig
++++ linux-2.6.38.8/drivers/gpio/Kconfig
+@@ -163,6 +163,13 @@ config GPIO_MAX732X_IRQ
+ 	  Say yes here to enable the max732x to be used as an interrupt
+ 	  controller. It requires the driver to be built in the kernel.
+ 
++config GPIO_MC13892
++	tristate "MC13892 GPOs"
++	depends on MFD_MC13XXX
++	help
++	  Say yes here to access the GPO signals of MC13892 power management
++	  chip from Freescale.
++
+ config GPIO_PCA953X
+ 	tristate "PCA953x, PCA955x, TCA64xx, and MAX7310 I/O ports"
+ 	depends on I2C
+Index: linux-2.6.38.8/drivers/gpio/Makefile
+===================================================================
+--- linux-2.6.38.8.orig/drivers/gpio/Makefile
++++ linux-2.6.38.8/drivers/gpio/Makefile
+@@ -16,6 +16,7 @@ obj-$(CONFIG_GPIO_MAX730X)	+= max730x.o
+ obj-$(CONFIG_GPIO_MAX7300)	+= max7300.o
+ obj-$(CONFIG_GPIO_MAX7301)	+= max7301.o
+ obj-$(CONFIG_GPIO_MAX732X)	+= max732x.o
++obj-$(CONFIG_GPIO_MC13892)	+= mc13892-gpio.o
+ obj-$(CONFIG_GPIO_MC33880)	+= mc33880.o
+ obj-$(CONFIG_GPIO_MCP23S08)	+= mcp23s08.o
+ obj-$(CONFIG_GPIO_74X164)	+= 74x164.o
+Index: linux-2.6.38.8/include/linux/mfd/mc13xxx.h
+===================================================================
+--- linux-2.6.38.8.orig/include/linux/mfd/mc13xxx.h
++++ linux-2.6.38.8/include/linux/mfd/mc13xxx.h
+@@ -144,6 +144,7 @@ struct mc13xxx_platform_data {
+ #define MC13XXX_USE_RTC		(1 << 3)
+ #define MC13XXX_USE_REGULATOR	(1 << 4)
+ #define MC13XXX_USE_LED		(1 << 5)
++#define MC13XXX_USE_GPO		(1 << 6)
+ 	unsigned int flags;
+ 
+ 	int num_regulators;
+Index: linux-2.6.38.8/include/linux/mfd/mc13892.h
+===================================================================
+--- linux-2.6.38.8.orig/include/linux/mfd/mc13892.h
++++ linux-2.6.38.8/include/linux/mfd/mc13892.h
+@@ -15,25 +15,21 @@
+ #define MC13892_SW2		1
+ #define MC13892_SW3		2
+ #define MC13892_SW4		3
+-#define MC13892_SWBST	4
+-#define MC13892_VIOHI	5
+-#define MC13892_VPLL	6
+-#define MC13892_VDIG	7
+-#define MC13892_VSD	8
+-#define MC13892_VUSB2	9
+-#define MC13892_VVIDEO	10
+-#define MC13892_VAUDIO	11
+-#define MC13892_VCAM	12
+-#define MC13892_VGEN1	13
+-#define MC13892_VGEN2	14
+-#define MC13892_VGEN3	15
+-#define MC13892_VUSB	16
+-#define MC13892_GPO1	17
+-#define MC13892_GPO2	18
+-#define MC13892_GPO3	19
+-#define MC13892_GPO4	20
+-#define MC13892_PWGT1SPI	21
+-#define MC13892_PWGT2SPI	22
+-#define MC13892_VCOINCELL	23
++#define MC13892_SWBST		4
++#define MC13892_VIOHI		5
++#define MC13892_VPLL		6
++#define MC13892_VDIG		7
++#define MC13892_VSD		8
++#define MC13892_VUSB2		9
++#define MC13892_VVIDEO		10
++#define MC13892_VAUDIO		11
++#define MC13892_VCAM		12
++#define MC13892_VGEN1		13
++#define MC13892_VGEN2		14
++#define MC13892_VGEN3		15
++#define MC13892_VUSB		16
++#define MC13892_PWGT1SPI	17
++#define MC13892_PWGT2SPI	18
++#define MC13892_VCOINCELL	19
+ 
+ #endif
+Index: linux-2.6.38.8/drivers/regulator/mc13892-regulator.c
+===================================================================
+--- linux-2.6.38.8.orig/drivers/regulator/mc13892-regulator.c
++++ linux-2.6.38.8/drivers/regulator/mc13892-regulator.c
+@@ -135,17 +135,6 @@
+ #define MC13892_REGULATORMODE1_VSDSTDBY		(1<<19)
+ #define MC13892_REGULATORMODE1_VSDMODE		(1<<20)
+ 
+-#define MC13892_POWERMISC			34
+-#define MC13892_POWERMISC_GPO1EN		(1<<6)
+-#define MC13892_POWERMISC_GPO2EN		(1<<8)
+-#define MC13892_POWERMISC_GPO3EN		(1<<10)
+-#define MC13892_POWERMISC_GPO4EN		(1<<12)
+-#define MC13892_POWERMISC_PWGT1SPIEN		(1<<15)
+-#define MC13892_POWERMISC_PWGT2SPIEN		(1<<16)
+-#define MC13892_POWERMISC_GPO4ADINEN		(1<<21)
+-
+-#define MC13892_POWERMISC_PWGTSPI_M		(3 << 15)
+-
+ #define MC13892_USB1				50
+ #define MC13892_USB1_VUSBEN			(1<<3)
+ 
+@@ -229,15 +218,10 @@ static const int mc13892_vusb[] = {
+ 	3300000,
+ };
+ 
+-static const int mc13892_gpo[] = {
+-	2750000,
+-};
+-
+ static const int mc13892_pwgtdrv[] = {
+ 	5000000,
+ };
+ 
+-static struct regulator_ops mc13892_gpo_regulator_ops;
+ /* sw regulators need special care due to the "hi bit" */
+ static struct regulator_ops mc13892_sw_regulator_ops;
+ 
+@@ -246,10 +230,6 @@ static struct regulator_ops mc13892_sw_r
+ 	MC13xxx_FIXED_DEFINE(MC13892_, name, reg, voltages,	\
+ 			mc13xxx_fixed_regulator_ops)
+ 
+-#define MC13892_GPO_DEFINE(name, reg, voltages)			\
+-	MC13xxx_GPO_DEFINE(MC13892_, name, reg, voltages,	\
+-			mc13892_gpo_regulator_ops)
+-
+ #define MC13892_SW_DEFINE(name, reg, vsel_reg, voltages)	\
+ 	MC13xxx_DEFINE(MC13892_, name, reg, vsel_reg, voltages, \
+ 			mc13892_sw_regulator_ops)
+@@ -287,115 +267,6 @@ static struct mc13xxx_regulator mc13892_
+ 	MC13892_DEFINE_REGU(VGEN3, REGULATORMODE1, REGULATORSETTING0,	\
+ 		mc13892_vgen3),
+ 	MC13892_FIXED_DEFINE(VUSB, USB1, mc13892_vusb),
+-	MC13892_GPO_DEFINE(GPO1, POWERMISC, mc13892_gpo),
+-	MC13892_GPO_DEFINE(GPO2, POWERMISC, mc13892_gpo),
+-	MC13892_GPO_DEFINE(GPO3, POWERMISC, mc13892_gpo),
+-	MC13892_GPO_DEFINE(GPO4, POWERMISC, mc13892_gpo),
+-	MC13892_GPO_DEFINE(PWGT1SPI, POWERMISC, mc13892_pwgtdrv),
+-	MC13892_GPO_DEFINE(PWGT2SPI, POWERMISC, mc13892_pwgtdrv),
+-};
+-
+-static int mc13892_powermisc_rmw(struct mc13xxx_regulator_priv *priv, u32 mask,
+-				 u32 val)
+-{
+-	struct mc13xxx *mc13892 = priv->mc13xxx;
+-	int ret;
+-	u32 valread;
+-
+-	BUG_ON(val & ~mask);
+-
+-	ret = mc13xxx_reg_read(mc13892, MC13892_POWERMISC, &valread);
+-	if (ret)
+-		return ret;
+-
+-	/* Update the stored state for Power Gates. */
+-	priv->powermisc_pwgt_state =
+-		(priv->powermisc_pwgt_state & ~mask) | val;
+-	priv->powermisc_pwgt_state &= MC13892_POWERMISC_PWGTSPI_M;
+-
+-	/* Construct the new register value */
+-	valread = (valread & ~mask) | val;
+-	/* Overwrite the PWGTxEN with the stored version */
+-	valread = (valread & ~MC13892_POWERMISC_PWGTSPI_M) |
+-		priv->powermisc_pwgt_state;
+-
+-	return mc13xxx_reg_write(mc13892, MC13892_POWERMISC, valread);
+-}
+-
+-static int mc13892_gpo_regulator_enable(struct regulator_dev *rdev)
+-{
+-	struct mc13xxx_regulator_priv *priv = rdev_get_drvdata(rdev);
+-	int id = rdev_get_id(rdev);
+-	int ret;
+-	u32 en_val = mc13892_regulators[id].enable_bit;
+-	u32 mask = mc13892_regulators[id].enable_bit;
+-
+-	dev_dbg(rdev_get_dev(rdev), "%s id: %d\n", __func__, id);
+-
+-	/* Power Gate enable value is 0 */
+-	if (id == MC13892_PWGT1SPI || id == MC13892_PWGT2SPI)
+-		en_val = 0;
+-
+-	if (id == MC13892_GPO4)
+-		mask |= MC13892_POWERMISC_GPO4ADINEN;
+-
+-	mc13xxx_lock(priv->mc13xxx);
+-	ret = mc13892_powermisc_rmw(priv, mask, en_val);
+-	mc13xxx_unlock(priv->mc13xxx);
+-
+-	return ret;
+-}
+-
+-static int mc13892_gpo_regulator_disable(struct regulator_dev *rdev)
+-{
+-	struct mc13xxx_regulator_priv *priv = rdev_get_drvdata(rdev);
+-	int id = rdev_get_id(rdev);
+-	int ret;
+-	u32 dis_val = 0;
+-
+-	dev_dbg(rdev_get_dev(rdev), "%s id: %d\n", __func__, id);
+-
+-	/* Power Gate disable value is 1 */
+-	if (id == MC13892_PWGT1SPI || id == MC13892_PWGT2SPI)
+-		dis_val = mc13892_regulators[id].enable_bit;
+-
+-	mc13xxx_lock(priv->mc13xxx);
+-	ret = mc13892_powermisc_rmw(priv, mc13892_regulators[id].enable_bit,
+-		dis_val);
+-	mc13xxx_unlock(priv->mc13xxx);
+-
+-	return ret;
+-}
+-
+-static int mc13892_gpo_regulator_is_enabled(struct regulator_dev *rdev)
+-{
+-	struct mc13xxx_regulator_priv *priv = rdev_get_drvdata(rdev);
+-	int ret, id = rdev_get_id(rdev);
+-	unsigned int val;
+-
+-	mc13xxx_lock(priv->mc13xxx);
+-	ret = mc13xxx_reg_read(priv->mc13xxx, mc13892_regulators[id].reg, &val);
+-	mc13xxx_unlock(priv->mc13xxx);
+-
+-	if (ret)
+-		return ret;
+-
+-	/* Power Gates state is stored in powermisc_pwgt_state
+-	 * where the meaning of bits is negated */
+-	val = (val & ~MC13892_POWERMISC_PWGTSPI_M) |
+-		(priv->powermisc_pwgt_state ^ MC13892_POWERMISC_PWGTSPI_M);
+-
+-	return (val & mc13892_regulators[id].enable_bit) != 0;
+-}
+-
+-
+-static struct regulator_ops mc13892_gpo_regulator_ops = {
+-	.enable = mc13892_gpo_regulator_enable,
+-	.disable = mc13892_gpo_regulator_disable,
+-	.is_enabled = mc13892_gpo_regulator_is_enabled,
+-	.list_voltage = mc13xxx_regulator_list_voltage,
+-	.set_voltage = mc13xxx_fixed_regulator_set_voltage,
+-	.get_voltage = mc13xxx_fixed_regulator_get_voltage,
+ };
+ 
+ static int mc13892_sw_regulator_get_voltage(struct regulator_dev *rdev)

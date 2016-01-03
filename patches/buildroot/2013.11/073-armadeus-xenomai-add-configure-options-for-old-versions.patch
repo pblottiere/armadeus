@@ -1,0 +1,37 @@
+Allows to have old xenomai userspace (2.4/2.5) with recent BR.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/xenomai/Config.in
+===================================================================
+--- buildroot.orig/package/xenomai/Config.in	2014-02-18 15:37:18.603402789 +0100
++++ buildroot/package/xenomai/Config.in	2014-02-18 16:52:48.733866495 +0100
+@@ -45,6 +45,13 @@
+ 	  BR2_LINUX_KERNEL_EXT_XENOMAI_ADEOS_PATCH, in the Linux
+ 	  Kernel -> Linux Kernel Extensions menu.
+ 
++config BR2_PACKAGE_XENOMAI_CONF_OPT
++	string "Additionnal configuration options"
++	help
++	  Additionnal options that will be passed to configure stage and that
++	  can be used for example with old versions of xenomai.
++	  For example: --enable-arm-mach=imx with xeno 2.4/2.5
++
+ config BR2_PACKAGE_XENOMAI_TESTSUITE
+ 	bool "Install testsuite"
+ 	help
+Index: buildroot/package/xenomai/xenomai.mk
+===================================================================
+--- buildroot.orig/package/xenomai/xenomai.mk	2014-02-18 15:37:15.335386585 +0100
++++ buildroot/package/xenomai/xenomai.mk	2014-02-18 16:52:28.381765572 +0100
+@@ -20,6 +20,10 @@
+ XENOMAI_INSTALL_STAGING_OPT = DESTDIR=$(STAGING_DIR) install-user
+ 
+ XENOMAI_CONF_OPT += --includedir=/usr/include/xenomai/
++XENOMAI_ADDITIONAL_CONF_OPT = $(call qstrip,$(BR2_PACKAGE_XENOMAI_CONF_OPT))
++ifneq ($(XENOMAI_ADDITIONAL_CONF_OPT),)
++XENOMAI_CONF_OPT += $(XENOMAI_ADDITIONAL_CONF_OPT)
++endif
+ 
+ define XENOMAI_REMOVE_DEVFILES
+ 	for i in xeno-config xeno-info wrap-link.sh ; do \

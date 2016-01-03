@@ -1,0 +1,6 @@
+config BR2_PACKAGE_IMXREGS
+	bool "imxregs"
+	help
+	  This debug tool allows you to access the i.MX internal registers 
+	  directly from Linux userspace. (If operation was allowed in U-Boot).
+

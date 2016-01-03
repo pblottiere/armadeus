@@ -1,0 +1,49 @@
+This patch adds feature to setup PWM Contrast Control Register.
+This register is used to control the signal output at the contrast pin,
+which controls contrast of the LCD panel.
+
+Signed-off-by: Alexander Shiyan <shc_work@mail.ru>
+---
+ Documentation/devicetree/bindings/video/fsl,imx-fb.txt | 1 +
+ drivers/video/imxfb.c                                  | 2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+Index: linux-3.11-rc3/Documentation/devicetree/bindings/video/fsl,imx-fb.txt
+===================================================================
+--- linux-3.11-rc3.orig/Documentation/devicetree/bindings/video/fsl,imx-fb.txt
++++ linux-3.11-rc3/Documentation/devicetree/bindings/video/fsl,imx-fb.txt
+@@ -18,6 +18,7 @@ Optional properties:
+ - fsl,dmacr: DMA Control Register value. This is optional. By default, the
+ 	register is not modified as recommended by the datasheet.
+ - fsl,lscr1: LCDC Sharp Configuration Register value.
++- fsl,pwmr: LCDC PWM Contrast Control Register value.
+ 
+ Example:
+ 
+Index: linux-3.11-rc3/drivers/video/imxfb.c
+===================================================================
+--- linux-3.11-rc3.orig/drivers/video/imxfb.c
++++ linux-3.11-rc3/drivers/video/imxfb.c
+@@ -814,8 +814,8 @@ static int imxfb_init_fbinfo(struct plat
+ 
+ 		fbi->lscr1 = IMXFB_LSCR1_DEFAULT;
+ 		of_property_read_u32(np, "fsl,lscr1", &fbi->lscr1);
+-
+ 		of_property_read_u32(np, "fsl,dmacr", &fbi->dmacr);
++		of_property_read_u32(np, "fsl,pwmr", &fbi->pwmr);
+ 
+ 		/* These two function pointers could be used by some specific
+ 		 * platforms. */
+Index: linux-3.11-rc3/drivers/video/Kconfig
+===================================================================
+--- linux-3.11-rc3.orig/drivers/video/Kconfig
++++ linux-3.11-rc3/drivers/video/Kconfig
+@@ -363,7 +363,7 @@ config FB_SA1100
+ 
+ config FB_IMX
+ 	tristate "Freescale i.MX1/21/25/27 LCD support"
+-	depends on FB && IMX_HAVE_PLATFORM_IMX_FB
++	depends on FB 
+ 	select FB_CFB_FILLRECT
+ 	select FB_CFB_COPYAREA
+ 	select FB_CFB_IMAGEBLIT

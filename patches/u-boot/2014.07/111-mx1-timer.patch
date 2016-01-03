@@ -1,0 +1,25 @@
+mx1: Fix function get_timer() to adjust frequency according to CONFIG_SYS_HZ
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+Cc: Stefano Babic <sbabic@denx.de>
+---
+ arch/arm/cpu/arm920t/imx/timer.c |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/arch/arm/cpu/arm920t/imx/timer.c b/arch/arm/cpu/arm920t/imx/timer.c
+index 6141bd4..d6d1968 100644
+--- a/arch/arm/cpu/arm920t/imx/timer.c
++++ b/arch/arm/cpu/arm920t/imx/timer.c
+@@ -39,7 +39,7 @@ int timer_init (void)
+  */
+ ulong get_timer (ulong base)
+ {
+-	return get_timer_masked() - base;
++	return get_timer_masked() / (1000000 / CONFIG_SYS_HZ) - base;
+ }
+ 
+ ulong get_timer_masked (void)
+-- 
+1.7.2.5
+

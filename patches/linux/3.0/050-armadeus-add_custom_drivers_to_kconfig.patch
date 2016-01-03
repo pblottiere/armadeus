@@ -1,0 +1,24 @@
+This patch adds the possibility to have custom Armadeus drivers built in kernel or compiled as modules
+
+Index: linux-3.0.10/drivers/usb/Kconfig
+===================================================================
+--- linux-3.0.10.orig/drivers/usb/Kconfig	2011-11-21 23:37:44.000000000 +0100
++++ linux-3.0.10/drivers/usb/Kconfig	2011-12-02 08:38:34.000000000 +0100
+@@ -169,3 +169,5 @@
+ source "drivers/usb/otg/Kconfig"
+ 
+ endif # USB_SUPPORT
++
++source "drivers/armadeus/Kconfig"
+Index: linux-3.0.10/drivers/Makefile
+===================================================================
+--- linux-3.0.10.orig/drivers/Makefile	2011-11-21 23:37:44.000000000 +0100
++++ linux-3.0.10/drivers/Makefile	2011-12-02 09:17:00.000000000 +0100
+@@ -111,6 +111,7 @@
+ obj-$(CONFIG_HID)		+= hid/
+ obj-$(CONFIG_PPC_PS3)		+= ps3/
+ obj-$(CONFIG_OF)		+= of/
++obj-$(CONFIG_ARMADEUS_DRIVERS) += armadeus/
+ obj-$(CONFIG_SSB)		+= ssb/
+ obj-$(CONFIG_BCMA)		+= bcma/
+ obj-$(CONFIG_VHOST_NET)		+= vhost/

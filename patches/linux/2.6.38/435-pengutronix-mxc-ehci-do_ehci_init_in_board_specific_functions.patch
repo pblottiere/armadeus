@@ -1,0 +1,793 @@
+From: Sascha Hauer <s.hauer@pengutronix.de>
+Date: Mon, 3 Jan 2011 10:30:28 +0000 (+0100)
+Subject: ARM i.MX ehci: do ehci init in board specific functions
+X-Git-Url: http://git.pengutronix.de/?p=imx%2Flinux-2.6.git;a=commitdiff_plain;h=4bd597b633ae630e09d58957bd99870eac35fcb4
+
+ARM i.MX ehci: do ehci init in board specific functions
+
+The mxc-ehci driver calls SoC specific phy initialization right after
+calling board specific initialization. To offer greater flexibility for
+boards to setup the phy and to get rid of some unnecessary flags in
+platform data this patch lets the boards call the SoC specific phy
+initialization and remove it from the driver.
+
+Signed-off-by: Sascha Hauer <s.hauer@pengutronix.de>
+---
+
+diff --git a/arch/arm/mach-imx/mach-cpuimx27.c b/arch/arm/mach-imx/mach-cpuimx27.c
+index cabb800..6b724c2 100644
+--- a/arch/arm/mach-imx/mach-cpuimx27.c
++++ b/arch/arm/mach-imx/mach-cpuimx27.c
+@@ -210,14 +210,24 @@ static struct platform_device serial_device = {
+ #endif
+ 
+ #if defined(CONFIG_USB_ULPI)
++static int eukrea_cpuimx27_otg_init(struct platform_device *pdev)
++{
++	return mx27_initialize_usb_hw(pdev->id, MXC_EHCI_INTERFACE_DIFF_UNI);
++}
++
+ static struct mxc_usbh_platform_data otg_pdata __initdata = {
++	.init	= eukrea_cpuimx27_otg_init,
+ 	.portsc	= MXC_EHCI_MODE_ULPI,
+-	.flags	= MXC_EHCI_INTERFACE_DIFF_UNI,
+ };
+ 
++static int eukrea_cpuimx27_usbh2_init(struct platform_device *pdev)
++{
++	return mx27_initialize_usb_hw(pdev->id, MXC_EHCI_INTERFACE_DIFF_UNI);
++}
++
+ static struct mxc_usbh_platform_data usbh2_pdata __initdata = {
++	.init	= eukrea_cpuimx27_usbh2_init,
+ 	.portsc	= MXC_EHCI_MODE_ULPI,
+-	.flags	= MXC_EHCI_INTERFACE_DIFF_UNI,
+ };
+ #endif
+ 
+diff --git a/arch/arm/mach-imx/mach-eukrea_cpuimx25.c b/arch/arm/mach-imx/mach-eukrea_cpuimx25.c
+index 439167d..9da8d18 100644
+--- a/arch/arm/mach-imx/mach-eukrea_cpuimx25.c
++++ b/arch/arm/mach-imx/mach-eukrea_cpuimx25.c
+@@ -84,15 +84,25 @@ static struct i2c_board_info eukrea_cpuimx25_i2c_devices[] = {
+ 	},
+ };
+ 
++static int eukrea_cpuimx25_otg_init(struct platform_device *pdev)
++{
++	return mx25_initialize_usb_hw(pdev->id, MXC_EHCI_INTERFACE_DIFF_UNI);
++}
++
+ static const struct mxc_usbh_platform_data otg_pdata __initconst = {
++	.init	= eukrea_cpuimx25_otg_init,
+ 	.portsc	= MXC_EHCI_MODE_UTMI,
+-	.flags	= MXC_EHCI_INTERFACE_DIFF_UNI,
+ };
+ 
++static int eukrea_cpuimx25_usbh2_init(struct platform_device *pdev)
++{
++	return mx25_initialize_usb_hw(pdev->id, MXC_EHCI_INTERFACE_SINGLE_UNI |
++			MXC_EHCI_INTERNAL_PHY | MXC_EHCI_IPPUE_DOWN);
++}
++
+ static const struct mxc_usbh_platform_data usbh2_pdata __initconst = {
++	.init	= eukrea_cpuimx25_usbh2_init,
+ 	.portsc	= MXC_EHCI_MODE_SERIAL,
+-	.flags	= MXC_EHCI_INTERFACE_SINGLE_UNI | MXC_EHCI_INTERNAL_PHY |
+-		  MXC_EHCI_IPPUE_DOWN,
+ };
+ 
+ static const struct fsl_usb2_platform_data otg_device_pdata __initconst = {
+diff --git a/arch/arm/mach-imx/mach-imx27_visstrim_m10.c b/arch/arm/mach-imx/mach-imx27_visstrim_m10.c
+index 494723b..ffff2d0 100644
+--- a/arch/arm/mach-imx/mach-imx27_visstrim_m10.c
++++ b/arch/arm/mach-imx/mach-imx27_visstrim_m10.c
+@@ -30,6 +30,7 @@
+ #include <linux/gpio_keys.h>
+ #include <linux/input.h>
+ #include <linux/gpio.h>
++#include <linux/delay.h>
+ #include <asm/mach-types.h>
+ #include <asm/mach/arch.h>
+ #include <asm/mach/time.h>
+@@ -210,14 +211,16 @@ static struct i2c_board_info visstrim_m10_i2c_devices[] = {
+ static int otg_phy_init(struct platform_device *pdev)
+ {
+ 	gpio_set_value(OTG_PHY_CS_GPIO, 0);
+-	return 0;
++
++	mdelay(10);
++
++	return mx27_initialize_usb_hw(pdev->id, MXC_EHCI_POWER_PINS_ENABLED);
+ }
+ 
+ static const struct mxc_usbh_platform_data
+ visstrim_m10_usbotg_pdata __initconst = {
+ 	.init = otg_phy_init,
+ 	.portsc	= MXC_EHCI_MODE_ULPI | MXC_EHCI_UTMI_8BIT,
+-	.flags	= MXC_EHCI_POWER_PINS_ENABLED,
+ };
+ 
+ static void __init visstrim_m10_board_init(void)
+diff --git a/arch/arm/mach-imx/mach-mx25_3ds.c b/arch/arm/mach-imx/mach-mx25_3ds.c
+index cd18a0c..aafc6f7 100644
+--- a/arch/arm/mach-imx/mach-mx25_3ds.c
++++ b/arch/arm/mach-imx/mach-mx25_3ds.c
+@@ -185,9 +185,14 @@ static const struct matrix_keymap_data mx25pdk_keymap_data __initconst = {
+ 	.keymap_size	= ARRAY_SIZE(mx25pdk_keymap),
+ };
+ 
++static int mx25pdk_usbh2_init(struct platform_device *pdev)
++{
++	return mx25_initialize_usb_hw(pdev->id, MXC_EHCI_INTERNAL_PHY);
++}
++
+ static const struct mxc_usbh_platform_data usbh2_pdata __initconst = {
++	.init	= mx25pdk_usbh2_init,
+ 	.portsc	= MXC_EHCI_MODE_SERIAL,
+-	.flags	= MXC_EHCI_INTERNAL_PHY,
+ };
+ 
+ static const struct fsl_usb2_platform_data otg_device_pdata __initconst = {
+diff --git a/arch/arm/mach-imx/mach-mx27_3ds.c b/arch/arm/mach-imx/mach-mx27_3ds.c
+index 4e0e225..ba88417 100644
+--- a/arch/arm/mach-imx/mach-mx27_3ds.c
++++ b/arch/arm/mach-imx/mach-mx27_3ds.c
+@@ -160,10 +160,14 @@ static int otg_phy_init(void)
+ }
+ 
+ #if defined(CONFIG_USB_ULPI)
++static int mx27_3ds_otg_init(struct platform_device *pdev)
++{
++	return mx27_initialize_usb_hw(pdev->id, MXC_EHCI_INTERFACE_DIFF_UNI);
++}
+ 
+ static struct mxc_usbh_platform_data otg_pdata __initdata = {
++	.init	= mx27_3ds_otg_init,
+ 	.portsc	= MXC_EHCI_MODE_ULPI,
+-	.flags	= MXC_EHCI_INTERFACE_DIFF_UNI,
+ };
+ #endif
+ 
+diff --git a/arch/arm/mach-imx/mach-pca100.c b/arch/arm/mach-imx/mach-pca100.c
+index 3514178..f754bab 100644
+--- a/arch/arm/mach-imx/mach-pca100.c
++++ b/arch/arm/mach-imx/mach-pca100.c
+@@ -271,25 +271,29 @@ static const struct imxmmc_platform_data sdhc_pdata __initconst = {
+ static int otg_phy_init(struct platform_device *pdev)
+ {
+ 	gpio_set_value(OTG_PHY_CS_GPIO, 0);
+-	return 0;
++
++	mdelay(10);
++
++	return mx27_initialize_usb_hw(pdev->id, MXC_EHCI_INTERFACE_DIFF_UNI);
+ }
+ 
+ static struct mxc_usbh_platform_data otg_pdata __initdata = {
+ 	.init	= otg_phy_init,
+ 	.portsc	= MXC_EHCI_MODE_ULPI,
+-	.flags	= MXC_EHCI_INTERFACE_DIFF_UNI,
+ };
+ 
+ static int usbh2_phy_init(struct platform_device *pdev)
+ {
+ 	gpio_set_value(USBH2_PHY_CS_GPIO, 0);
+-	return 0;
++
++	mdelay(10);
++
++	return mx27_initialize_usb_hw(pdev->id, MXC_EHCI_INTERFACE_DIFF_UNI);
+ }
+ 
+ static struct mxc_usbh_platform_data usbh2_pdata __initdata = {
+ 	.init	= usbh2_phy_init,
+ 	.portsc	= MXC_EHCI_MODE_ULPI,
+-	.flags	= MXC_EHCI_INTERFACE_DIFF_UNI,
+ };
+ #endif
+ 
+diff --git a/arch/arm/mach-imx/mach-pcm038.c b/arch/arm/mach-imx/mach-pcm038.c
+index 9656ef3..38c7708 100644
+--- a/arch/arm/mach-imx/mach-pcm038.c
++++ b/arch/arm/mach-imx/mach-pcm038.c
+@@ -281,9 +281,15 @@ static struct spi_board_info pcm038_spi_board_info[] __initdata = {
+ 	}
+ };
+ 
++static int pcm038_usbh2_init(struct platform_device *pdev)
++{
++	return mx27_initialize_usb_hw(pdev->id, MXC_EHCI_POWER_PINS_ENABLED |
++			MXC_EHCI_INTERFACE_DIFF_UNI);
++}
++
+ static const struct mxc_usbh_platform_data usbh2_pdata __initconst = {
++	.init	= pcm038_usbh2_init,
+ 	.portsc	= MXC_EHCI_MODE_ULPI,
+-	.flags	= MXC_EHCI_POWER_PINS_ENABLED | MXC_EHCI_INTERFACE_DIFF_UNI,
+ };
+ 
+ static void __init pcm038_init(void)
+diff --git a/arch/arm/mach-mx3/mach-armadillo5x0.c b/arch/arm/mach-mx3/mach-armadillo5x0.c
+index 835e2a0..34e619e 100644
+--- a/arch/arm/mach-mx3/mach-armadillo5x0.c
++++ b/arch/arm/mach-mx3/mach-armadillo5x0.c
+@@ -176,8 +176,10 @@ static int usbotg_init(struct platform_device *pdev)
+ 	gpio_set_value(OTG_RESET, 0/*LOW*/);
+ 	mdelay(5);
+ 	gpio_set_value(OTG_RESET, 1/*HIGH*/);
++	mdelay(10);
+ 
+-	return 0;
++	return mx31_initialize_usb_hw(pdev->id, MXC_EHCI_POWER_PINS_ENABLED |
++			MXC_EHCI_INTERFACE_DIFF_UNI);
+ 
+ otg_free_reset:
+ 	gpio_free(OTG_RESET);
+@@ -233,8 +235,10 @@ static int usbh2_init(struct platform_device *pdev)
+ 	gpio_set_value(USBH2_RESET, 0/*LOW*/);
+ 	mdelay(5);
+ 	gpio_set_value(USBH2_RESET, 1/*HIGH*/);
++	mdelay(10);
+ 
+-	return 0;
++	return mx31_initialize_usb_hw(pdev->id, MXC_EHCI_POWER_PINS_ENABLED |
++			MXC_EHCI_INTERFACE_DIFF_UNI);
+ 
+ h2_free_reset:
+ 	gpio_free(USBH2_RESET);
+@@ -246,13 +250,11 @@ h2_free_cs:
+ static struct mxc_usbh_platform_data usbotg_pdata __initdata = {
+ 	.init	= usbotg_init,
+ 	.portsc	= MXC_EHCI_MODE_ULPI | MXC_EHCI_UTMI_8BIT,
+-	.flags	= MXC_EHCI_POWER_PINS_ENABLED | MXC_EHCI_INTERFACE_DIFF_UNI,
+ };
+ 
+ static struct mxc_usbh_platform_data usbh2_pdata __initdata = {
+ 	.init	= usbh2_init,
+ 	.portsc	= MXC_EHCI_MODE_ULPI | MXC_EHCI_UTMI_8BIT,
+-	.flags	= MXC_EHCI_POWER_PINS_ENABLED | MXC_EHCI_INTERFACE_DIFF_UNI,
+ };
+ #endif /* CONFIG_USB_ULPI */
+ 
+diff --git a/arch/arm/mach-mx3/mach-cpuimx35.c b/arch/arm/mach-mx3/mach-cpuimx35.c
+index 3eedf0f..0f23056 100644
+--- a/arch/arm/mach-mx3/mach-cpuimx35.c
++++ b/arch/arm/mach-mx3/mach-cpuimx35.c
+@@ -111,15 +111,25 @@ static const struct mxc_nand_platform_data
+ 	.flash_bbt	= 1,
+ };
+ 
++static int eukrea_cpuimx35_otg_init(struct platform_device *pdev)
++{
++	return mx35_initialize_usb_hw(pdev->id, MXC_EHCI_INTERFACE_DIFF_UNI);
++}
++
+ static const struct mxc_usbh_platform_data otg_pdata __initconst = {
++	.init	= eukrea_cpuimx35_otg_init,
+ 	.portsc	= MXC_EHCI_MODE_UTMI,
+-	.flags	= MXC_EHCI_INTERFACE_DIFF_UNI,
+ };
+ 
++static int eukrea_cpuimx35_usbh1_init(struct platform_device *pdev)
++{
++	return mx35_initialize_usb_hw(pdev->id, MXC_EHCI_INTERFACE_SINGLE_UNI |
++			MXC_EHCI_INTERNAL_PHY | MXC_EHCI_IPPUE_DOWN);
++}
++
+ static const struct mxc_usbh_platform_data usbh1_pdata __initconst = {
++	.init	= eukrea_cpuimx35_usbh1_init,
+ 	.portsc	= MXC_EHCI_MODE_SERIAL,
+-	.flags	= MXC_EHCI_INTERFACE_SINGLE_UNI | MXC_EHCI_INTERNAL_PHY |
+-		  MXC_EHCI_IPPUE_DOWN,
+ };
+ 
+ static const struct fsl_usb2_platform_data otg_device_pdata __initconst = {
+diff --git a/arch/arm/mach-mx3/mach-mx31lilly.c b/arch/arm/mach-mx3/mach-mx31lilly.c
+index 1c3f491..be79a0d 100644
+--- a/arch/arm/mach-mx3/mach-mx31lilly.c
++++ b/arch/arm/mach-mx3/mach-mx31lilly.c
+@@ -24,6 +24,7 @@
+ #include <linux/init.h>
+ #include <linux/clk.h>
+ #include <linux/gpio.h>
++#include <linux/delay.h>
+ #include <linux/platform_device.h>
+ #include <linux/interrupt.h>
+ #include <linux/smsc911x.h>
+@@ -156,7 +157,9 @@ static int usbotg_init(struct platform_device *pdev)
+ 	gpio_request(IOMUX_TO_GPIO(MX31_PIN_DTR_DCE2), "USBH1 CS");
+ 	gpio_direction_output(IOMUX_TO_GPIO(MX31_PIN_DTR_DCE2), 0);
+ 
+-	return 0;
++	mdelay(10);
++
++	return mx31_initialize_usb_hw(pdev->id, MXC_EHCI_POWER_PINS_ENABLED);
+ }
+ 
+ static int usbh1_init(struct platform_device *pdev)
+@@ -183,7 +186,10 @@ static int usbh1_init(struct platform_device *pdev)
+ 
+ 	mxc_iomux_set_gpr(MUX_PGP_USB_SUSPEND, true);
+ 
+-	return 0;
++	mdelay(10);
++
++	return mx31_initialize_usb_hw(pdev->id, MXC_EHCI_POWER_PINS_ENABLED |
++			MXC_EHCI_INTERFACE_SINGLE_UNI);
+ }
+ 
+ static int usbh2_init(struct platform_device *pdev)
+@@ -220,25 +226,24 @@ static int usbh2_init(struct platform_device *pdev)
+ 	gpio_request(IOMUX_TO_GPIO(MX31_PIN_DTR_DCE1), "USBH2 CS");
+ 	gpio_direction_output(IOMUX_TO_GPIO(MX31_PIN_DTR_DCE1), 0);
+ 
+-	return 0;
++	mdelay(10);
++
++	return mx31_initialize_usb_hw(pdev->id, MXC_EHCI_POWER_PINS_ENABLED);
+ }
+ 
+ static struct mxc_usbh_platform_data usbotg_pdata = {
+ 	.init	= usbotg_init,
+ 	.portsc	= MXC_EHCI_MODE_ULPI | MXC_EHCI_UTMI_8BIT,
+-	.flags	= MXC_EHCI_POWER_PINS_ENABLED,
+ };
+ 
+ static const struct mxc_usbh_platform_data usbh1_pdata __initconst = {
+ 	.init	= usbh1_init,
+ 	.portsc	= MXC_EHCI_MODE_UTMI | MXC_EHCI_SERIAL,
+-	.flags	= MXC_EHCI_POWER_PINS_ENABLED | MXC_EHCI_INTERFACE_SINGLE_UNI,
+ };
+ 
+ static struct mxc_usbh_platform_data usbh2_pdata __initdata = {
+ 	.init	= usbh2_init,
+ 	.portsc	= MXC_EHCI_MODE_ULPI | MXC_EHCI_UTMI_8BIT,
+-	.flags	= MXC_EHCI_POWER_PINS_ENABLED,
+ };
+ 
+ static void lilly1131_usb_init(void)
+diff --git a/arch/arm/mach-mx3/mach-mx31lite.c b/arch/arm/mach-mx3/mach-mx31lite.c
+index 01e24b5..e146f1a 100644
+--- a/arch/arm/mach-mx3/mach-mx31lite.c
++++ b/arch/arm/mach-mx3/mach-mx31lite.c
+@@ -27,6 +27,7 @@
+ #include <linux/usb/otg.h>
+ #include <linux/usb/ulpi.h>
+ #include <linux/mtd/physmap.h>
++#include <linux/delay.h>
+ 
+ #include <asm/mach-types.h>
+ #include <asm/mach/arch.h>
+@@ -167,13 +168,14 @@ static int usbh2_init(struct platform_device *pdev)
+ 	gpio_request(IOMUX_TO_GPIO(MX31_PIN_DTR_DCE1), "USBH2 CS");
+ 	gpio_direction_output(IOMUX_TO_GPIO(MX31_PIN_DTR_DCE1), 0);
+ 
+-	return 0;
++	mdelay(10);
++
++	return mx31_initialize_usb_hw(pdev->id, MXC_EHCI_POWER_PINS_ENABLED);
+ }
+ 
+ static struct mxc_usbh_platform_data usbh2_pdata __initdata = {
+ 	.init   = usbh2_init,
+ 	.portsc = MXC_EHCI_MODE_ULPI | MXC_EHCI_UTMI_8BIT,
+-	.flags  = MXC_EHCI_POWER_PINS_ENABLED,
+ };
+ #endif
+ 
+diff --git a/arch/arm/mach-mx3/mach-mx31moboard.c b/arch/arm/mach-mx3/mach-mx31moboard.c
+index fd988a0..ea88033 100644
+--- a/arch/arm/mach-mx3/mach-mx31moboard.c
++++ b/arch/arm/mach-mx3/mach-mx31moboard.c
+@@ -401,10 +401,14 @@ static void usb_xcvr_reset(void)
+ }
+ 
+ #if defined(CONFIG_USB_ULPI)
++static int moboard_usbh2_init_hw(struct platform_device *pdev)
++{
++	return mx31_initialize_usb_hw(pdev->id, MXC_EHCI_POWER_PINS_ENABLED);
++}
+ 
+ static struct mxc_usbh_platform_data usbh2_pdata __initdata = {
++	.init	= moboard_usbh2_init_hw,
+ 	.portsc	= MXC_EHCI_MODE_ULPI | MXC_EHCI_UTMI_8BIT,
+-	.flags	= MXC_EHCI_POWER_PINS_ENABLED,
+ };
+ 
+ static int __init moboard_usbh2_init(void)
+diff --git a/arch/arm/mach-mx3/mach-mx35_3ds.c b/arch/arm/mach-mx3/mach-mx35_3ds.c
+index c5115dc..dac1896 100644
+--- a/arch/arm/mach-mx3/mach-mx35_3ds.c
++++ b/arch/arm/mach-mx3/mach-mx35_3ds.c
+@@ -120,6 +120,11 @@ static iomux_v3_cfg_t mx35pdk_pads[] = {
+ 	MX35_PAD_SD1_DATA3__ESDHC1_DAT3,
+ };
+ 
++static int mx35_3ds_otg_init(struct platform_device *pdev)
++{
++	return mx35_initialize_usb_hw(pdev->id, MXC_EHCI_INTERNAL_PHY);
++}
++
+ /* OTG config */
+ static const struct fsl_usb2_platform_data usb_otg_pdata __initconst = {
+ 	.operating_mode	= FSL_USB2_DR_DEVICE,
+@@ -127,15 +132,20 @@ static const struct fsl_usb2_platform_data usb_otg_pdata __initconst = {
+ };
+ 
+ static struct mxc_usbh_platform_data otg_pdata __initdata = {
++	.init	= mx35_3ds_otg_init,
+ 	.portsc	= MXC_EHCI_MODE_UTMI,
+-	.flags	= MXC_EHCI_INTERNAL_PHY,
+ };
+ 
++static int mx35_3ds_usbh_init(struct platform_device *pdev)
++{
++	return mx35_initialize_usb_hw(pdev->id, MXC_EHCI_INTERFACE_SINGLE_UNI |
++			  MXC_EHCI_INTERNAL_PHY);
++}
++
+ /* USB HOST config */
+ static const struct mxc_usbh_platform_data usb_host_pdata __initconst = {
++	.init		= mx35_3ds_usbh_init,
+ 	.portsc		= MXC_EHCI_MODE_SERIAL,
+-	.flags		= MXC_EHCI_INTERFACE_SINGLE_UNI |
+-			  MXC_EHCI_INTERNAL_PHY,
+ };
+ 
+ static int otg_mode_host;
+diff --git a/arch/arm/mach-mx3/mach-pcm037.c b/arch/arm/mach-mx3/mach-pcm037.c
+index 7d444f7..55f95d4 100644
+--- a/arch/arm/mach-mx3/mach-pcm037.c
++++ b/arch/arm/mach-mx3/mach-pcm037.c
+@@ -534,14 +534,24 @@ static struct platform_device pcm970_sja1000 = {
+ };
+ 
+ #if defined(CONFIG_USB_ULPI)
++static int pcm037_otg_init(struct platform_device *pdev)
++{
++	return mx31_initialize_usb_hw(pdev->id, MXC_EHCI_INTERFACE_DIFF_UNI);
++}
++
+ static struct mxc_usbh_platform_data otg_pdata __initdata = {
++	.init	= pcm037_otg_init,
+ 	.portsc	= MXC_EHCI_MODE_ULPI,
+-	.flags	= MXC_EHCI_INTERFACE_DIFF_UNI,
+ };
+ 
++static int pcm037_usbh2_init(struct platform_device *pdev)
++{
++	return mx31_initialize_usb_hw(pdev->id, MXC_EHCI_INTERFACE_DIFF_UNI);
++}
++
+ static struct mxc_usbh_platform_data usbh2_pdata __initdata = {
++	.init	= pcm037_usbh2_init,
+ 	.portsc	= MXC_EHCI_MODE_ULPI,
+-	.flags	= MXC_EHCI_INTERFACE_DIFF_UNI,
+ };
+ #endif
+ 
+diff --git a/arch/arm/mach-mx3/mx31moboard-devboard.c b/arch/arm/mach-mx3/mx31moboard-devboard.c
+index 94a0b9e..6410b9c 100644
+--- a/arch/arm/mach-mx3/mx31moboard-devboard.c
++++ b/arch/arm/mach-mx3/mx31moboard-devboard.c
+@@ -15,6 +15,7 @@
+ #include <linux/gpio.h>
+ #include <linux/init.h>
+ #include <linux/interrupt.h>
++#include <linux/delay.h>
+ #include <linux/platform_device.h>
+ #include <linux/slab.h>
+ #include <linux/types.h>
+@@ -149,7 +150,10 @@ static int devboard_usbh1_hw_init(struct platform_device *pdev)
+ 	mxc_iomux_set_pad(MX31_PIN_CSPI1_SPI_RDY, USB_PAD_CFG);
+ 	mxc_iomux_set_pad(MX31_PIN_SFS6, USB_PAD_CFG);
+ 
+-	return 0;
++	mdelay(10);
++
++	return mx31_initialize_usb_hw(pdev->id, MXC_EHCI_POWER_PINS_ENABLED |
++			MXC_EHCI_INTERFACE_SINGLE_UNI);
+ }
+ 
+ #define USBH1_VBUSEN_B	IOMUX_TO_GPIO(MX31_PIN_NFRE_B)
+@@ -187,7 +191,6 @@ static int devboard_isp1105_set_vbus(struct otg_transceiver *otg, bool on)
+ static struct mxc_usbh_platform_data usbh1_pdata __initdata = {
+ 	.init	= devboard_usbh1_hw_init,
+ 	.portsc	= MXC_EHCI_MODE_UTMI | MXC_EHCI_SERIAL,
+-	.flags	= MXC_EHCI_POWER_PINS_ENABLED | MXC_EHCI_INTERFACE_SINGLE_UNI,
+ };
+ 
+ static int __init devboard_usbh1_init(void)
+diff --git a/arch/arm/mach-mx3/mx31moboard-marxbot.c b/arch/arm/mach-mx3/mx31moboard-marxbot.c
+index f449a97..57f7b00 100644
+--- a/arch/arm/mach-mx3/mx31moboard-marxbot.c
++++ b/arch/arm/mach-mx3/mx31moboard-marxbot.c
+@@ -265,7 +265,10 @@ static int marxbot_usbh1_hw_init(struct platform_device *pdev)
+ 	mxc_iomux_set_pad(MX31_PIN_CSPI1_SPI_RDY, USB_PAD_CFG);
+ 	mxc_iomux_set_pad(MX31_PIN_SFS6, USB_PAD_CFG);
+ 
+-	return 0;
++	mdelay(10);
++
++	return mx31_initialize_usb_hw(pdev->id, MXC_EHCI_POWER_PINS_ENABLED |
++			MXC_EHCI_INTERFACE_SINGLE_UNI);
+ }
+ 
+ #define USBH1_VBUSEN_B	IOMUX_TO_GPIO(MX31_PIN_NFRE_B)
+@@ -303,7 +306,6 @@ static int marxbot_isp1105_set_vbus(struct otg_transceiver *otg, bool on)
+ static struct mxc_usbh_platform_data usbh1_pdata __initdata = {
+ 	.init	= marxbot_usbh1_hw_init,
+ 	.portsc	= MXC_EHCI_MODE_UTMI | MXC_EHCI_SERIAL,
+-	.flags	= MXC_EHCI_POWER_PINS_ENABLED | MXC_EHCI_INTERFACE_SINGLE_UNI,
+ };
+ 
+ static int __init marxbot_usbh1_init(void)
+diff --git a/arch/arm/mach-mx3/mx31moboard-smartbot.c b/arch/arm/mach-mx3/mx31moboard-smartbot.c
+index bbec3c8..87d556f 100644
+--- a/arch/arm/mach-mx3/mx31moboard-smartbot.c
++++ b/arch/arm/mach-mx3/mx31moboard-smartbot.c
+@@ -123,9 +123,14 @@ static const struct fsl_usb2_platform_data usb_pdata __initconst = {
+ 
+ #if defined(CONFIG_USB_ULPI)
+ 
++static int smartbot_otg_init(struct platform_device *pdev)
++{
++	return mx31_initialize_usb_hw(pdev->id, MXC_EHCI_POWER_PINS_ENABLED);
++}
++
+ static struct mxc_usbh_platform_data otg_host_pdata __initdata = {
++	.init	= smartbot_otg_init,
+ 	.portsc = MXC_EHCI_MODE_ULPI | MXC_EHCI_UTMI_8BIT,
+-	.flags	= MXC_EHCI_POWER_PINS_ENABLED,
+ };
+ 
+ static int __init smartbot_otg_host_init(void)
+diff --git a/arch/arm/mach-mx5/board-cpuimx51.c b/arch/arm/mach-mx5/board-cpuimx51.c
+index 2d4199d..d0296a9 100644
+--- a/arch/arm/mach-mx5/board-cpuimx51.c
++++ b/arch/arm/mach-mx5/board-cpuimx51.c
+@@ -184,7 +184,10 @@ static int initialize_otg_port(struct platform_device *pdev)
+ 	v |= MX51_USB_PLL_DIV_19_2_MHZ;
+ 	__raw_writel(v, usbother_base + MXC_USB_PHY_CTR_FUNC2_OFFSET);
+ 	iounmap(usb_base);
+-	return 0;
++
++	mdelay(10);
++
++	return mx51_initialize_usb_hw(0, MXC_EHCI_INTERNAL_PHY);
+ }
+ 
+ static int initialize_usbh1_port(struct platform_device *pdev)
+@@ -202,13 +205,16 @@ static int initialize_usbh1_port(struct platform_device *pdev)
+ 	v = __raw_readl(usbother_base + MX51_USB_CTRL_1_OFFSET);
+ 	__raw_writel(v | MX51_USB_CTRL_UH1_EXT_CLK_EN, usbother_base + MX51_USB_CTRL_1_OFFSET);
+ 	iounmap(usb_base);
+-	return 0;
++
++	mdelay(10);
++
++	return mx51_initialize_usb_hw(1, MXC_EHCI_POWER_PINS_ENABLED |
++			MXC_EHCI_ITC_NO_THRESHOLD);
+ }
+ 
+ static struct mxc_usbh_platform_data dr_utmi_config = {
+ 	.init		= initialize_otg_port,
+ 	.portsc	= MXC_EHCI_UTMI_16BIT,
+-	.flags	= MXC_EHCI_INTERNAL_PHY,
+ };
+ 
+ static struct fsl_usb2_platform_data usb_pdata = {
+@@ -219,7 +225,6 @@ static struct fsl_usb2_platform_data usb_pdata = {
+ static struct mxc_usbh_platform_data usbh1_config = {
+ 	.init		= initialize_usbh1_port,
+ 	.portsc	= MXC_EHCI_MODE_ULPI,
+-	.flags	= (MXC_EHCI_POWER_PINS_ENABLED | MXC_EHCI_ITC_NO_THRESHOLD),
+ };
+ 
+ static int otg_mode_host;
+diff --git a/arch/arm/mach-mx5/board-cpuimx51sd.c b/arch/arm/mach-mx5/board-cpuimx51sd.c
+index 6c3b445..f38b341 100644
+--- a/arch/arm/mach-mx5/board-cpuimx51sd.c
++++ b/arch/arm/mach-mx5/board-cpuimx51sd.c
+@@ -167,7 +167,10 @@ static int initialize_otg_port(struct platform_device *pdev)
+ 	v |= MX51_USB_PLL_DIV_19_2_MHZ;
+ 	__raw_writel(v, usbother_base + MXC_USB_PHY_CTR_FUNC2_OFFSET);
+ 	iounmap(usb_base);
+-	return 0;
++
++	mdelay(10);
++
++	return mx51_initialize_usb_hw(0, MXC_EHCI_INTERNAL_PHY);
+ }
+ 
+ static int initialize_usbh1_port(struct platform_device *pdev)
+@@ -186,13 +189,16 @@ static int initialize_usbh1_port(struct platform_device *pdev)
+ 	__raw_writel(v | MX51_USB_CTRL_UH1_EXT_CLK_EN,
+ 			usbother_base + MX51_USB_CTRL_1_OFFSET);
+ 	iounmap(usb_base);
+-	return 0;
++
++	mdelay(10);
++
++	return mx51_initialize_usb_hw(1, MXC_EHCI_POWER_PINS_ENABLED |
++			MXC_EHCI_ITC_NO_THRESHOLD);
+ }
+ 
+ static struct mxc_usbh_platform_data dr_utmi_config = {
+ 	.init		= initialize_otg_port,
+ 	.portsc	= MXC_EHCI_UTMI_16BIT,
+-	.flags	= MXC_EHCI_INTERNAL_PHY,
+ };
+ 
+ static struct fsl_usb2_platform_data usb_pdata = {
+@@ -203,7 +209,6 @@ static struct fsl_usb2_platform_data usb_pdata = {
+ static struct mxc_usbh_platform_data usbh1_config = {
+ 	.init		= initialize_usbh1_port,
+ 	.portsc	= MXC_EHCI_MODE_ULPI,
+-	.flags	= (MXC_EHCI_POWER_PINS_ENABLED | MXC_EHCI_ITC_NO_THRESHOLD),
+ };
+ 
+ static int otg_mode_host;
+diff --git a/arch/arm/mach-mx5/board-mx51_babbage.c b/arch/arm/mach-mx5/board-mx51_babbage.c
+index 2bd9c9e..7874bcd 100644
+--- a/arch/arm/mach-mx5/board-mx51_babbage.c
++++ b/arch/arm/mach-mx5/board-mx51_babbage.c
+@@ -259,7 +259,10 @@ static int initialize_otg_port(struct platform_device *pdev)
+ 	v |= MX51_USB_PLL_DIV_19_2_MHZ;
+ 	__raw_writel(v, usbother_base + MXC_USB_PHY_CTR_FUNC2_OFFSET);
+ 	iounmap(usb_base);
+-	return 0;
++
++	mdelay(10);
++
++	return mx51_initialize_usb_hw(0, MXC_EHCI_INTERNAL_PHY);
+ }
+ 
+ static int initialize_usbh1_port(struct platform_device *pdev)
+@@ -277,13 +280,16 @@ static int initialize_usbh1_port(struct platform_device *pdev)
+ 	v = __raw_readl(usbother_base + MX51_USB_CTRL_1_OFFSET);
+ 	__raw_writel(v | MX51_USB_CTRL_UH1_EXT_CLK_EN, usbother_base + MX51_USB_CTRL_1_OFFSET);
+ 	iounmap(usb_base);
+-	return 0;
++
++	mdelay(10);
++
++	return mx51_initialize_usb_hw(1, MXC_EHCI_POWER_PINS_ENABLED |
++			MXC_EHCI_ITC_NO_THRESHOLD);
+ }
+ 
+ static struct mxc_usbh_platform_data dr_utmi_config = {
+ 	.init		= initialize_otg_port,
+ 	.portsc	= MXC_EHCI_UTMI_16BIT,
+-	.flags	= MXC_EHCI_INTERNAL_PHY,
+ };
+ 
+ static struct fsl_usb2_platform_data usb_pdata = {
+@@ -294,7 +300,6 @@ static struct fsl_usb2_platform_data usb_pdata = {
+ static struct mxc_usbh_platform_data usbh1_config = {
+ 	.init		= initialize_usbh1_port,
+ 	.portsc	= MXC_EHCI_MODE_ULPI,
+-	.flags	= (MXC_EHCI_POWER_PINS_ENABLED | MXC_EHCI_ITC_NO_THRESHOLD),
+ };
+ 
+ static int otg_mode_host;
+diff --git a/arch/arm/mach-mx5/board-mx51_efikamx.c b/arch/arm/mach-mx5/board-mx51_efikamx.c
+index 2aac4c5..b0fa553 100644
+--- a/arch/arm/mach-mx5/board-mx51_efikamx.c
++++ b/arch/arm/mach-mx5/board-mx51_efikamx.c
+@@ -145,13 +145,15 @@ static int initialize_otg_port(struct platform_device *pdev)
+ 	v |= MX51_USB_PLL_DIV_24_MHZ;
+ 	__raw_writel(v, usbother_base + MXC_USB_PHY_CTR_FUNC2_OFFSET);
+ 	iounmap(usb_base);
+-	return 0;
++
++	mdelay(10);
++
++	return mx51_initialize_usb_hw(0, MXC_EHCI_INTERNAL_PHY);
+ }
+ 
+ static struct mxc_usbh_platform_data dr_utmi_config = {
+ 	.init   = initialize_otg_port,
+ 	.portsc = MXC_EHCI_UTMI_16BIT,
+-	.flags  = MXC_EHCI_INTERNAL_PHY,
+ };
+ 
+ /*   PCBID2  PCBID1 PCBID0  STATE
+diff --git a/arch/arm/plat-mxc/Makefile b/arch/arm/plat-mxc/Makefile
+index 5fd20e9..a138787 100644
+--- a/arch/arm/plat-mxc/Makefile
++++ b/arch/arm/plat-mxc/Makefile
+@@ -13,7 +13,6 @@ obj-$(CONFIG_IMX_HAVE_IOMUX_V1) += iomux-v1.o
+ obj-$(CONFIG_ARCH_MXC_IOMUX_V3) += iomux-v3.o
+ obj-$(CONFIG_IRAM_ALLOC) += iram_alloc.o
+ obj-$(CONFIG_MXC_PWM)  += pwm.o
+-obj-$(CONFIG_USB_EHCI_MXC) += ehci.o
+ obj-$(CONFIG_MXC_ULPI) += ulpi.o
+ obj-$(CONFIG_MXC_USE_EPIT) += epit.o
+ obj-$(CONFIG_ARCH_MXC_AUDMUX_V1) += audmux-v1.o
+diff --git a/arch/arm/plat-mxc/ehci.c b/arch/arm/plat-mxc/ehci.c
+deleted file mode 100644
+index 06fb3a4..0000000
+--- a/arch/arm/plat-mxc/ehci.c
++++ /dev/null
+@@ -1,46 +0,0 @@
+-/*
+- * Copyright (c) 2009 Daniel Mack <daniel@caiaq.de>
+- * Copyright (C) 2010 Freescale Semiconductor, Inc.
+- *
+- * This program is free software; you can redistribute it and/or modify it
+- * under the terms of the GNU General Public License as published by the
+- * Free Software Foundation; either version 2 of the License, or (at your
+- * option) any later version.
+- *
+- * This program is distributed in the hope that it will be useful, but
+- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+- * for more details.
+- */
+-
+-#include <linux/platform_device.h>
+-
+-#include <mach/hardware.h>
+-#include <mach/mxc_ehci.h>
+-
+-int mxc_initialize_usb_hw(int port, unsigned int flags)
+-{
+-#if defined(CONFIG_SOC_IMX25)
+-	if (cpu_is_mx25())
+-		return mx25_initialize_usb_hw(port, flags);
+-#endif /* if defined(CONFIG_SOC_IMX25) */
+-#if defined(CONFIG_ARCH_MX3)
+-	if (cpu_is_mx31())
+-		return mx31_initialize_usb_hw(port, flags);
+-	if (cpu_is_mx35())
+-		return mx35_initialize_usb_hw(port, flags);
+-#endif /* CONFIG_ARCH_MX3 */
+-#ifdef CONFIG_MACH_MX27
+-	if (cpu_is_mx27())
+-		return mx27_initialize_usb_hw(port, flags);
+-#endif /* CONFIG_MACH_MX27 */
+-#ifdef CONFIG_SOC_IMX51
+-	if (cpu_is_mx51())
+-		return mx51_initialize_usb_hw(port, flags);
+-#endif
+-	printk(KERN_WARNING
+-		"%s() unable to setup USBCONTROL for this CPU\n", __func__);
+-	return -EINVAL;
+-}
+-EXPORT_SYMBOL(mxc_initialize_usb_hw);
+-
+diff --git a/arch/arm/plat-mxc/include/mach/mxc_ehci.h b/arch/arm/plat-mxc/include/mach/mxc_ehci.h
+index 7e555a1..2c159dc 100644
+--- a/arch/arm/plat-mxc/include/mach/mxc_ehci.h
++++ b/arch/arm/plat-mxc/include/mach/mxc_ehci.h
+@@ -44,12 +44,9 @@ struct mxc_usbh_platform_data {
+ 	int (*exit)(struct platform_device *pdev);
+ 
+ 	unsigned int		 portsc;
+-	unsigned int		 flags;
+ 	struct otg_transceiver	*otg;
+ };
+ 
+-int mxc_initialize_usb_hw(int port, unsigned int flags);
+-
+ int mx51_initialize_usb_hw(int port, unsigned int flags);
+ int mx25_initialize_usb_hw(int port, unsigned int flags);
+ int mx31_initialize_usb_hw(int port, unsigned int flags);
+diff --git a/drivers/usb/host/ehci-mxc.c b/drivers/usb/host/ehci-mxc.c
+index c8e360d..25c8c10 100644
+--- a/drivers/usb/host/ehci-mxc.c
++++ b/drivers/usb/host/ehci-mxc.c
+@@ -203,11 +203,6 @@ static int ehci_mxc_drv_probe(struct platform_device *pdev)
+ 		mdelay(10);
+ 	}
+ 
+-	/* setup specific usb hw */
+-	ret = mxc_initialize_usb_hw(pdev->id, pdata->flags);
+-	if (ret < 0)
+-		goto err_init;
+-
+ 	ehci = hcd_to_ehci(hcd);
+ 
+ 	/* EHCI registers start at offset 0x100 */

@@ -1,0 +1,143 @@
+Index: linux-3.12-rc1/drivers/usb/chipidea/usbmisc_imx.c
+===================================================================
+--- linux-3.12-rc1.orig/drivers/usb/chipidea/usbmisc_imx.c
++++ linux-3.12-rc1/drivers/usb/chipidea/usbmisc_imx.c
+@@ -21,6 +21,23 @@
+ #define MX25_USB_PHY_CTRL_OFFSET	0x08
+ #define MX25_BM_EXTERNAL_VBUS_DIVIDER	BIT(23)
+ 
++#define MX51_USB_OTG_PHY_CTRL_OFFSET	0x00
++#define MX51_USB_OTG_PHY_CTRL_0_OFFSET	0x08
++#define MX51_USB_OTG_PHY_CTRL_1_OFFSET	0x0c
++#define MX51_USB_CTRL_1_OFFSET		0x10
++#define MX51_USB_UH2_CTRL_OFFSET	0x14
++#define MX51_USB_UH3_CTRL_OFFSET	0x18
++#define MX51_USB_CTRL_OTG_EXT_CLK_EN        (1 << 25)
++#define MX51_USB_CTRL_UH1_EXT_CLK_EN        (1 << 25)
++#define MX51_USB_CTRL_UH2_EXT_CLK_EN        (1 << 26)
++#define MX51_USB_CTRL_UH3_EXT_CLK_EN        (1 << 26)
++#define MX51_USB_UTMI_PHYCTRL1_PLLDIV_MASK       0x3
++#define MX51_USB_PLL_DIV_19_2_MHZ   0x01
++#define MX51_BM_OVER_CUR_DIS_H2    BIT(4)
++#define MX51_BM_OVER_CUR_DIS_H1    BIT(8)
++#define MX51_BM_OVER_CUR_DIS_OTG   BIT(24)
++#define MX51_BM_OVER_CUR_DIS_UHx   BIT(30)
++
+ #define MX53_USB_OTG_PHY_CTRL_0_OFFSET	0x08
+ #define MX53_USB_UH2_CTRL_OFFSET	0x14
+ #define MX53_USB_UH3_CTRL_OFFSET	0x18
+@@ -68,6 +85,91 @@ static int usbmisc_imx25_post(struct imx
+ 	return 0;
+ }
+ 
++static int usbmisc_imx51_init(struct imx_usbmisc_data *data)
++{
++	void __iomem *reg = NULL;
++	unsigned long flags;
++	u32 val = 0;
++
++	if (data->index > 3)
++		return -EINVAL;
++
++	if (data->index  == 0) {
++		spin_lock_irqsave(&usbmisc->lock, flags);
++		reg = usbmisc->base + MX51_USB_OTG_PHY_CTRL_1_OFFSET;
++		val = readl(reg) & ~MX51_USB_UTMI_PHYCTRL1_PLLDIV_MASK;
++		val |= MX51_USB_PLL_DIV_19_2_MHZ;
++		writel(val, reg);
++		spin_unlock_irqrestore(&usbmisc->lock, flags);
++	}
++
++	if (data->disable_oc) {
++		spin_lock_irqsave(&usbmisc->lock, flags);
++		switch (data->index) {
++		case 0:
++			reg = usbmisc->base + MX51_USB_OTG_PHY_CTRL_OFFSET;
++			val = readl(reg) | MX51_BM_OVER_CUR_DIS_OTG;
++			break;
++		case 1:
++			reg = usbmisc->base + MX51_USB_OTG_PHY_CTRL_0_OFFSET;
++			val = readl(reg) | MX51_BM_OVER_CUR_DIS_H1;
++			break;
++		case 2:
++			reg = usbmisc->base + MX51_USB_UH2_CTRL_OFFSET;
++			val = readl(reg) | MX51_BM_OVER_CUR_DIS_H2;
++			break;
++		}
++		writel(val, reg);
++		spin_unlock_irqrestore(&usbmisc->lock, flags);
++	}
++
++	if (data->index == 1) {
++		reg = ioremap(0x73f80000+0x200+0x140, SZ_4K);
++		val = readl(reg) & (~(0xff<<16));
++		writel(val, reg);
++		iounmap(reg);
++	}
++
++	return 0;
++}
++
++static int usbmisc_imx51_post(struct imx_usbmisc_data *data)
++{
++	void __iomem *reg = NULL;
++	unsigned long flags;
++	u32 val = 0;
++
++	if (data->index > 3)
++		return -EINVAL;
++
++	if (data->ext_clk_en) {
++		spin_lock_irqsave(&usbmisc->lock, flags);
++		switch (data->index) {
++		case 0:
++			reg = usbmisc->base + MX51_USB_CTRL_1_OFFSET;
++			val = readl(reg) | MX51_USB_CTRL_OTG_EXT_CLK_EN;
++			break;
++		case 1:
++			reg = usbmisc->base + MX51_USB_CTRL_1_OFFSET;
++			val = readl(reg) | MX51_USB_CTRL_UH1_EXT_CLK_EN;
++			break;
++		case 2:
++			reg = usbmisc->base + MX51_USB_CTRL_1_OFFSET;
++			val = readl(reg) | MX51_USB_CTRL_UH2_EXT_CLK_EN;
++			break;
++		case 3:
++			reg = usbmisc->base + MX51_USB_CTRL_1_OFFSET;
++			val = readl(reg) | MX51_USB_CTRL_UH3_EXT_CLK_EN;
++			break;
++		}
++		if (reg && val)
++			writel(val, reg);
++		spin_unlock_irqrestore(&usbmisc->lock, flags);
++	}
++
++	return 0;
++}
++
+ static int usbmisc_imx53_init(struct imx_usbmisc_data *data)
+ {
+ 	void __iomem *reg = NULL;
+@@ -128,6 +230,11 @@ static const struct usbmisc_ops imx25_us
+ 	.post = usbmisc_imx25_post,
+ };
+ 
++static const struct usbmisc_ops imx51_usbmisc_ops = {
++	.init = usbmisc_imx51_init,
++	.post = usbmisc_imx51_post,
++};
++
+ static const struct usbmisc_ops imx53_usbmisc_ops = {
+ 	.init = usbmisc_imx53_init,
+ };
+@@ -162,6 +269,10 @@ static const struct of_device_id usbmisc
+ 		.data = &imx25_usbmisc_ops,
+ 	},
+ 	{
++		.compatible = "fsl,imx51-usbmisc",
++		.data = &imx51_usbmisc_ops,
++	},
++	{
+ 		.compatible = "fsl,imx53-usbmisc",
+ 		.data = &imx53_usbmisc_ops,
+ 	},

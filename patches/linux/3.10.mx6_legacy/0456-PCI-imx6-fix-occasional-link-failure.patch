@@ -1,0 +1,48 @@
+From ba1ff62d6346364471e7f2a7076d9b2dc1a9508e Mon Sep 17 00:00:00 2001
+From: Tim Harvey <tharvey@gateworks.com>
+Date: Fri, 8 Aug 2014 16:09:23 -0700
+Subject: [PATCH 4/4] PCI: imx6: fix occasional link failure
+
+According to the IMX6 reference manuals, REF_SSP_EN (Reference clock enable
+for SS function) must remain deasserted until the reference clock is running
+at the appropriate frequency.
+
+Without this patch we find a high link failure rate (>5%) on certain
+IMX6 boards at various temperatures.
+
+Signed-off-by: Tim Harvey <tharvey@gateworks.com>
+---
+ drivers/pci/host/pci-imx6.c | 11 ++++++-----
+ 1 file changed, 6 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/pci/host/pci-imx6.c b/drivers/pci/host/pci-imx6.c
+index f7ce572..909ff8a 100644
+--- a/drivers/pci/host/pci-imx6.c
++++ b/drivers/pci/host/pci-imx6.c
+@@ -276,11 +276,6 @@ static int imx6_pcie_deassert_core_reset(struct pcie_port *pp)
+	if (gpio_is_valid(imx6_pcie->power_on_gpio))
+		gpio_set_value(imx6_pcie->power_on_gpio, 1);
+
+-	regmap_update_bits(imx6_pcie->iomuxc_gpr, IOMUXC_GPR1,
+-			IMX6Q_GPR1_PCIE_TEST_PD, 0 << 18);
+-	regmap_update_bits(imx6_pcie->iomuxc_gpr, IOMUXC_GPR1,
+-			IMX6Q_GPR1_PCIE_REF_CLK_EN, 1 << 16);
+-
+	ret = clk_prepare_enable(imx6_pcie->sata_ref_100m);
+	if (ret) {
+		dev_err(pp->dev, "unable to enable sata_ref_100m\n");
+@@ -308,6 +303,12 @@ static int imx6_pcie_deassert_core_reset(struct pcie_port *pp)
+	/* allow the clocks to stabilize */
+	usleep_range(200, 500);
+
++	/* power up core phy and enable ref clock */
++	regmap_update_bits(imx6_pcie->iomuxc_gpr, IOMUXC_GPR1,
++			IMX6Q_GPR1_PCIE_TEST_PD, 0 << 18);
++	regmap_update_bits(imx6_pcie->iomuxc_gpr, IOMUXC_GPR1,
++			IMX6Q_GPR1_PCIE_REF_CLK_EN, 1 << 16);
++
+	/* Some boards don't have PCIe reset GPIO. */
+	if (gpio_is_valid(imx6_pcie->reset_gpio)) {
+		gpio_set_value(imx6_pcie->reset_gpio, 0);
+--
+2.0.5

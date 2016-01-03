@@ -1,0 +1,62 @@
+JB: I have removed the stuff concerning other RTC drivers than i.MX23/28
+that didn't apply...
+
+
+From c8a6046e1e0bb03406e4fc6c0a204ef58a1868e4 Mon Sep 17 00:00:00 2001
+From: Sachin Kamat <sachin.kamat@linaro.org>
+Date: Thu, 21 Feb 2013 16:44:28 -0800
+Subject: drivers/rtc: use of_match_ptr() macro
+
+This eliminates having an #ifdef returning NULL for the case when OF is
+disabled.  Maintains consistency in cases where OF is always selected.
+
+Signed-off-by: Sachin Kamat <sachin.kamat@linaro.org>
+Cc: Alessandro Zummo <a.zummo@towertech.it>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+Signed-off-by: Linus Torvalds <torvalds@linux-foundation.org>
+
+diff --git a/drivers/rtc/rtc-cmos.c b/drivers/rtc/rtc-cmos.c
+index 16630aa..9deb9e4 100644
+--- a/drivers/rtc/rtc-cmos.c
++++ b/drivers/rtc/rtc-cmos.c
+@@ -1098,7 +1098,6 @@ static __init void cmos_of_init(struct platform_device *pdev)
+ }
+ #else
+ static inline void cmos_of_init(struct platform_device *pdev) {}
+-#define of_cmos_match NULL
+ #endif
+ /*----------------------------------------------------------------*/
+ 
+@@ -1140,7 +1139,7 @@ static struct platform_driver cmos_platform_driver = {
+ #ifdef CONFIG_PM
+ 		.pm		= &cmos_pm_ops,
+ #endif
+-		.of_match_table = of_cmos_match,
++		.of_match_table = of_match_ptr(of_cmos_match),
+ 	}
+ };
+ 
+diff --git a/drivers/rtc/rtc-stmp3xxx.c b/drivers/rtc/rtc-stmp3xxx.c
+index 739ef556..b2a8ed9 100644
+--- a/drivers/rtc/rtc-stmp3xxx.c
++++ b/drivers/rtc/rtc-stmp3xxx.c
+@@ -26,6 +26,7 @@
+ #include <linux/rtc.h>
+ #include <linux/slab.h>
+ #include <linux/of_device.h>
++#include <linux/of.h>
+ 
+ #include <mach/common.h>
+ 
+@@ -280,7 +281,7 @@ static struct platform_driver stmp3xxx_rtcdrv = {
+ 	.driver		= {
+ 		.name	= "stmp3xxx-rtc",
+ 		.owner	= THIS_MODULE,
+-		.of_match_table = rtc_dt_ids,
++		.of_match_table = of_match_ptr(rtc_dt_ids),
+ 	},
+ };
+ 
+-- 
+cgit v0.10.1
+

@@ -1,0 +1,97 @@
+Adding spi3 master on imx28 platform
+
+Signed-off-by: Fabien Marteau <fabien.marteau@armadeus.com>
+---
+Index: linux-2.6.35.3/arch/arm/mach-mx28/device.c
+===================================================================
+--- linux-2.6.35.3.orig/arch/arm/mach-mx28/device.c	2013-01-28 13:52:20.000000000 +0100
++++ linux-2.6.35.3/arch/arm/mach-mx28/device.c	2013-01-28 13:59:31.000000000 +0100
+@@ -662,10 +662,16 @@
+ #endif
+ 
+ #if defined(CONFIG_SPI_MXS) || defined(CONFIG_SPI_MXS_MODULE)
+-static struct mxs_spi_platform_data spi_data = {
++static struct mxs_spi_platform_data spi_data2 = {
+ 	.clk = "ssp.2",
+ 	.slave_mode = 0,
+ };
++
++static struct mxs_spi_platform_data spi_data3 = {
++	.clk = "ssp.3",
++	.slave_mode = 0,
++};
++
+ static struct resource ssp2_resources[] = {
+ 	{
+ 		.start	= SSP2_PHYS_ADDR,
+@@ -686,18 +692,48 @@
+ 	},
+ };
+ 
++static struct resource ssp3_resources[] = {
++	{
++		.start	= SSP3_PHYS_ADDR,
++		.end	= SSP3_PHYS_ADDR + 0x2000 - 1,
++		.flags	= IORESOURCE_MEM,
++	}, {
++		.start	= MXS_DMA_CHANNEL_AHB_APBH_SSP3,
++		.end	= MXS_DMA_CHANNEL_AHB_APBH_SSP3,
++		.flags	= IORESOURCE_DMA,
++	}, {
++		.start	= IRQ_SSP3_DMA,
++		.end	= IRQ_SSP3_DMA,
++		.flags	= IORESOURCE_IRQ,
++	}, {
++		.start	= IRQ_SSP3,
++		.end	= IRQ_SSP3,
++		.flags	= IORESOURCE_IRQ,
++	},
++};
++
+ static void __init mx28_init_spi(void)
+ {
+ 	struct platform_device *pdev;
++	struct platform_device *pdev2;
+ 
+ 	pdev = mxs_get_device("mxs-spi", 0);
+ 	if (pdev == NULL || IS_ERR(pdev))
+ 		return;
+ 	pdev->resource = ssp2_resources;
+ 	pdev->num_resources = ARRAY_SIZE(ssp2_resources);
+-	pdev->dev.platform_data = &spi_data;
++	pdev->dev.platform_data = &spi_data2;
+ 
+ 	mxs_add_device(pdev, 3);
++
++	pdev2 = mxs_get_device("mxs-spi", 1);
++	if (pdev2 == NULL || IS_ERR(pdev2))
++		return;
++	pdev2->resource = ssp3_resources;
++	pdev2->num_resources = ARRAY_SIZE(ssp3_resources);
++	pdev2->dev.platform_data = &spi_data3;
++
++	mxs_add_device(pdev2, 3);
+ }
+ #else
+ static void mx28_init_spi(void)
+Index: linux-2.6.35.3/arch/arm/plat-mxs/device.c
+===================================================================
+--- linux-2.6.35.3.orig/arch/arm/plat-mxs/device.c	2013-01-28 11:45:01.000000000 +0100
++++ linux-2.6.35.3/arch/arm/plat-mxs/device.c	2013-01-28 11:48:51.000000000 +0100
+@@ -187,6 +187,16 @@
+ 		.release = mxs_nop_release,
+ 		},
+ 	 },
++	{
++	 .name	= "mxs-spi",
++	 .id	= 1,
++	 .dev = {
++		.dma_mask	       = &common_dmamask,
++		.coherent_dma_mask      = DMA_BIT_MASK(32),
++		.release = mxs_nop_release,
++		},
++	 },
++
+ };
+ #endif
+ 

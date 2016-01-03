@@ -1,0 +1,41 @@
+Fixes kernel oops (division by zero), under certain circumstances (lot of
+processes created).
+
+To test it:
+	#/bin/sh
+
+	while true; do
+	        usleep 10000
+	        toto=$(date)
+	        toto=`date`
+	        echo $toto > /dev/null
+	done
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: linux-2.6.29.6/kernel/sched.c
+===================================================================
+--- linux-2.6.29.6.orig/kernel/sched.c	2009-07-03 01:41:20.000000000 +0200
++++ linux-2.6.29.6/kernel/sched.c	2015-01-22 10:24:43.078805869 +0100
+@@ -1288,13 +1288,19 @@
+ 		struct load_weight *lw)
+ {
+ 	u64 tmp;
++	unsigned long tmp2;
+ 
+ 	if (!lw->inv_weight) {
+ 		if (BITS_PER_LONG > 32 && unlikely(lw->weight >= WMULT_CONST))
+ 			lw->inv_weight = 1;
+-		else
++		else {
++			if (lw->weight+1 == 0)	/* u32 overflow */
++				tmp2 = lw->weight;
++			else
++				tmp2 = lw->weight+1;
+ 			lw->inv_weight = 1 + (WMULT_CONST-lw->weight/2)
+-				/ (lw->weight+1);
++				/ tmp2;
++		}
+ 	}
+ 
+ 	tmp = (u64)delta_exec * weight;

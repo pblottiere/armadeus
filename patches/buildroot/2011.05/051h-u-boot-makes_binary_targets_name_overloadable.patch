@@ -1,0 +1,65 @@
+Allow board custom Makefiles to choose the name of the U-Boot's resulting binary
+and the name it should take when copied to $(BINARIES_DIR).
+
+target/* Makefiles need to be sourced before boot/* ones.
+
+Specific for Armadeus.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+
+Index: buildroot/boot/u-boot/u-boot.mk
+===================================================================
+--- buildroot.orig/boot/u-boot/u-boot.mk	2011-08-10 18:33:24.000000000 +0200
++++ buildroot/boot/u-boot/u-boot.mk	2011-08-10 18:33:36.000000000 +0200
+@@ -28,6 +28,7 @@
+ U_BOOT_DIR:=$(BUILD_DIR)/u-boot-$(U_BOOT_VERSION)
+ U_BOOT_CAT:=$(BZCAT)
+ 
++ifeq ($(U_BOOT_BIN),)
+ ifeq ($(BR2_TARGET_UBOOT_FORMAT_KWB),y)
+ U_BOOT_BIN:=u-boot.kwb
+ U_BOOT_MAKE_OPT:=$(U_BOOT_BIN)
+@@ -36,10 +37,15 @@
+ else
+ U_BOOT_BIN:=u-boot.bin
+ endif
++endif # ifeq ($(U_BOOT_BIN),)
++
++ifeq ($(U_BOOT_TARGET_BIN),)
++U_BOOT_TARGET_BIN:=u-boot.bin
++endif
+ 
+ MKIMAGE:=$(HOST_DIR)/usr/bin/mkimage
+ 
+-U_BOOT_TARGETS:=$(BINARIES_DIR)/$(U_BOOT_BIN) $(MKIMAGE)
++U_BOOT_TARGETS:=$(BINARIES_DIR)/$(U_BOOT_TARGET_BIN) $(MKIMAGE)
+ U_BOOT_ARCH=$(KERNEL_ARCH)
+ 
+ # u-boot in the past used arch=ppc for powerpc
+@@ -162,9 +168,9 @@
+ 		$(U_BOOT_MAKE_OPT) -C $(U_BOOT_DIR)
+ 
+ # Copy the result to the images/ directory
+-$(BINARIES_DIR)/$(U_BOOT_BIN): $(U_BOOT_DIR)/$(U_BOOT_BIN)
++$(BINARIES_DIR)/$(U_BOOT_TARGET_BIN): $(U_BOOT_DIR)/$(U_BOOT_BIN)
+ 	rm -f $(BINARIES_DIR)/$(U_BOOT_BIN)
+-	cp -dpf $(U_BOOT_DIR)/$(U_BOOT_BIN) $(BINARIES_DIR)/
++	cp -dpf $(U_BOOT_DIR)/$(U_BOOT_BIN) $@
+ 
+ ifneq ($(U_BOOT_COPYTO),)
+ $(U_BOOT_COPYTO)/$(U_BOOT_TARGET_BIN): $(U_BOOT_DIR)/$(U_BOOT_BIN)
+Index: buildroot/Makefile
+===================================================================
+--- buildroot.orig/Makefile	2011-08-10 18:33:29.000000000 +0200
++++ buildroot/Makefile	2011-08-10 18:35:00.000000000 +0200
+@@ -320,8 +320,8 @@
+ 
+ include package/*/*.mk
+ 
+-include boot/common.mk
+ include target/Makefile.in
++include boot/common.mk
+ include linux/linux.mk
+ 
+ TARGETS+=target-finalize

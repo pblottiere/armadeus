@@ -1,0 +1,59 @@
+Add sdlwater package to BR.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2013-08-28 19:15:51.163133453 +0200
++++ buildroot/package/Config.in	2013-08-28 21:16:29.159024736 +0200
+@@ -139,6 +139,8 @@
+ source "package/sdl_net/Config.in"
+ source "package/sdl_ttf/Config.in"
+ source "package/sdl_gfx/Config.in"
++comment "Demos"
++source "package/sdl_water/Config.in"
+ 
+ comment "other GUIs"
+ source "package/efl/Config.in"
+Index: buildroot/package/sdl_water/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/sdl_water/Config.in	2013-08-28 19:15:51.231133799 +0200
+@@ -0,0 +1,7 @@
++config BR2_PACKAGE_SDL_WATER
++	bool "SDL_water"
++	select BR2_PACKAGE_SDL
++	help
++	  Water effect demo coded with SDL
++
++	  http://www.libsdl.org/projects/SDL_water/
+Index: buildroot/package/sdl_water/sdl_water.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/sdl_water/sdl_water.mk	2013-08-28 19:35:31.024984077 +0200
+@@ -0,0 +1,25 @@
++#############################################################
++#
++# SDL Water Demo
++#
++#############################################################
++
++SDL_WATER_VERSION = 1.0
++SDL_WATER_SOURCE = water-$(SDL_WATER_VERSION).tar.gz
++SDL_WATER_SITE = http://www.libsdl.org/projects/water/src/
++SDL_WATER_TARGET_DATA_DIR = $(TARGET_DIR)/usr/share/images/
++
++SDL_WATER_CONF_OPT = --with-sdl-prefix=$(STAGING_DIR)/usr \
++		--with-sdl-exec-prefix=$(STAGING_DIR)/usr
++
++SDL_WATER_DEPENDENCIES = sdl
++
++SDL_WATER_MAKE_OPT = LDFLAGS="$(TARGET_LDFLAGS) -lm"
++
++define SDL_WATER_INSTALL_BMP
++	install -D -m 0644 $(@D)/water320.bmp $(SDL_WATER_TARGET_DATA_DIR)/water320.bmp
++endef
++
++SDL_WATER_POST_INSTALL_TARGET_HOOKS += SDL_WATER_INSTALL_BMP
++
++$(eval $(autotools-package))

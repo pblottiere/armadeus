@@ -1,0 +1,44 @@
+PWMR, LSCR1 and DMACR registers only need to be initialized once at startup, 
+not every time imxfb_set_par()/imxfb_activate_var() are called (for example 
+when using SDL).
+Setting these registers in imxfb_set_par()/imxfb_activate_var() has the side
+effect (for example) of shutting down the backlight when opening an 8bits
+SDL screen.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: linux-2.6.29.4/drivers/video/imxfb.c
+===================================================================
+--- linux-2.6.29.4.orig/drivers/video/imxfb.c	2009-06-04 10:38:09.000000000 +0200
++++ linux-2.6.29.4/drivers/video/imxfb.c	2009-06-04 10:39:02.000000000 +0200
+@@ -471,6 +471,7 @@
+ 	pr_debug("var: yres=%d vslen=%d um=%d bm=%d\n",
+ 		var->yres, var->vsync_len,
+ 		var->upper_margin, var->lower_margin);
++	pr_debug("var: bpp=%d\n", var->bits_per_pixel);
+ 
+ #if DEBUG_VAR
+ 	if (var->xres < 16        || var->xres > 1024)
+@@ -528,9 +529,6 @@
+ 	pcr |= fbi->pcr & ~0x3F;
+ 
+ 	writel(pcr, fbi->regs + LCDC_PCR);
+-	writel(fbi->pwmr, fbi->regs + LCDC_PWMR);
+-	writel(fbi->lscr1, fbi->regs + LCDC_LSCR1);
+-	writel(fbi->dmacr, fbi->regs + LCDC_DMACR);
+ 
+ 	return 0;
+ }
+@@ -724,6 +722,12 @@
+ 		goto failed_cmap;
+ 
+ 	imxfb_set_par(info);
++	/* JB: The following parameters are only needed once at startup and so
++		removed from from imxfb_set_par()/imxfb_activate_var() */
++	writel(fbi->pwmr, fbi->regs + LCDC_PWMR);
++	writel(fbi->lscr1, fbi->regs + LCDC_LSCR1);
++	writel(fbi->dmacr, fbi->regs + LCDC_DMACR);
++
+ 	ret = register_framebuffer(info);
+ 	if (ret < 0) {
+ 		dev_err(&pdev->dev, "failed to register framebuffer\n");

@@ -1,0 +1,199 @@
+Latest BR mainline linux-headers config stuff. (Until we move to 2015.05).
+
+Index: buildroot/package/linux-headers/Config.in.host
+===================================================================
+--- buildroot.orig/package/linux-headers/Config.in.host	2015-03-01 22:26:12.000000000 +0100
++++ buildroot/package/linux-headers/Config.in.host	2015-03-19 11:42:50.594037388 +0100
+@@ -5,7 +5,7 @@
+ 
+ choice
+ 	prompt "Kernel Headers"
+-	default BR2_KERNEL_HEADERS_3_18
++	default BR2_KERNEL_HEADERS_3_19
+ 	help
+ 	  Select the version of kernel header files you wish to use.
+ 	  You must select the correct set of header files to match
+@@ -14,59 +14,73 @@
+ 	config BR2_KERNEL_HEADERS_3_0
+ 		bool "Linux 3.0.x kernel headers"
+ 		depends on BR2_DEPRECATED_SINCE_2014_08
+-		depends on !BR2_arc
++		depends on !BR2_arc && !BR2_nios2
+ 		select BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_0
+ 
+ 	config BR2_KERNEL_HEADERS_3_2
+ 		bool "Linux 3.2.x kernel headers"
+-		depends on !BR2_arc
++		depends on !BR2_arc && !BR2_nios2
+ 		select BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_2
+ 
+ 	config BR2_KERNEL_HEADERS_3_4
+ 		bool "Linux 3.4.x kernel headers"
+-		depends on !BR2_arc
++		depends on !BR2_arc && !BR2_nios2
+ 		select BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_4
+ 
+ 	config BR2_KERNEL_HEADERS_3_10
+ 		bool "Linux 3.10.x kernel headers"
++		depends on !BR2_nios2
+ 		select BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_10
+ 
+ 	config BR2_KERNEL_HEADERS_3_11
+ 		bool "Linux 3.11.x kernel headers"
+ 		depends on BR2_DEPRECATED_SINCE_2014_08
++		depends on !BR2_nios2
+ 		select BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_11
+ 
+ 	config BR2_KERNEL_HEADERS_3_12
+ 		bool "Linux 3.12.x kernel headers"
++		depends on !BR2_nios2
+ 		select BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_12
+ 
+ 	config BR2_KERNEL_HEADERS_3_13
+ 		bool "Linux 3.13.x kernel headers"
+ 		depends on BR2_DEPRECATED_SINCE_2014_08
++		depends on !BR2_nios2
+ 		select BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_13
+ 
+ 	config BR2_KERNEL_HEADERS_3_14
+ 		bool "Linux 3.14.x kernel headers"
++		depends on !BR2_nios2
+ 		select BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_14
+ 
+ 	config BR2_KERNEL_HEADERS_3_15
+ 		bool "Linux 3.15.x kernel headers"
+ 		depends on BR2_DEPRECATED_SINCE_2014_08
++		depends on !BR2_nios2
+ 		select BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_15
+ 
+ 	config BR2_KERNEL_HEADERS_3_16
+ 		bool "Linux 3.16.x kernel headers"
+ 		depends on BR2_DEPRECATED_SINCE_2015_02
++		depends on !BR2_nios2
+ 		select BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_16
+ 
+ 	config BR2_KERNEL_HEADERS_3_17
+ 		bool "Linux 3.17.x kernel headers"
++		depends on BR2_DEPRECATED_SINCE_2015_05
++		depends on !BR2_nios2
+ 		select BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_17
+ 
+ 	config BR2_KERNEL_HEADERS_3_18
+ 		bool "Linux 3.18.x kernel headers"
++		depends on !BR2_nios2
+ 		select BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_18
+ 
++	config BR2_KERNEL_HEADERS_3_19
++		bool "Linux 3.19.x kernel headers"
++		select BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_19
++
+ 	config BR2_KERNEL_HEADERS_VERSION
+ 		bool "Manually specified Linux version"
+ endchoice
+@@ -88,6 +102,10 @@
+ 	  This is used to hide/show some packages that have strict
+ 	  requirements on the version of kernel headers.
+ 
++config BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_3_19
++	bool "3.19.x"
++	select BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_19
++
+ config BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_3_18
+ 	bool "3.18.x"
+ 	select BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_18
+@@ -172,15 +190,16 @@
+ config BR2_DEFAULT_KERNEL_HEADERS
+ 	string
+ 	default "3.0.101"	if BR2_KERNEL_HEADERS_3_0
+-	default "3.2.66"	if BR2_KERNEL_HEADERS_3_2
++	default "3.2.68"	if BR2_KERNEL_HEADERS_3_2
+ 	default "3.4.106"	if BR2_KERNEL_HEADERS_3_4
+-	default "3.10.68"	if BR2_KERNEL_HEADERS_3_10
++	default "3.10.72"	if BR2_KERNEL_HEADERS_3_10
+ 	default "3.11.10"	if BR2_KERNEL_HEADERS_3_11
+-	default "3.12.37"	if BR2_KERNEL_HEADERS_3_12
++	default "3.12.38"	if BR2_KERNEL_HEADERS_3_12
+ 	default "3.13.11"	if BR2_KERNEL_HEADERS_3_13
+-	default "3.14.32"	if BR2_KERNEL_HEADERS_3_14
++	default "3.14.36"	if BR2_KERNEL_HEADERS_3_14
+ 	default "3.15.10"	if BR2_KERNEL_HEADERS_3_15
+ 	default "3.16.7"	if BR2_KERNEL_HEADERS_3_16
+ 	default "3.17.8"	if BR2_KERNEL_HEADERS_3_17
+-	default "3.18.6"	if BR2_KERNEL_HEADERS_3_18
++	default "3.18.9"	if BR2_KERNEL_HEADERS_3_18
++	default "3.19.2"	if BR2_KERNEL_HEADERS_3_19
+ 	default BR2_DEFAULT_KERNEL_VERSION if BR2_KERNEL_HEADERS_VERSION
+Index: buildroot/linux/Config.in
+===================================================================
+--- buildroot.orig/linux/Config.in	2015-03-01 22:26:12.000000000 +0100
++++ buildroot/linux/Config.in	2015-03-19 11:57:52.206069223 +0100
+@@ -21,7 +21,7 @@
+ 	prompt "Kernel version"
+ 
+ config BR2_LINUX_KERNEL_LATEST_VERSION
+-	bool "3.18.6"
++	bool "3.19.2"
+ 
+ config BR2_LINUX_KERNEL_SAME_AS_HEADERS
+ 	bool "Same as toolchain kernel headers"
+@@ -109,7 +109,7 @@
+ 
+ config BR2_LINUX_KERNEL_VERSION
+ 	string
+-	default "3.18.6" if BR2_LINUX_KERNEL_LATEST_VERSION
++	default "3.19.2" if BR2_LINUX_KERNEL_LATEST_VERSION
+ 	default BR2_DEFAULT_KERNEL_HEADERS if BR2_LINUX_KERNEL_SAME_AS_HEADERS
+ 	default BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE \
+ 		if BR2_LINUX_KERNEL_CUSTOM_VERSION
+@@ -140,10 +140,10 @@
+ 	default BR2_LINUX_KERNEL_USE_DEFCONFIG
+ 
+ config BR2_LINUX_KERNEL_USE_DEFCONFIG
+-	bool "Using a defconfig"
++	bool "Using an in-tree defconfig file"
+ 
+ config BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG
+-	bool "Using a custom config file"
++	bool "Using a custom (def)config file"
+ 
+ endchoice
+ 
+@@ -161,6 +161,9 @@
+ 	help
+ 	  Path to the kernel configuration file
+ 
++	  Note: this can be a defconfig file or a complete .config file,
++	  which can later be saved back with make linux-update-(def)config.
++
+ #
+ # Binary format
+ #
+@@ -174,7 +177,7 @@
+ config BR2_LINUX_KERNEL_UIMAGE
+ 	bool "uImage"
+ 	depends on BR2_arc || BR2_arm || BR2_armeb || BR2_bfin || \
+-		   BR2_powerpc || BR2_avr32 || BR2_sh || BR2_sh64 || \
++		   BR2_powerpc || BR2_sh || BR2_sh64 || \
+ 		   BR2_mips || BR2_mipsel || BR2_mips64 || BR2_mips64el
+ 	select BR2_LINUX_KERNEL_UBOOT_IMAGE
+ 
+diff --git a/toolchain/toolchain-common.in b/toolchain/toolchain-common.in
+index 2ee2019..304afe4 100644
+--- a/toolchain/toolchain-common.in
++++ b/toolchain/toolchain-common.in
+@@ -221,10 +221,15 @@ config BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_18
+ 	bool
+ 	select BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_17
+ 
++config BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_19
++	bool
++	select BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_18
++
+ # This order guarantees that the highest version is set, as kconfig
+ # stops affecting a value on the first matching default.
+ config BR2_TOOLCHAIN_HEADERS_AT_LEAST
+ 	string
++	default "3.19" if BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_19
+ 	default "3.18" if BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_18
+ 	default "3.17" if BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_17
+ 	default "3.16" if BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_16

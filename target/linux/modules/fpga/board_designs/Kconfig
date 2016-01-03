@@ -1,0 +1,12 @@
+#
+# Armadeus FPGA platform drivers configuration
+#
+
+config ARMADEUS_FPGA_BOARD_DESIGNS
+	boolean "Board designs"
+	depends on ARMADEUS_FPGA_DRIVERS
+	---help---
+	  Board support for FPGA designs
+
+source "drivers/armadeus/fpga/board_designs/*/Kconfig"
+

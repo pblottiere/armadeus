@@ -1,0 +1,26 @@
+CSPI PER clock is per2clk (id per2_gate/60) instead of cspiX_ipg_gate.
+
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+---
+Index: linux-3.11-rc4/arch/arm/boot/dts/imx27.dtsi
+===================================================================
+--- linux-3.11-rc4.orig/arch/arm/boot/dts/imx27.dtsi
++++ linux-3.11-rc4/arch/arm/boot/dts/imx27.dtsi
+@@ -159,7 +159,7 @@
+ 				compatible = "fsl,imx27-cspi";
+ 				reg = <0x1000e000 0x1000>;
+ 				interrupts = <16>;
+-				clocks = <&clks 53>, <&clks 53>;
++				clocks = <&clks 53>, <&clks 60>;
+ 				clock-names = "ipg", "per";
+ 				status = "disabled";
+ 			};
+@@ -170,7 +170,7 @@
+ 				compatible = "fsl,imx27-cspi";
+ 				reg = <0x1000f000 0x1000>;
+ 				interrupts = <15>;
+-				clocks = <&clks 52>, <&clks 52>;
++				clocks = <&clks 52>, <&clks 60>;
+ 				clock-names = "ipg", "per";
+ 				status = "disabled";
+ 			};

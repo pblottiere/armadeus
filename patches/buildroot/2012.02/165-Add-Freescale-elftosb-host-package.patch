@@ -1,0 +1,160 @@
+From 20b9ebcb8f0b655a6954995982cd8a7182f9acc9 Mon Sep 17 00:00:00 2001
+From: Eric Jarrige <eric.jarrige@armadeus.org>
+Date: Tue, 13 Mar 2012 11:10:57 +0100
+Subject: [PATCH 1/2] Add (Freescale) elftosb host package
+
+Elftosb is a Freescale toolset to build binary image files (like U-Boot.sb)
+to be used with CPUs imx23, imx28, stp37xx
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+ package/elftosb/elftosb.mk                         |   27 ++++++++++++++++++++
+ .../elftosb/elftosb10.12.01-fixes_includes.patch   |   19 +++++++++++++
+ .../0001-host-elftosb-force-c++-compiler.patch     |   79 +++++++++++++++++++++
+ 2 files changed, 47 insertions(+), 0 deletions(-)
+ create mode 100644 package/elftosb/elftosb.mk
+ create mode 100644 package/elftosb/elftosb10.12.01-fixes_includes.patch
+
+diff --git a/package/elftosb/elftosb.mk b/package/elftosb/elftosb.mk
+new file mode 100644
+index 0000000..75b95a5
+--- /dev/null
++++ b/package/elftosb/elftosb.mk
+@@ -0,0 +1,27 @@
++#############################################################
++#
++# elftosb
++#
++#############################################################
++ELFTOSB_VERSION = 10.12.01
++ELFTOSB_SOURCE = elftosb-$(ELFTOSB_VERSION).tar.gz
++ELFTOSB_SITE = http://repository.timesys.com/buildsources/e/elftosb/elftosb-$(ELFTOSB_VERSION)
++
++define HOST_ELFTOSB_BUILD_CMDS
++	$(HOST_MAKE_ENV) $(MAKE) CXX="$(HOSTCXX)" -C $(@D) all
++endef
++
++define HOST_ELFTOSB_INSTALL_CMDS
++	$(INSTALL) -D $(@D)/bld/linux/elftosb $(HOST_DIR)/usr/bin/elftosb
++	$(INSTALL) -D $(@D)/bld/linux/keygen $(HOST_DIR)/usr/bin/keygen
++	$(INSTALL) -D $(@D)/bld/linux/sbtool $(HOST_DIR)/usr/bin/sbtool
++endef
++
++define HOST_ELFTOSB_CLEAN_CMDS
++	rm -rf $(@D)/bld/linux
++	rm -f $(HOST_DIR)/usr/bin/elftosb
++	rm -f $(HOST_DIR)/usr/bin/keygen
++	rm -f $(HOST_DIR)/usr/bin/sbtool
++endef
++
++$(eval $(call GENTARGETS,host))
+diff --git a/package/elftosb/elftosb10.12.01-fixes_includes.patch b/package/elftosb/elftosb10.12.01-fixes_includes.patch
+new file mode 100644
+index 0000000..eaf8eba
+--- /dev/null
++++ b/package/elftosb/elftosb10.12.01-fixes_includes.patch
+@@ -0,0 +1,19 @@
++This patch uses system include files instead of a hard coded system path to fixe
++potential compilation failure on systems that do not populate system header
++files in /usr/include/..
++
++Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
++---
++Index: host-elftosb-10.12.01/common/stdafx.h
++===================================================================
++--- host-elftosb-10.12.01.orig/common/stdafx.h	2012-01-30 12:43:35.000000000 +0100
+++++ host-elftosb-10.12.01/common/stdafx.h	2012-01-30 12:43:54.000000000 +0100
++@@ -27,7 +27,7 @@
++ // For Linux systems only, types.h only defines the signed
++ // integer types.  This is not professional code.
++ // Update: They are defined in the header files in the more recent version of redhat enterprise gcc.
++-#include "/usr/include/sys/types.h"
+++#include <sys/types.h>
++ #include <stdint.h>
++ //typedef unsigned long uint32_t;
++ //typedef unsigned short uint16_t;
+--- /dev/null
++++ b/package/elftosb/elftosb10.12.01-force_cxx_compiler.patch
+@@ -0,0 +1,79 @@
++Subject: [PATCH 1/1] elftosb: force host C++ compiler
++
++Because Freescale provides *.cpp sources and elftosb links again libstdc++,
++force to use the host c++ compiler.
++
++Signed-off-by: Samuel Martin <s.martin49@gmail.com>
++
++---
++Index: host-elftosb-10.12.01/makefile.rules
++===================================================================
++--- host-elftosb-10.12.01.orig/makefile.rules	2012-06-09 21:12:23.557526100 +0200
+++++ host-elftosb-10.12.01/makefile.rules	2012-06-09 21:15:21.659894571 +0200
++@@ -15,6 +15,8 @@
++ # UNAMES is going to be set to either "Linux" or "CYGWIN_NT-5.1"
++ UNAMES = $(shell uname -s)
++
+++CXX ?= g++
+++
++ #*******************************************************************************
++ #                               Directories
++
++@@ -37,9 +39,9 @@
++ #*******************************************************************************
++ #                               Build flags
++-# gcc Compiler flags
+++# Compiler flags
++ #    -g						: Produce debugging information.
++
++-CFLAGS	    = -g $(INC_PATH) -D${UNAMES}
+++CXXFLAGS	= -g $(INC_PATH) -D${UNAMES}
++
++ #*******************************************************************************
++ #                               File lists
++@@ -137,13 +139,13 @@ clean:
++ 		${EXEC_FILE_ELFTOSB2} ${EXEC_FILE_SBTOOL} ${EXEC_FILE_KEYGEN}
++
++ elftosb: ${OBJ_FILES_ELFTOSB2}
++-	gcc ${OBJ_FILES_ELFTOSB2} ${LIBS} -o ${EXEC_FILE_ELFTOSB2}
+++	$(CXX) ${OBJ_FILES_ELFTOSB2} ${LIBS} -o ${EXEC_FILE_ELFTOSB2}
++
++ sbtool: ${OBJ_FILES_SBTOOL}
++-	gcc ${OBJ_FILES_SBTOOL} ${LIBS} -o ${EXEC_FILE_SBTOOL}
+++	$(CXX) ${OBJ_FILES_SBTOOL} ${LIBS} -o ${EXEC_FILE_SBTOOL}
++
++ keygen: ${OBJ_FILES_KEYGEN}
++-	gcc ${OBJ_FILES_KEYGEN} ${LIBS} -o ${EXEC_FILE_KEYGEN}
+++	$(CXX) ${OBJ_FILES_KEYGEN} ${LIBS} -o ${EXEC_FILE_KEYGEN}
++
++
++ #ifeq ("${UNAMES}", "Linux")
++@@ -153,10 +155,10 @@ keygen: ${OBJ_FILES_KEYGEN}
++ .SUFFIXES : .c .cpp
++
++ .c.o :
++-	gcc ${CFLAGS} -c $<
+++	$(CXX) ${CXXFLAGS} -c $<
++
++ .cpp.o :
++-	gcc ${CFLAGS} -c $<
+++	$(CXX) ${CXXFLAGS} -c $<
++
++ #endif
++
++@@ -165,13 +167,13 @@ keygen: ${OBJ_FILES_KEYGEN}
++
++ %.d: %.c
++ 	@set -e; \
++-	$(CC) -MM $(CFLAGS) $< | \
+++	$(CXX) -MM $(CXXFLAGS) $< | \
++ 	sed 's/\($*\)\.o[ :]*/\1.o $@ : /g' > $@; \
++ 	[ -s $@ ]  || rm -f $@
++
++ %.d: %.cpp
++ 	@set -e; \
++-	$(CC) -MM $(CFLAGS) $< | \
+++	$(CXX) -MM $(CXXFLAGS) $< | \
++ 	sed 's/\($*\)\.o[ :]*/\1.o $@ : /g' > $@; \
++ 	[ -s $@ ]  || rm -f $@
++
+--
+1.7.2.5
+

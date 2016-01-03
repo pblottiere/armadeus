@@ -1,0 +1,9 @@
+Tools used with anybus_interface driver and HMS Anybus module.
+
+If you run it on an Armadeus board APF51-Dev, you can generate the design and
+copy the driver automatically with the script :
+your_armadeus_dir/firmware/pod_scripts/apf51_anybus_interface.pod
+A pre-designed FPGA design is also available in this directory.
+
+Have a look to this wiki page for further informations:
+http://www.armadeus.com/wiki/index.php?title=HMS_anybus_Linux

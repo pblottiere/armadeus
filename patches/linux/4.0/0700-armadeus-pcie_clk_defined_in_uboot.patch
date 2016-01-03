@@ -1,0 +1,21 @@
+Do not configure PCIe clock with Linux. PCIe Frequency clock is configured
+under U-Boot.
+
+Signed-off-by: Fabien Marteau <fabien.marteau@armadeus.com> 
+---
+
+Index: linux-4.0-rc1/arch/arm/mach-imx/clk-imx6q.c
+===================================================================
+--- linux-4.0-rc1.orig/arch/arm/mach-imx/clk-imx6q.c	2015-04-22 16:21:27.538399032 +0200
++++ linux-4.0-rc1/arch/arm/mach-imx/clk-imx6q.c	2015-04-22 16:23:15.822395833 +0200
+@@ -522,7 +522,9 @@
+ 	clk_set_parent(clk[IMX6QDL_CLK_SPDIF_SEL], clk[IMX6QDL_CLK_PLL3_PFD3_454M]);
+ 
+ 	/* All existing boards with PCIe use LVDS1 */
+-	if (IS_ENABLED(CONFIG_PCI_IMX6))
++	if (	IS_ENABLED(CONFIG_PCI_IMX6)
++		&& !of_machine_is_compatible("armadeus,imx6dl-apf6")
++		&& !of_machine_is_compatible("armadeus,imx6q-apf6"))
+ 		clk_set_parent(clk[IMX6QDL_CLK_LVDS1_SEL], clk[IMX6QDL_CLK_SATA_REF_100M]);
+ 
+ 	/* Set initial power mode */

@@ -1,0 +1,14 @@
+Index: linux-2.6.29/arch/arm/plat-mxc/include/mach/debug-macro.S
+===================================================================
+--- linux-2.6.29.orig/arch/arm/plat-mxc/include/mach/debug-macro.S	2009-03-24 00:12:14.000000000 +0100
++++ linux-2.6.29/arch/arm/plat-mxc/include/mach/debug-macro.S	2009-04-14 18:34:53.000000000 +0200
+@@ -31,6 +31,9 @@
+ #ifdef CONFIG_MACH_MX31_3DS
+ #include <mach/board-mx31pdk.h>
+ #endif
++#ifdef CONFIG_MACH_APF27
++#include <mach/board-apf27.h>
++#endif
+ 		.macro	addruart,rx
+ 		mrc	p15, 0, \rx, c1, c0
+ 		tst	\rx, #1			@ MMU enabled?

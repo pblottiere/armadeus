@@ -1,0 +1,39 @@
+From 8262b3cd32259533556e6dd8d1cd0a4c77c6acfe Mon Sep 17 00:00:00 2001
+From: Philippe Reynes <tremyfr@yahoo.fr>
+Date: Mon, 15 Jul 2013 15:26:14 +0200
+Subject: [PATCH] Fix spidev
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+---
+ arch/arm/boot/dts/imx28-apf28dev.dts |    8 ++++++++
+ 1 files changed, 8 insertions(+), 0 deletions(-)
+
+diff --git a/arch/arm/boot/dts/imx28-apf28dev.dts b/arch/arm/boot/dts/imx28-apf28dev.dts
+index b602494..1548d43 100644
+--- a/arch/arm/boot/dts/imx28-apf28dev.dts
++++ b/arch/arm/boot/dts/imx28-apf28dev.dts
+@@ -32,6 +32,13 @@
+ 				pinctrl-names = "default";
+ 				pinctrl-0 = <&spi2_pins_a>;
+ 				status = "okay";
++/* Uncomment to have spidev on SPI2 (ChipSelect 0):
++				device@0 {
++					compatible = "spidev";
++					reg = <0>;
++					spi-max-frequency = <3125000>;
++				};
++*/
+ 			};
+ 
+ 			pinctrl@80018000 {
+@@ -48,6 +55,7 @@
+ 						0x1143 /* MX28_PAD_LCD_D20__GPIO_1_20 */
+ 						0x1153 /* MX28_PAD_LCD_D21__GPIO_1_21 */
+ 						0x1163 /* MX28_PAD_LCD_D22__GPIO_1_22 */
++						0x1173 /* MX28_PAD_LCD_D23__GPIO_1_23 */
+ 					>;
+ 					fsl,drive-strength = <0>;
+ 					fsl,voltage = <1>;
+-- 
+1.7.4.4
+

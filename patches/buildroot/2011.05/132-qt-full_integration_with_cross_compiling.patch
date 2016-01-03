@@ -1,0 +1,57 @@
+Add the possibility to build & install the Qt's demos and examples separately.
+
+Signed-off-by: Jérémie Scheer <jeremie.scheer@armadeus.com>
+
+Index: buildroot/package/qt/Config.in
+===================================================================
+--- buildroot.orig/package/qt/Config.in	2011-08-08 12:11:54.000000000 +0200
++++ buildroot/package/qt/Config.in	2011-08-08 12:16:13.000000000 +0200
+@@ -17,7 +17,12 @@
+ 	  If unsure, say N.
+ 
+ config BR2_PACKAGE_QT_DEMOS
+-	bool "Compile and install demos and examples (with code)"
++	bool "Compile and install Qt demos (with code)"
++	help
++	  If unsure, say N.
++
++config BR2_PACKAGE_QT_EXAMPLES
++	bool "Compile and install Qt examples (with code)"
+ 	help
+ 	  If unsure, say N.
+ 
+@@ -233,6 +238,13 @@
+ 	bool "Use Qt bundled libtiff"
+ endchoice
+ 
++config BR2_PACKAGE_QT_QWS_CURSOR
++	bool "QWS cursor"
++	default y
++	help
++	  Display a QWS cursor on the target GUI.
++
++
+ endif # BR2_PACKAGE_QT_GUI_MODULE
+ 
+ choice
+Index: buildroot/package/qt/qt.mk
+===================================================================
+--- buildroot.orig/package/qt/qt.mk	2011-08-08 12:11:54.000000000 +0200
++++ buildroot/package/qt/qt.mk	2011-08-08 12:16:13.000000000 +0200
+@@ -41,9 +41,14 @@
+ endif
+ 
+ ifeq ($(BR2_PACKAGE_QT_DEMOS),y)
+-QT_CONFIGURE_OPTS += -examplesdir $(TARGET_DIR)/usr/share/qt/examples -demosdir $(TARGET_DIR)/usr/share/qt/demos
++QT_CONFIGURE_OPTS += -demosdir $(TARGET_DIR)/usr/share/qt/demos
+ else
+-QT_CONFIGURE_OPTS += -nomake examples -nomake demos
++QT_CONFIGURE_OPTS += -nomake demos
++endif
++ifeq ($(BR2_PACKAGE_QT_EXAMPLES),y)
++QT_CONFIGURE_OPTS += -examplesdir $(TARGET_DIR)/usr/share/qt/examples
++else
++QT_CONFIGURE_OPTS += -nomake examples
+ endif
+ 
+ # ensure glib is built first if enabled for Qt's glib support

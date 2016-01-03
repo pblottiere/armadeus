@@ -1,0 +1,27 @@
+apf27: Support boot from RAM
+This patch adds capabilites to start U-Boot directly from RAM
+to test a new version of U-Boot before being programmed in FLASH.
+here are two typical use cases:
+- Load and test U-Boot SPL from RAM to launch U-Boot from FLASH.
+    run download_uboot ; go a0000000
+- Load and run U-Boot from RAM
+    run download_uboot ; go a0000800
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+--- a/board/armadeus/apf27/lowlevel_init.S
++++ b/board/armadeus/apf27/lowlevel_init.S
+@@ -162,6 +162,13 @@ lowlevel_init:
+ 	init_aipi
+ 	init_clock
+ #ifdef CONFIG_SPL_BUILD
++	/* skip sdram initialization if we run from RAM */
++	cmp	pc, #PHYS_SDRAM_1
++	bls	1f
++	cmp	pc, #(PHYS_SDRAM_2+PHYS_SDRAM_2_SIZE)
++	bhi	1f
++	mov	pc, lr
++1:
+ 	init_ddr
+ #endif
+ 

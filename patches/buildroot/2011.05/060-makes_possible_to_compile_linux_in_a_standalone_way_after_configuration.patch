@@ -1,0 +1,13 @@
+Index: buildroot/linux/linux.mk
+===================================================================
+--- buildroot.orig/linux/linux.mk	2011-08-08 12:14:28.000000000 +0200
++++ buildroot/linux/linux.mk	2011-08-08 12:14:37.000000000 +0200
+@@ -113,6 +113,8 @@
+ $(LINUX26_DIR)/.stamp_configured: $(LINUX26_DIR)/.stamp_patched
+ 	@$(call MESSAGE,"Configuring kernel")
+ ifeq ($(strip $(BR2_TARGET_ARMADEUS)),y)
++	$(SED) "s,^ARCH.*,ARCH=$(KERNEL_ARCH),g;" $(LINUX26_DIR)/Makefile
++	$(SED) "s,^CROSS_COMPILE.*,CROSS_COMPILE=$(KERNEL_CROSS),g;" $(LINUX26_DIR)/Makefile
+ 	(ln -sf $(ARMADEUS_TOPDIR)/target/linux/modules/ $(LINUX26_DIR)/drivers/armadeus)
+ endif
+ ifeq ($(BR2_LINUX_KERNEL_USE_DEFCONFIG),y)

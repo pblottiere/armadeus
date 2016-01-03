@@ -1,0 +1,46 @@
+[uboot-tools] Ignore env_sectors on NOR and SPI-dataflash 
+
+fw_env doc declare that 'the "Number of sectors" is ignored on NOR and 
+SPI-dataflash' but it is wrong and would be usefull to use the same
+configuration file for different boards. This patch aims to fix this issue for
+all the Armadeus boards.
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+Index: buildroot/package/uboot-tools/uboot-tools-2011.03-Ignore-env_sectors-on-NOR-and-SPI-dataflash.patch
+===================================================================
+--- buildroot/package/uboot-tools/uboot-tools-2011.03-Ignore-env_sectors-on-NOR-and-SPI-dataflash.patch
++++ buildroot/package/uboot-tools/uboot-tools-2011.03-Ignore-env_sectors-on-NOR-and-SPI-dataflash.patch
+@@ -0,0 +1,32 @@
++[PATCH] Ignore env_sectors on NOR and SPI-dataflash
++
++fw_env doc declare that 'the "Number of sectors" is ignored on NOR and 
++SPI-dataflash' but it is wrong and would be usefull to use the same
++configuration file for different boards. This patch aims to fix this issue for
++all the Armadeus boards.
++
++Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
++---
++Index: u-boot-2011.03/tools/env/fw_env.c
++===================================================================
++--- uboot-tools-2011.03/tools/env/fw_env.c
+++++ uboot-tools-2011.03/tools/env/fw_env.c
++@@ -777,9 +777,15 @@ static int flash_write_buf (int dev, int
++ 
++ 	blocklen = DEVESIZE (dev);
++ 
++-	/* Erase sector size is always a power of 2 */
++-	top_of_range = (DEVOFFSET (dev) & ~(blocklen - 1)) +
++-		ENVSECTORS (dev) * blocklen;
+++	/* Ignored env_sectors on NOR and SPI-dataflash */
+++	if (mtd_type == MTD_NANDFLASH) {
+++		/* Erase sector size is always a power of 2 */
+++		top_of_range = (DEVOFFSET (dev) & ~(blocklen - 1)) +
+++			ENVSECTORS (dev) * blocklen;
+++	} else {
+++		top_of_range = (DEVOFFSET (dev) & ~(blocklen - 1)) +
+++			blocklen;
+++	}
++ 
++ 	erase_offset = offset & ~(blocklen - 1);
++ 

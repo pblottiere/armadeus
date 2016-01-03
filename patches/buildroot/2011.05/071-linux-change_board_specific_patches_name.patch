@@ -1,0 +1,13 @@
+Index: buildroot/linux/linux.mk
+===================================================================
+--- buildroot.orig/linux/linux.mk	2011-08-04 18:30:49.000000000 +0200
++++ buildroot/linux/linux.mk	2011-08-04 18:32:09.000000000 +0200
+@@ -99,7 +99,7 @@
+ 		if echo $$p | grep -q -E "^ftp://|^http://" ; then \
+ 			toolchain/patch-kernel.sh $(@D) $(DL_DIR) `basename $$p` ; \
+ 		elif test -d $$p ; then \
+-			toolchain/patch-kernel.sh $(@D) $$p linux-\*.patch ; \
++			toolchain/patch-kernel.sh $(@D) $$p \*.patch ; \
+ 		else \
+ 			toolchain/patch-kernel.sh $(@D) `dirname $$p` `basename $$p` ; \
+ 		fi \

@@ -1,0 +1,133 @@
+X11 stuff hasn't been tested yet, only fb is validated.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/freescale-imx/vivante-gpu-sdk/vivante-gpu-sdk.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/freescale-imx/vivante-gpu-sdk/vivante-gpu-sdk.mk	2014-08-03 19:49:06.142801660 +0200
+@@ -0,0 +1,99 @@
++################################################################################
++#
++# vivante-gpu-sdk
++#
++################################################################################
++
++VIVANTE_GPU_SDK_VERSION = 1.00
++VIVANTE_GPU_SDK_SITE = $(FREESCALE_IMX_MIRROR_SITE)
++VIVANTE_GPU_SDK_SOURCE = vivante-gpu-sdk-$(VIVANTE_GPU_SDK_VERSION).bin
++VIVANTE_GPU_SDK_LICENSE = Freescale Semiconductor Software License Agreement
++VIVANTE_GPU_SDK_LICENSE += mix of OpenSource licenses
++VIVANTE_GPU_SDK_LICENSE_FILE = COPYING
++
++# The archive is a shell-self-extractor of a bzipped tar. It happens
++# to extract in the correct directory (vivante-gpu-sdk-x.y)
++# The --force makes sure it doesn't fail if the source dir already exists.
++# The --auto-accept skips the license check - not needed for us
++# because we have legal-info.
++define VIVANTE_GPU_SDK_EXTRACT_CMDS
++	(cd $(BUILD_DIR); \
++		sh $(DL_DIR)/$(VIVANTE_GPU_SDK_SOURCE) --force --auto-accept)
++endef
++
++ifeq ($(BR2_PACKAGE_XORG7),y)
++VIVANTE_GPU_SDK_MAKEFILE = Makefile.x11
++else
++VIVANTE_GPU_SDK_MAKEFILE = Makefile.fbdev
++endif
++
++# Examples 18 and 19 are listed in main Makefile but not present in sources
++define VIVANTE_GPU_SDK_BUILD_GLES_V1_1
++	(cd $(@D)/Samples/GLES1.1/; \
++		$(SED) 's/18_VertexBufferObjects//' $(VIVANTE_GPU_SDK_MAKEFILE); \
++		$(SED) 's/19_Beizer//' $(VIVANTE_GPU_SDK_MAKEFILE); \
++		$(MAKE) CROSS_COMPILE="$(TARGET_CROSS)" \
++		CFLAGS="$(TARGET_CFLAGS)" \
++		ROOTFS="$(STAGING_DIR)" \
++		-f $(VIVANTE_GPU_SDK_MAKEFILE))
++endef
++
++define VIVANTE_GPU_SDK_BUILD_GLES_V2_0
++	(cd $(@D)/Samples/GLES2.0/; \
++		$(MAKE) CROSS_COMPILE="$(TARGET_CROSS)" \
++		CFLAGS="$(TARGET_CFLAGS)" \
++		ROOTFS="$(STAGING_DIR)" \
++		-f $(VIVANTE_GPU_SDK_MAKEFILE))
++endef
++
++# OpenVG examples seem only buildable against framebuffer API
++define VIVANTE_GPU_SDK_BUILD_OPENVG
++	(cd $(@D)/Samples/OpenVG/; \
++		$(MAKE) CROSS_COMPILE="$(TARGET_CROSS)" \
++		CFLAGS="$(TARGET_CFLAGS)" \
++		ROOTFS="$(STAGING_DIR)" \
++		-f Makefile.fbdev)
++endef
++
++define VIVANTE_GPU_SDK_BUILD_CMDS
++	$(VIVANTE_GPU_SDK_BUILD_GLES_V1_1)
++	$(VIVANTE_GPU_SDK_BUILD_GLES_V2_0)
++	$(VIVANTE_GPU_SDK_BUILD_OPENVG)
++endef
++
++ifeq ($(BR2_PACKAGE_VIVANTE_GPU_SDK_EXAMPLES),y)
++define VIVANTE_GPU_SDK_INSTALL_EXAMPLES
++	mkdir -p $(TARGET_DIR)/usr/share/examples/
++	cp -r $(@D)/opt/* $(TARGET_DIR)/usr/share/examples/
++endef
++endif
++
++define VIVANTE_GPU_SDK_INSTALL_TARGET_GLES_V1_1
++	(cd $(@D)/Samples/GLES1.1/; \
++		$(MAKE) install \
++		DESTDIR="$(TARGET_DIR)/opt/gpu-sdk-1.1" \
++		-f $(VIVANTE_GPU_SDK_MAKEFILE))
++endef
++
++define VIVANTE_GPU_SDK_INSTALL_TARGET_GLES_V2_0
++	$(VIVANTE_GPU_SDK_INSTALL_EXAMPLES)
++	(cd $(@D)/Samples/GLES2.0/; \
++		$(MAKE) install \
++		DESTDIR="$(TARGET_DIR)/opt/gpu-sdk-2.0" \
++		-f $(VIVANTE_GPU_SDK_MAKEFILE))
++endef
++
++define VIVANTE_GPU_SDK_INSTALL_TARGET_OPENVG
++	(cd $(@D)/Samples/OpenVG/; \
++		$(MAKE) install \
++		DESTDIR="$(TARGET_DIR)/opt/gpu-sdk-openvg" \
++		-f Makefile.fbdev)
++endef
++
++define VIVANTE_GPU_SDK_INSTALL_TARGET_CMDS
++	$(VIVANTE_GPU_SDK_INSTALL_TARGET_GLES_V1_1)
++	$(VIVANTE_GPU_SDK_INSTALL_TARGET_GLES_V2_0)
++	$(VIVANTE_GPU_SDK_INSTALL_TARGET_OPENVG)
++endef
++
++$(eval $(generic-package))
+Index: buildroot/package/freescale-imx/vivante-gpu-sdk/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/freescale-imx/vivante-gpu-sdk/Config.in	2014-08-04 13:30:59.289112813 +0200
+@@ -0,0 +1,9 @@
++config BR2_PACKAGE_VIVANTE_GPU_SDK
++	bool "vivante-gpu-sdk"
++	depends on BR2_PACKAGE_GPU_VIV_BIN_MX6Q
++	help
++	  Freescale examples on how to use GLES, OpenCL, and
++	  OpenVG libraries for i.MX6 processors.
++
++	  These examples are provided by Freescale as-is and doesn't have
++	  an upstream.
+Index: buildroot/package/freescale-imx/Config.in
+===================================================================
+--- buildroot.orig/package/freescale-imx/Config.in	2013-11-30 14:16:03.000000000 +0100
++++ buildroot/package/freescale-imx/Config.in	2014-08-04 13:32:41.489619608 +0200
+@@ -4,5 +4,6 @@
+ source "package/freescale-imx/imx-lib/Config.in"
+ source "package/freescale-imx/firmware-imx/Config.in"
+ source "package/freescale-imx/gpu-viv-bin-mx6q/Config.in"
++source "package/freescale-imx/vivante-gpu-sdk/Config.in"
+ 
+ endmenu

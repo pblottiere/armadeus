@@ -1,0 +1,15 @@
+
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+---
+Index: linux-3.12/arch/arm/boot/dts/imx27-apf27dev.dts
+===================================================================
+--- linux-3.12.orig/arch/arm/boot/dts/imx27-apf27dev.dts
++++ linux-3.12/arch/arm/boot/dts/imx27-apf27dev.dts
+@@ -113,6 +113,7 @@
+ 				MX27_PAD_CSPI2_SS1__GPIO4_20 0
+ 				MX27_PAD_CSI_D5__GPIO2_17 0
+ 				MX27_PAD_TOUT__GPIO3_14 0
++				MX27_PAD_PWMO__PWMO 0
+ 			>;
+ 		};
+ 	};

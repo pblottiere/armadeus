@@ -1,0 +1,59 @@
+Allows downloading of adeos patch if not present locally
+
+TODO: mark BR2_LINUX_KERNEL_EXT_XENOMAI_ADEOS_PATCH as deprecated in BR before
+submitting mainline.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+
+Index: buildroot/linux/linux-ext-xenomai.mk
+===================================================================
+--- buildroot.orig/linux/linux-ext-xenomai.mk	2014-02-12 17:58:11.097907920 +0100
++++ buildroot/linux/linux-ext-xenomai.mk	2014-02-14 16:42:59.698419136 +0100
+@@ -9,11 +9,20 @@
+ LINUX_DEPENDENCIES += xenomai
+ 
+ # Adeos patch version
+-XENOMAI_ADEOS_PATCH = $(call qstrip,$(BR2_LINUX_KERNEL_EXT_XENOMAI_ADEOS_PATCH))
++XENOMAI_ADEOS_PATCH_URL = $(call qstrip,$(BR2_LINUX_KERNEL_EXT_XENOMAI_ADEOS_PATCH_URL))
++XENOMAI_ADEOS_PATCH = $(shell basename $(XENOMAI_ADEOS_PATCH_URL))
++ifneq ($(XENOMAI_ADEOS_PATCH_URL),)
++define XENOMAI_ADEOS_DOWNLOAD_PATCH
++	@$(call MESSAGE,"Download adeos patch")
++	$(call DOWNLOAD,$(XENOMAI_ADEOS_PATCH_URL))
++endef
++LINUX_POST_DOWNLOAD_HOOKS += XENOMAI_ADEOS_DOWNLOAD_PATCH
++endif
++
+ ifeq ($(XENOMAI_ADEOS_PATCH),)
+ XENOMAI_ADEOS_OPT = --default
+ else
+-XENOMAI_ADEOS_OPT = --adeos=$(XENOMAI_ADEOS_PATCH)
++XENOMAI_ADEOS_OPT = --adeos=$(DL_DIR)/$(XENOMAI_ADEOS_PATCH)
+ endif
+ 
+ # Prepare kernel patch
+Index: buildroot/linux/Config.ext.in
+===================================================================
+--- buildroot.orig/linux/Config.ext.in	2014-02-14 16:44:35.518894282 +0100
++++ buildroot/linux/Config.ext.in	2014-02-14 16:49:25.292331195 +0100
+@@ -21,13 +21,14 @@
+ 		   BR2_bfin || BR2_powerpc || BR2_sh4
+ 	depends on !BR2_TOOLCHAIN_HAS_THREADS
+ 
+-config BR2_LINUX_KERNEL_EXT_XENOMAI_ADEOS_PATCH
++config BR2_LINUX_KERNEL_EXT_XENOMAI_ADEOS_PATCH_URL
+ 	depends on BR2_LINUX_KERNEL_EXT_XENOMAI
+-	string "Path for Adeos patch file"
++	string "Path/url for Adeos patch file"
+ 	help
+-	  Optionally, explicitly specify the Adeos patch to use.
+-	  Download it at http://download.gna.org/adeos/patches/v2.6/$(ARCH)/
+-	  and verify that your kernel version in buildroot matches.
++	  Optionally, explicitly specify where to find the Adeos patch to use.
++	  Examples http://download.gna.org/adeos/patches/v2.6/arm/adeos-ipipe-2.6.38.8-arm-1.18-09.patch
++	  or file:///home/foo/adeos-ipipe-2.6.38.8-arm-1.18-09.patch
++	  Please verify that your kernel version in Buildroot matches.
+ 
+ # RTAI
+ config BR2_LINUX_KERNEL_EXT_RTAI

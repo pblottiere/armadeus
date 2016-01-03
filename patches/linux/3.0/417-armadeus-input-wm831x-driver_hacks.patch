@@ -1,0 +1,24 @@
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: linux-3.0.10/drivers/input/touchscreen/wm831x-ts.c
+===================================================================
+--- linux-3.0.10.orig/drivers/input/touchscreen/wm831x-ts.c	2011-11-21 23:37:44.000000000 +0100
++++ linux-3.0.10/drivers/input/touchscreen/wm831x-ts.c	2011-11-30 17:18:02.000000000 +0100
+@@ -344,6 +344,17 @@
+ 		goto err_data_irq;
+ 	}
+ 
++	/* GPIO3 -> EOC */
++	wm831x_reg_write(wm831x, 0x4037 + 3, 0x0087);
++	/* GPIO7 -> EOC also (dbg) */
++	wm831x_reg_write(wm831x, 0x404c, 0x0000); /* LED1 off */
++	wm831x_reg_write(wm831x, 0x4037 + 7, 0x0087);
++	/* GPIO2 -> PD DETECT */
++	wm831x_reg_write(wm831x, 0x4037 + 2, 0x0086);
++	/* GPIO6 -> PD DETECT also (dbg) */
++	wm831x_reg_write(wm831x, 0x404d, 0x0000); /* LED2 off */
++	wm831x_reg_write(wm831x, 0x4037 + 6, 0x0086);
++
+ 	/* set up touch configuration */
+ 	input_dev->name = "WM831x touchscreen";
+ 	input_dev->phys = "wm831x";

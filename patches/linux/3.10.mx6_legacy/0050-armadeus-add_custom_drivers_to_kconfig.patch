@@ -1,0 +1,27 @@
+This patch adds the possibility to have custom Armadeus drivers built in kernel or compiled as modules.
+
+This patch adds the possibility to have custom Armadeus drivers built in kernel or compiled as modules.
+
+Index: linux-wandboard_imx_3.10.31_1.1.0_beta2/drivers/Kconfig
+===================================================================
+--- linux-wandboard_imx_3.10.31_1.1.0_beta2.orig/drivers/Kconfig
++++ linux-wandboard_imx_3.10.31_1.1.0_beta2/drivers/Kconfig
+@@ -168,4 +168,6 @@ source "drivers/ipack/Kconfig"
+
+ source "drivers/reset/Kconfig"
+
++source "drivers/armadeus/Kconfig"
++
+ endmenu
+Index: linux-wandboard_imx_3.10.31_1.1.0_beta2/drivers/Makefile
+===================================================================
+--- linux-wandboard_imx_3.10.31_1.1.0_beta2.orig/drivers/Makefile
++++ linux-wandboard_imx_3.10.31_1.1.0_beta2/drivers/Makefile
+@@ -126,6 +126,7 @@ obj-$(CONFIG_DCA)		+= dca/
+ obj-$(CONFIG_HID)		+= hid/
+ obj-$(CONFIG_PPC_PS3)		+= ps3/
+ obj-$(CONFIG_OF)		+= of/
++obj-$(CONFIG_ARMADEUS_DRIVERS)	+= armadeus/
+ obj-$(CONFIG_SSB)		+= ssb/
+ obj-$(CONFIG_BCMA)		+= bcma/
+ obj-$(CONFIG_VHOST_RING)	+= vhost/

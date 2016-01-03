@@ -1,0 +1,17 @@
+Change default debug UART for APF51
+
+Signed-off-by: Nicolas Colombain <nicolas.colombain@armadeus.com>
+
+Index: linux-3.0.10/arch/arm/plat-mxc/include/mach/debug-macro.S
+===================================================================
+--- linux-3.0.10.orig/arch/arm/plat-mxc/include/mach/debug-macro.S	2011-11-21 23:37:44.000000000 +0100
++++ linux-3.0.10/arch/arm/plat-mxc/include/mach/debug-macro.S	2011-11-30 17:18:02.000000000 +0100
+@@ -41,7 +41,7 @@
+ #ifdef UART_PADDR
+ #error "CONFIG_DEBUG_LL is incompatible with multiple archs"
+ #endif
+-#define UART_PADDR	MX51_UART1_BASE_ADDR
++#define UART_PADDR	MX51_UART3_BASE_ADDR
+ #endif
+ 
+ #define UART_VADDR	IMX_IO_ADDRESS(UART_PADDR)

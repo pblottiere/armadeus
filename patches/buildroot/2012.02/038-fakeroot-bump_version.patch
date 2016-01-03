@@ -1,0 +1,16 @@
+Index: buildroot/package/fakeroot/fakeroot.mk
+===================================================================
+--- buildroot.orig/package/fakeroot/fakeroot.mk	2012-02-21 16:43:28.000000000 +0100
++++ buildroot/package/fakeroot/fakeroot.mk	2012-02-21 16:44:14.000000000 +0100
+@@ -3,9 +3,9 @@
+ # fakeroot
+ #
+ #############################################################
+-FAKEROOT_VERSION:=1.9.5
++FAKEROOT_VERSION:=1.11
+ FAKEROOT_SOURCE:=fakeroot_$(FAKEROOT_VERSION).tar.gz
+-FAKEROOT_SITE:=http://snapshot.debian.org/archive/debian/20080427T000000Z/pool/main/f/fakeroot/
++FAKEROOT_SITE:=http://ftp.debian.org/debian/pool/main/f/fakeroot/
+ 
+ define FAKEROOT_PATCH_FAKEROOT_IN
+ 	# If using busybox getopt, make it be quiet.

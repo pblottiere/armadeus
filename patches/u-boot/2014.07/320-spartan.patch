@@ -1,0 +1,71 @@
+spartan3: Fix minor issue.
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+Signed-off-by: Nicolas Colombain <nicolas.colombain@armadeus.com>
+---
+ drivers/fpga/spartan3.c |    9 +++++++--
+ 1 files changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/fpga/spartan3.c b/drivers/fpga/spartan3.c
+index 1633a70..9ca0522 100644
+--- a/drivers/fpga/spartan3.c
++++ b/drivers/fpga/spartan3.c
+@@ -172,8 +172,14 @@ static int Spartan3_sp_load(Xilinx_desc
+ 		(*fn->clk) (true, true, cookie);	/* Assert the clock pin */
+ 
+ 		/* Load the data */
+-		while (bytecount < bsize) {
+-			/* XXX - do we check for an Ctrl-C press in here ??? */
++		while ( ((*fn->done) (cookie) != FPGA_SUCCESS)
++			&& (bytecount < bsize)) {
++#ifdef CONFIG_SYS_FPGA_CHECK_CTRLC
++			if (ctrlc ()) {
++				(*fn->abort) (cookie);
++				return FPGA_FAIL;
++			}
++#endif
+ 			/* XXX - Check the error bit? */
+ 
+ 			(*fn->wdata) (data[bytecount++], true, cookie); /* write the data */
+@@ -272,7 +278,12 @@ static int Spartan3_sp_dump(Xilinx_desc
+ 
+ 		/* dump the data */
+ 		while (bytecount < bsize) {
+-			/* XXX - do we check for an Ctrl-C press in here ??? */
++#ifdef CONFIG_SYS_FPGA_CHECK_CTRLC
++			if (ctrlc ()) {
++				(*fn->abort) (cookie);
++				return FPGA_FAIL;
++			}
++#endif
+ 
+ 			(*fn->clk) (false, true, cookie);	/* Deassert the clock pin */
+ 			(*fn->clk) (true, true, cookie);	/* Assert the clock pin */
+@@ -376,6 +387,12 @@ static int Spartan3_ss_load(Xilinx_desc
+ 			(*fn->bwr) (data, bsize, true, cookie);
+ 		else {
+ 			while (bytecount < bsize) {
++#ifdef CONFIG_SYS_FPGA_CHECK_CTRLC
++				if (ctrlc ()) {
++					(*fn->abort) (cookie);
++					return FPGA_FAIL;
++				}
++#endif
+ 
+ 				/* Xilinx detects an error if INIT goes low (active)
+ 				   while DONE is low (inactive) */
+--- uboot-custom/include/fpga.h
++++ uboot-custom/include/fpga.h
+@@ -16,7 +16,7 @@
+ 
+ /* fpga_xxxx function return value definitions */
+ #define FPGA_SUCCESS		0
+-#define FPGA_FAIL		-1
++#define FPGA_FAIL		1
+ 
+ /* device numbers must be non-negative */
+ #define FPGA_INVALID_DEVICE	-1
+-- 
+1.7.2.5
+

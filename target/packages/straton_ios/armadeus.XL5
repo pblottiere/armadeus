@@ -1,0 +1,31 @@
+$K5LMEXPORT
+$DIR
+PR=APF51,APF51 board
+PR=APF27,APF27 board
+PR=DEMO,HMS Demo Board
+$END
+$DEF(PR=APF27)
+VAR Type : DINT := 0; (*kind of IO
+<< 0 = LED >>
+<< 1 = BUTTON >>
+*)
+VAR Index : DINT; (*channel number or HMS offset*)
+$END
+$DEF(PR=APF51)
+VAR Type : DINT := 0; (*kind of IO
+<< 0 = LED >>
+<< 1 = BUTTON >>
+*)
+VAR Index : DINT; (*channel number or HMS offset*)
+$END
+$DEF(PR=DEMO)
+VAR Type : DINT := 0; (*kind of IO
+<< 0 = DI >>
+<< 1 = DO >>
+<< 2 = Meter >>
+<< 3 = Rotate button >>
+<< 4 = HMS-IN >>
+<< 5 = HMS-OUT >>
+*)
+VAR Index : DINT; (*channel number or HMS offset*)
+$END

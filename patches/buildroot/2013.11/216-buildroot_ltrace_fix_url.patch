@@ -1,0 +1,15 @@
+Inspired by a patch from Martin Bark <martin@barkynet.com>, this fixes autobuild issues related to packages not downloading from alioth.debian URLs. This patches is meant to be "temporary" until the URLs are fixed by debian. Fixes: http://autobuild.buildroot.org/results/8c3/8c34649a7f98f60f14cff8b32fa2f8e82b1afeb6 http://autobuild.buildroot.org/results/7e3/7e34e73e40fdb0e04bd63fa889f9bc14f7e30536 Signed-off-by: Ryan Barnett <rjbarnet@rockwellcollins.com> Signed-off-by: Peter Korsgaard <peter@korsgaard.com>
+
+diff --git a/package/ltrace/ltrace.mk b/package/ltrace/ltrace.mk
+index b42c252..99c1af6 100644
+--- a/package/ltrace/ltrace.mk
++++ b/package/ltrace/ltrace.mk
+@@ -5,7 +5,7 @@
+ ################################################################################
+ 
+ LTRACE_VERSION = 0.7.3
+-LTRACE_SITE = http://alioth.debian.org/frs/download.php/file/3947
++LTRACE_SITE = http://sources.buildroot.net/
+ LTRACE_SOURCE = ltrace-$(LTRACE_VERSION).tar.bz2
+ LTRACE_DEPENDENCIES = libelf
+ LTRACE_CONF_OPT = --disable-werror

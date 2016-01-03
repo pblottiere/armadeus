@@ -1,0 +1,20 @@
+Otherwise we get the annoying:
+"svc: failed to register lockdv1 RPC service (errno 97)" when mounting NFS
+drives.
+Make it appears only in kernel logs until we find a way to solve (?) it.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: linux-2.6.38.8/net/sunrpc/svc.c
+===================================================================
+--- linux-2.6.38.8.orig/net/sunrpc/svc.c	2012-01-13 17:02:49.000000000 +0100
++++ linux-2.6.38.8/net/sunrpc/svc.c	2012-01-13 17:10:08.000000000 +0100
+@@ -844,7 +844,7 @@
+ 	}
+ 
+ 	if (error < 0)
+-		printk(KERN_WARNING "svc: failed to register %sv%u RPC "
++		printk(KERN_DEBUG "svc: failed to register %sv%u RPC "
+ 			"service (errno %d).\n", progname, version, -error);
+ 	return error;
+ }

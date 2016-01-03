@@ -1,0 +1,132 @@
+Backport from recent Linux kernels. (See also patches/linux/2.6.29/368-xxx
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/linux-headers/2.6.29.6/368-redhat-types_h-define-__aligned_u64-and-expose-to-userspace.patch
+===================================================================
+--- /dev/null
++++ buildroot/package/linux-headers/2.6.29.6/368-redhat-types_h-define-__aligned_u64-and-expose-to-userspace.patch
+@@ -0,0 +1,59 @@
++From 79b5dc0c64d88cda3da23b2e22a5cec0964372ac Mon Sep 17 00:00:00 2001
++From: Eric Paris <eparis@redhat.com>
++Date: Fri, 15 Oct 2010 14:34:14 -0700
++Subject: types.h: define __aligned_u64 and expose to userspace
++
++We currently have a kernel internal type called aligned_u64 which aligns
++__u64's on 8 bytes boundaries even on systems which would normally align
++them on 4 byte boundaries.  This patch creates a new type __aligned_u64
++which does the same thing but which is exposed to userspace rather than
++being kernel internal.
++
++[akpm: merge early as both the net and audit trees want this]
++
++[akpm@linux-foundation.org: enhance the comment describing the reasons for using aligned_u64.  Via Andreas and Andi.]
++Based-on-patch-by: Andreas Gruenbacher <agruen@suse.de>
++Signed-off-by: Eric Paris <eparis@redhat.com>
++Cc: Jan Engelhardt <jengelh@medozas.de>
++Cc: David Miller <davem@davemloft.net>
++Cc: Andi Kleen <andi@firstfloor.org>
++Cc: Arnd Bergmann <arnd@arndb.de>
++Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
++Signed-off-by: Linus Torvalds <torvalds@linux-foundation.org>
++
++diff --git a/include/linux/types.h b/include/linux/types.h
++index 01a082f..357dbc1 100644
++--- a/include/linux/types.h
+++++ b/include/linux/types.h
++@@ -121,7 +121,15 @@ typedef		__u64		u_int64_t;
++ typedef		__s64		int64_t;
++ #endif
++
++-/* this is a special 64bit data type that is 8-byte aligned */
+++/*
+++ * aligned_u64 should be used in defining kernel<->userspace ABIs to avoid
+++ * common 32/64-bit compat problems.
+++ * 64-bit values align to 4-byte boundaries on x86_32 (and possibly other
+++ * architectures) and to 8-byte boundaries on 64-bit architetures.  The new
+++ * aligned_64 type enforces 8-byte alignment so that structs containing
+++ * aligned_64 values have the same alignment on 32-bit and 64-bit architectures.
+++ * No conversions are necessary between 32-bit user-space and a 64-bit kernel.
+++ */
++ #define aligned_u64 __u64 __attribute__((aligned(8)))
++ #define aligned_be64 __be64 __attribute__((aligned(8)))
++ #define aligned_le64 __le64 __attribute__((aligned(8)))
++@@ -178,6 +186,11 @@ typedef __u64 __bitwise __be64;
++ typedef __u16 __bitwise __sum16;
++ typedef __u32 __bitwise __wsum;
++
+++/* this is a special 64bit data type that is 8-byte aligned */
+++#define __aligned_u64 __u64 __attribute__((aligned(8)))
+++#define __aligned_be64 __be64 __attribute__((aligned(8)))
+++#define __aligned_le64 __le64 __attribute__((aligned(8)))
+++
++ #ifdef __KERNEL__
++ typedef unsigned __bitwise__ gfp_t;
++ typedef unsigned __bitwise__ fmode_t;
++--
++cgit v0.10.2
++
+Index: buildroot/package/linux-headers/2.6.35.3/368-redhat-types_h-define-__aligned_u64-and-expose-to-userspace.patch
+===================================================================
+--- /dev/null
++++ buildroot/package/linux-headers/2.6.35.3/368-redhat-types_h-define-__aligned_u64-and-expose-to-userspace.patch
+@@ -0,0 +1,59 @@
++From 79b5dc0c64d88cda3da23b2e22a5cec0964372ac Mon Sep 17 00:00:00 2001
++From: Eric Paris <eparis@redhat.com>
++Date: Fri, 15 Oct 2010 14:34:14 -0700
++Subject: types.h: define __aligned_u64 and expose to userspace
++
++We currently have a kernel internal type called aligned_u64 which aligns
++__u64's on 8 bytes boundaries even on systems which would normally align
++them on 4 byte boundaries.  This patch creates a new type __aligned_u64
++which does the same thing but which is exposed to userspace rather than
++being kernel internal.
++
++[akpm: merge early as both the net and audit trees want this]
++
++[akpm@linux-foundation.org: enhance the comment describing the reasons for using aligned_u64.  Via Andreas and Andi.]
++Based-on-patch-by: Andreas Gruenbacher <agruen@suse.de>
++Signed-off-by: Eric Paris <eparis@redhat.com>
++Cc: Jan Engelhardt <jengelh@medozas.de>
++Cc: David Miller <davem@davemloft.net>
++Cc: Andi Kleen <andi@firstfloor.org>
++Cc: Arnd Bergmann <arnd@arndb.de>
++Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
++Signed-off-by: Linus Torvalds <torvalds@linux-foundation.org>
++
++diff --git a/include/linux/types.h b/include/linux/types.h
++index 01a082f..357dbc1 100644
++--- a/include/linux/types.h
+++++ b/include/linux/types.h
++@@ -121,7 +121,15 @@ typedef		__u64		u_int64_t;
++ typedef		__s64		int64_t;
++ #endif
++ 
++-/* this is a special 64bit data type that is 8-byte aligned */
+++/*
+++ * aligned_u64 should be used in defining kernel<->userspace ABIs to avoid
+++ * common 32/64-bit compat problems.
+++ * 64-bit values align to 4-byte boundaries on x86_32 (and possibly other
+++ * architectures) and to 8-byte boundaries on 64-bit architetures.  The new
+++ * aligned_64 type enforces 8-byte alignment so that structs containing
+++ * aligned_64 values have the same alignment on 32-bit and 64-bit architectures.
+++ * No conversions are necessary between 32-bit user-space and a 64-bit kernel.
+++ */
++ #define aligned_u64 __u64 __attribute__((aligned(8)))
++ #define aligned_be64 __be64 __attribute__((aligned(8)))
++ #define aligned_le64 __le64 __attribute__((aligned(8)))
++@@ -178,6 +186,11 @@ typedef __u64 __bitwise __be64;
++ typedef __u16 __bitwise __sum16;
++ typedef __u32 __bitwise __wsum;
++ 
+++/* this is a special 64bit data type that is 8-byte aligned */
+++#define __aligned_u64 __u64 __attribute__((aligned(8)))
+++#define __aligned_be64 __be64 __attribute__((aligned(8)))
+++#define __aligned_le64 __le64 __attribute__((aligned(8)))
+++
++ #ifdef __KERNEL__
++ typedef unsigned __bitwise__ gfp_t;
++ typedef unsigned __bitwise__ fmode_t;
++-- 
++cgit v0.10.2
++

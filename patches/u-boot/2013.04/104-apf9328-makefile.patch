@@ -1,0 +1,41 @@
+apf9328: add apf9328 board in Makefile
+
+add apf9328 board definition in makefile, MAKEALL and MAINTAINERS list
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+---
+ MAINTAINERS |    4 ++++
+ boards.cfg  |    1 +
+ 2 files changed, 5 insertions(+), 0 deletions(-)
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index b571400..18ac7d3 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -250,6 +250,10 @@ Gabriel Huau <contact@huau-gabriel.fr>
+ 
+ 	mini2440	s3c2440
+ 
++Eric Jarrige <eric.jarrige@armadeus.org>
++
++	apf9328		ARM920T (iMX1)
++
+ Gary Jennejohn <garyj@denx.de>
+ 
+ 	quad100hd	PPC405EP
+diff --git a/boards.cfg b/boards.cfg
+index 7c1fc74..8a40643 100644
+--- a/boards.cfg
++++ b/boards.cfg
+@@ -59,6 +59,7 @@ integratorap_cm720t          arm         arm720t     integrator          armltd
+ integratorap_cm920t          arm         arm920t     integrator          armltd         -           integratorap:CM920T
+ integratorcp_cm920t          arm         arm920t     integrator          armltd         -           integratorcp:CM920T
+ a320evb                      arm         arm920t     -                   faraday        a320
++apf9328                      arm         arm920t     apf9328             armadeus       imx
+ at91rm9200ek                 arm         arm920t     at91rm9200ek        atmel          at91        at91rm9200ek
+ at91rm9200ek_ram             arm         arm920t     at91rm9200ek        atmel          at91        at91rm9200ek:RAMBOOT
+ eb_cpux9k2                   arm         arm920t     eb_cpux9k2          BuS            at91        eb_cpux9k2
+-- 
+1.7.2.5
+

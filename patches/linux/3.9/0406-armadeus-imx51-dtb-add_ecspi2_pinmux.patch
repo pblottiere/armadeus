@@ -1,0 +1,25 @@
+
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+---
+
+Index: linux-3.8/arch/arm/boot/dts/imx51.dtsi
+===================================================================
+--- linux-3.8.orig/arch/arm/boot/dts/imx51.dtsi
++++ linux-3.8/arch/arm/boot/dts/imx51.dtsi
+@@ -308,6 +308,16 @@
+ 					};
+ 				};
+ 
++				ecspi2 {
++					pinctrl_ecspi2_1: ecspi2grp-1 {
++						fsl,pins = <
++							212 0x185	/* MX51_PAD_NANDF_RB3__ECSPI2_MISO */
++							264 0x185	/* MX51_PAD_NANDF_D15__ECSPI2_MOSI */
++							205 0x185	/* MX51_PAD_NANDF_RB2__ECSPI2_SCLK */
++						>;
++					};
++				};
++
+ 				esdhc1 {
+ 					pinctrl_esdhc1_1: esdhc1grp-1 {
+ 						fsl,pins = <

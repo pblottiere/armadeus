@@ -1,0 +1,88 @@
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/gsmmux/gsmmux.mk
+===================================================================
+--- /dev/null
++++ buildroot/package/gsmmux/gsmmux.mk
+@@ -0,0 +1,38 @@
++#############################################################
++#
++# gsmmux
++#
++#############################################################
++
++GSMMUX_BINARY = gsmMuxd
++ifeq ($(BR2_PACKAGE_GSMMUX_GENERIC),y)
++GSMMUX_VERSION = 18
++GSMMUX_SITE = http://svn.berlios.de/svnroot/repos/gsmmux/trunk
++GSMMUX_SITE_METHOD = svn
++GSMMUX_BUILD_BINARY = build/$(GSMMUX_BINARY)
++else
++GSMMUX_VERSION = sagem
++GSMMUX_SITE = ftp://ftp2.armadeus.com/armadeusw/downloads
++GSMMUX_BUILD_BINARY = $(GSMMUX_BINARY)
++endif
++GSMMUX_TARGET_DIR = $(TARGET_DIR)/usr/bin
++
++define GSMMUX_BUILD_CMDS
++	mkdir -p $(@D)/build
++	$(MAKE) CC="$(TARGET_CC)" CFLAGS="$(TARGET_CFLAGS)" \
++		LD="$(TARGET_CC)" -C $(@D)
++endef
++
++define GSMMUX_INSTALL_TARGET_CMDS
++	cp $(@D)/$(GSMMUX_BUILD_BINARY) $(GSMMUX_TARGET_DIR)
++endef
++
++define GSMMUX_CLEAN_CMDS
++	$(MAKE) -C $(@D) clean
++endef
++
++define GSMMUX_UNINSTALL_TARGET_CMDS
++	rm -f $(GSMMUX_TARGET_DIR)/$(GSMMUX_BINARY)
++endef
++
++$(eval $(generic-package))
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in
++++ buildroot/package/Config.in
+@@ -333,6 +333,7 @@ endif
+	source "package/gpm/Config.in"
+	source "package/gpsd/Config.in"
+	source "package/gptfdisk/Config.in"
++	source "package/gsmmux/Config.in"
+	source "package/gvfs/Config.in"
+ if BR2_PACKAGE_BUSYBOX_SHOW_OTHERS
+	source "package/hdparm/Config.in"
+Index: buildroot/package/gsmmux/Config.in
+===================================================================
+--- /dev/null
++++ buildroot/package/gsmmux/Config.in
+@@ -0,0 +1,25 @@
++config BR2_PACKAGE_GSMMUX
++	bool "gsmmux"
++	help
++	  GSM Multiplexer Daemon is intended to be used for GSM Modems.
++	  It implements (a subset of) the GSM 07.10 standard, it can be used
++	  to multiplex one or more logical channels over one physical serial
++	  channel to the modem.
++
++	  http://developer.berlios.de/projects/gsmmux/
++
++if BR2_PACKAGE_GSMMUX
++
++choice
++	prompt "Version to use"
++	default BR2_PACKAGE_GSMMUX_SAGEM
++
++config BR2_PACKAGE_GSMMUX_GENERIC
++	bool "generic"
++
++config BR2_PACKAGE_GSMMUX_SAGEM
++	bool "sagem"
++
++endchoice
++
++endif

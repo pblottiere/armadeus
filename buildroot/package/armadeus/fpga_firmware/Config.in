@@ -1,0 +1,39 @@
+config BR2_PACKAGE_FPGA_FIRMWARE
+	bool "FPGA Firmware"
+	help
+	  Install some FPGA firmwares.
+
+if BR2_PACKAGE_FPGA_FIRMWARE
+choice
+	prompt "Firmware(s) to install"
+	default BR2_PACKAGE_FPGA_FIRMWARE_CUSTOM
+
+config BR2_PACKAGE_FPGA_FIRMWARE_APF51_DUAL_UART
+	bool "APF51 dual UARTs (GSM/GPS)"
+	help
+	  Required if your want to use GSM or GPS on the APF51Dev. Firmware
+	  will be named /lib/firmware/fpga/apf51_gsm_gps_firmware.bin.
+
+config BR2_PACKAGE_FPGA_FIRMWARE_CUSTOM
+	bool "Custom list"
+	help
+	  Use one or more custom FPGA binary files. The FPGA binary files will
+	  be installed in /lib/firmware/fpga/ on the target.
+
+endchoice
+
+config BR2_PACKAGE_FPGA_FIRMWARE_CUSTOM_FILE
+	string "Firmware(s) path list"
+	depends on BR2_PACKAGE_FPGA_FIRMWARE_CUSTOM
+	help
+	  Path list to your custom FPGA binary files to install.
+
+config BR2_PACKAGE_FPGA_FIRMWARE_EXPORT
+	bool "Export the FPGA firmware to Buildroot output/images/ folder"
+	help
+	  Build a link from Buildroot output/images/ folder to the FPGA
+	  firmware.
+	  This link will be named $(BOARD_NAME)-firmware.bin (default name
+	  looked by U-Boot when asking for firmware update).
+
+endif # BR2_PACKAGE_FPGA_FIRMWARE

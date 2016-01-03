@@ -1,0 +1,58 @@
+From 3dbe259299680942036963db649e930120b43665 Mon Sep 17 00:00:00 2001
+From: Steve Longerbeam <steve_longerbeam@mentor.com>
+Date: Wed, 27 Aug 2014 09:58:21 -0700
+Subject: [PATCH 605/625] gpu: ipu-v3: Add ipu_set_vdi_src_mux()
+
+Adds ipu_set_vdi_src_mux() that selects the VDIC input (from CSI or memory).
+
+Signed-off-by: Steve Longerbeam <steve_longerbeam@mentor.com>
+---
+ drivers/gpu/ipu-v3/ipu-common.c | 20 ++++++++++++++++++++
+ include/video/imx-ipu-v3.h      |  1 +
+ 2 files changed, 21 insertions(+)
+
+diff --git a/drivers/gpu/ipu-v3/ipu-common.c b/drivers/gpu/ipu-v3/ipu-common.c
+index 85ca6d0..b2550b4 100644
+--- a/drivers/gpu/ipu-v3/ipu-common.c
++++ b/drivers/gpu/ipu-v3/ipu-common.c
+@@ -724,6 +724,26 @@ void ipu_set_ic_src_mux(struct ipu_soc *ipu, int csi_id, bool vdi)
+ }
+ EXPORT_SYMBOL_GPL(ipu_set_ic_src_mux);
+
++/*
++ * Set the source for the VDIC. Selects either from CSI[01] or memory.
++ */
++void ipu_set_vdi_src_mux(struct ipu_soc *ipu, bool csi)
++{
++	unsigned long flags;
++	u32 val;
++
++	spin_lock_irqsave(&ipu->lock, flags);
++
++	val = ipu_cm_read(ipu, IPU_FS_PROC_FLOW1);
++	val &= ~(0x3 << 28);
++	if (csi)
++		val |= (0x01 << 28);
++	ipu_cm_write(ipu, val, IPU_FS_PROC_FLOW1);
++
++	spin_unlock_irqrestore(&ipu->lock, flags);
++}
++EXPORT_SYMBOL_GPL(ipu_set_vdi_src_mux);
++
+
+ /* IDMAC Channel Linking */
+
+diff --git a/include/video/imx-ipu-v3.h b/include/video/imx-ipu-v3.h
+index 2af3f2d..1575168 100644
+--- a/include/video/imx-ipu-v3.h
++++ b/include/video/imx-ipu-v3.h
+@@ -163,6 +163,7 @@ int ipu_idmac_channel_irq(struct ipu_soc *ipu, struct ipuv3_channel *channel,
+ int ipu_get_num(struct ipu_soc *ipu);
+ void ipu_set_csi_src_mux(struct ipu_soc *ipu, int csi_id, bool mipi_csi2);
+ void ipu_set_ic_src_mux(struct ipu_soc *ipu, int csi_id, bool vdi);
++void ipu_set_vdi_src_mux(struct ipu_soc *ipu, bool csi);
+ void ipu_dump(struct ipu_soc *ipu);
+
+ /*
+--
+1.8.5.5

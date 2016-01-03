@@ -1,0 +1,45 @@
+Index: buildroot/package/python-lxml/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/python-lxml/Config.in	2015-03-12 10:26:03.191390519 +0100
+@@ -0,0 +1,8 @@
++config BR2_PACKAGE_PYTHON_LXML
++	bool "python-lxml"
++	select BR2_PACKAGE_LIBXML2
++	select BR2_PACKAGE_LIBXSLT
++	help
++	  Powerful and Pythonic XML processing library combining libxml2/libxslt with the ElementTree API.
++
++	  http://lxml.de/
+Index: buildroot/package/python-lxml/python-lxml.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/python-lxml/python-lxml.mk	2015-03-12 16:17:23.627445589 +0100
+@@ -0,0 +1,15 @@
++################################################################################
++#
++# python-lxml
++#
++################################################################################
++
++PYTHON_LXML_VERSION = 3.4.2
++PYTHON_LXML_SOURCE = lxml-$(PYTHON_LXML_VERSION).tar.gz
++PYTHON_LXML_SITE = http://pypi.python.org/packages/source/l/lxml/
++PYTHON_LXML_SETUP_TYPE = setuptools
++PYTHON_LXML_LICENSE = BSD
++PYTHON_LXML_LICENSE_FILES = LICENSE
++PYTHON_LXML_DEPENDENCIES = libxml2 libxslt host-libxslt
++
++$(eval $(python-package))
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2015-03-09 18:22:30.340112394 +0100
++++ buildroot/package/Config.in	2015-03-12 10:26:03.191390519 +0100
+@@ -562,6 +562,7 @@
+ 	source "package/python-json-schema-validator/Config.in"
+ 	source "package/python-keyring/Config.in"
+ 	source "package/python-libconfig/Config.in"
++	source "package/python-lxml/Config.in"
+ 	source "package/python-mad/Config.in"
+ 	source "package/python-markdown/Config.in"
+ 	source "package/python-markupsafe/Config.in"

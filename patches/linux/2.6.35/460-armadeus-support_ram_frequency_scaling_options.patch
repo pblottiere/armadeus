@@ -1,0 +1,187 @@
+Support RAM frequency scaling options: DDR2, mDDR and disable RAM frequency
+scaling and LCD clock management.
+
+This patch does not fix USB and ethernet issues reported with dynamic frequency
+scaling governors: conservative and ondemand. in such a case disabling RAM
+frequency scaling is the best workaroung with a very limit impact on the cpu
+power consumption with a lose of few mA (please fixme).
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+Index: linux-2.6.35.3/arch/arm/mach-mx28/clock.c
+===================================================================
+--- linux-2.6.35.3/arch/arm/mach-mx28/clock.c
++++ linux-2.6.35.3/arch/arm/mach-mx28/clock.c
+@@ -420,6 +420,8 @@ static struct clk ref_pix_clk = {
+ 	.get_rate = ref_pix_get_rate,
+ 	.set_rate = ref_clk_set_rate,
+ 	.round_rate = ref_clk_round_rate,
++	.enable = mx28_raw_enable,
++	.disable = mx28_raw_disable,
+ 	.enable_reg = CLKCTRL_BASE_ADDR + HW_CLKCTRL_FRAC1,
+ 	.enable_bits = BM_CLKCTRL_FRAC1_CLKGATEPIX,
+ 	.scale_reg = CLKCTRL_BASE_ADDR + HW_CLKCTRL_FRAC1,
+@@ -885,6 +887,7 @@ static unsigned long emi_round_rate(stru
+ 
+ static int emi_set_rate(struct clk *clk, unsigned long rate)
+ {
++#ifdef CONFIG_MXS_RAM_FREQ_SCALING
+ 	struct mxs_emi_scaling_data emi;
+ 	volatile unsigned int StateX, StateH;
+ 	volatile unsigned int APBHCTRL_Backup, APBXCTRL_Backup;
+@@ -982,6 +985,7 @@ static int emi_set_rate(struct clk *clk,
+ 		printk(KERN_ERR "couldn't set up EMI divisor\n");
+ 		return -ETIMEDOUT;
+ 	}
++#endif /* CONFIG_MXS_RAM_FREQ_SCALING */
+ 
+ 	return 0;
+ }
+@@ -1182,12 +1186,26 @@ static unsigned long lcdif_get_rate(stru
+ 
+ static int lcdif_set_rate(struct clk *clk, unsigned long rate)
+ {
+-	int reg_val;
++	unsigned long root_rate;
++	unsigned int reg, div;
++	root_rate = clk->parent->get_rate(clk->parent);
++	div = root_rate / (rate*1000);
++	if ((div == 0) || (div >= 0x2000))
++		return -EINVAL;
++
++	if (root_rate % (rate*1000)) {
++		div = mx28_get_frac_div(root_rate / 1000, rate, 0x1FFF);
++		if (((root_rate / 0x2000) * div) > (rate*1000))
++			return -EINVAL;
++	}
++
++	reg = __raw_readl(CLKCTRL_BASE_ADDR + HW_CLKCTRL_DIS_LCDIF);
++	reg &= ~(BM_CLKCTRL_DIS_LCDIF_DIV | BM_CLKCTRL_DIS_LCDIF_DIV_FRAC_EN);
++	if (root_rate % rate)
++		reg |= BM_CLKCTRL_DIS_LCDIF_DIV_FRAC_EN;
++	reg |= BF_CLKCTRL_DIS_LCDIF_DIV(div);
++	__raw_writel(reg, CLKCTRL_BASE_ADDR + HW_CLKCTRL_DIS_LCDIF);
+ 
+-	reg_val = __raw_readl(clk->scale_reg);
+-	reg_val &= ~(BM_CLKCTRL_DIS_LCDIF_DIV | BM_CLKCTRL_DIS_LCDIF_CLKGATE);
+-	reg_val |= (1 << BP_CLKCTRL_DIS_LCDIF_DIV) & BM_CLKCTRL_DIS_LCDIF_DIV;
+-	__raw_writel(reg_val, clk->scale_reg);
+ 	if (clk->busy_reg) {
+ 		int i;
+ 		for (i = 10000; i; i--)
+@@ -1197,10 +1215,6 @@ static int lcdif_set_rate(struct clk *cl
+ 			return -ETIMEDOUT;
+ 	}
+ 
+-	reg_val = __raw_readl(CLKCTRL_BASE_ADDR + HW_CLKCTRL_CLKSEQ);
+-	reg_val |= BM_CLKCTRL_CLKSEQ_BYPASS_DIS_LCDIF;
+-	__raw_writel(reg_val, CLKCTRL_BASE_ADDR + HW_CLKCTRL_CLKSEQ);
+-
+ 	return 0;
+ }
+ 
+@@ -1216,7 +1230,7 @@ static int lcdif_set_parent(struct clk *
+ 			ret = 0;
+ 		}
+ 		if (ret && (parent == &ref_pix_clk)) {
+-			__raw_writel(0 << clk->bypass_bits,
++			__raw_writel(1 << clk->bypass_bits,
+ 				clk->bypass_reg + CLR_REGISTER);
+ 			ret = 0;
+ 		}
+@@ -1227,7 +1241,7 @@ static int lcdif_set_parent(struct clk *
+ }
+ 
+ static struct clk dis_lcdif_clk = {
+-	.parent = &pll_clk[0],
++	.parent = &ref_pix_clk,
+ 	.enable = mx28_raw_enable,
+ 	.disable = mx28_raw_disable,
+ 	.scale_reg = CLKCTRL_BASE_ADDR + HW_CLKCTRL_DIS_LCDIF,
+@@ -1235,7 +1249,7 @@ static struct clk dis_lcdif_clk = {
+ 	.busy_reg = CLKCTRL_BASE_ADDR + HW_CLKCTRL_DIS_LCDIF,
+ 	.busy_bits = 29,
+ 	.enable_reg = CLKCTRL_BASE_ADDR + HW_CLKCTRL_DIS_LCDIF,
+-	.enable_bits = 31,
++	.enable_bits = BM_CLKCTRL_DIS_LCDIF_CLKGATE,
+ 	.bypass_reg = CLKCTRL_BASE_ADDR + HW_CLKCTRL_CLKSEQ,
+ 	.bypass_bits = 14,
+ 	.get_rate = lcdif_get_rate,
+@@ -1848,6 +1862,7 @@ void __init mx28_clock_init(void)
+ 
+ 	clk_enable(&cpu_clk);
+ 	clk_enable(&emi_clk);
++	lcdif_set_parent(&dis_lcdif_clk, &ref_pix_clk);
+ 
+ 	clk_en_public_h_asm_ctrl(mx28_enable_h_autoslow,
+ 		mx28_set_hbus_autoslow_flags);
+Index: linux-2.6.35.3/arch/arm/mach-mx28/emi_settings.h
+===================================================================
+--- linux-2.6.35.3/arch/arm/mach-mx28/emi_settings.h
++++ linux-2.6.35.3/arch/arm/mach-mx28/emi_settings.h
+@@ -27,6 +27,7 @@
+ #define SCALING_DATA_NEW_FREQ_OFFSET    12
+ 
+ #ifndef __ASSEMBLER__
++#ifdef CONFIG_MXS_RAM_FREQ_SCALING
+ void mxs_ram_freq_scale_end();
+ void DDR2EmiController_EDE1116_133MHz(void);
+ void DDR2EmiController_EDE1116_166MHz(void);
+@@ -35,6 +36,7 @@ void mDDREmiController_24MHz(void);
+ void mDDREmiController_133MHz(void);
+ void mDDREmiController_200MHz(void);
+ unsigned int *get_current_emidata();
++#endif /* CONFIG_MXS_RAM_FREQ_SCALING */
+ #endif
+ 
+ #endif
+Index: linux-2.6.35.3/arch/arm/plat-mxs/include/mach/clock.h
+===================================================================
+--- linux-2.6.35.3/arch/arm/plat-mxs/include/mach/clock.h
++++ linux-2.6.35.3/arch/arm/plat-mxs/include/mach/clock.h
+@@ -103,11 +103,6 @@ struct mxs_emi_scaling_data {
+ #ifdef CONFIG_MXS_RAM_FREQ_SCALING
+ extern int mxs_ram_freq_scale(struct mxs_emi_scaling_data *);
+ extern u32 mxs_ram_funcs_sz;
+-#else
+-static inline int mxs_ram_freq_scale(struct mxs_emi_scaling_data *p)
+-{
+-}
+-static u32 mxs_ram_funcs_sz;
+ #endif
+ 
+ /* Clock flags */
+Index: linux-2.6.35.3/arch/arm/plat-mxs/Kconfig
+===================================================================
+--- linux-2.6.35.3/arch/arm/plat-mxs/Kconfig
++++ linux-2.6.35.3/arch/arm/plat-mxs/Kconfig
+@@ -152,6 +152,8 @@ config MXS_AUART4_DMA_ENABLE
+ 	help
+ 	  Set application uart 4 to dma mode
+ 
++endmenu
++
+ config MXS_RAM_FREQ_SCALING
+         bool "RAM frequency scaling support"
+         depends on ARCH_MXS
+@@ -163,10 +165,10 @@ choice
+ 
+ config MXS_RAM_MDDR
+ 	bool "mDDR SDRAM"
+-	depends on ARCH_MX23
++	depends on ARCH_MXS
+ config MXS_RAM_DDR
+ 	bool "DDR SDRAM"
+-	depends on ARCH_MX23
++	depends on ARCH_MXS
+ 
+ endchoice
+ 
+@@ -174,6 +176,5 @@ config IRAM_ALLOC
+         bool
+         default y
+         select GENERIC_ALLOCATOR
+-endmenu
+ 
+ endif
+

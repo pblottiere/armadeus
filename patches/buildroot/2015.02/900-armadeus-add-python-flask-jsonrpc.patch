@@ -1,0 +1,52 @@
+Index: buildroot/package/python-flask-jsonrpc/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/python-flask-jsonrpc/Config.in	2015-03-09 17:54:22.688041090 +0100
+@@ -0,0 +1,8 @@
++config BR2_PACKAGE_PYTHON_FLASK_JSONRPC
++	bool "python-flask-jsonrpc"
++	select BR2_PACKAGE_PYTHON_FLASK
++	help
++	  Flask is a microframework for Python based on Werkzeug,
++	  Jinja 2 and good intentions.
++
++	  http://flask.pocoo.org/
+Index: buildroot/package/python-flask-jsonrpc/python-flask-jsonrpc.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/python-flask-jsonrpc/python-flask-jsonrpc.mk	2015-03-09 17:54:22.692041090 +0100
+@@ -0,0 +1,15 @@
++################################################################################
++#
++# python-flask-jsonrpc
++#
++################################################################################
++
++PYTHON_FLASK_JSONRPC_VERSION = 0.2
++PYTHON_FLASK_JSONRPC_SOURCE = Flask-JSONRPC-$(PYTHON_FLASK_JSONRPC_VERSION).tar.gz
++PYTHON_FLASK_JSONRPC_SITE = http://pypi.python.org/packages/source/F/Flask-JSONRPC
++PYTHON_FLASK_JSONRPC_SETUP_TYPE = setuptools
++PYTHON_FLASK_JSONRPC_LICENSE = BSD-3c
++PYTHON_FLASK_JSONRPC_LICENSE_FILES = LICENSE
++PYTHON_FLASK_JSONRPC_DEPENDENCIES = python-flask
++
++$(eval $(python-package))
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2015-03-09 17:48:43.200026746 +0100
++++ buildroot/package/Config.in	2015-03-09 18:20:20.000000000 +0100
+@@ -548,6 +548,7 @@
+ 	source "package/python-enum/Config.in"
+ 	source "package/python-enum34/Config.in"
+ 	source "package/python-flask/Config.in"
++	source "package/python-flask-jsonrpc/Config.in"
+ 	source "package/python-flup/Config.in"
+ 	source "package/python-gobject/Config.in"
+ 	source "package/python-httplib2/Config.in"
+Index: buildroot/package/python-flask-jsonrpc/python-flask-jsonrpc.hash
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/python-flask-jsonrpc/python-flask-jsonrpc.hash	2015-03-09 18:08:29.324076861 +0100
+@@ -0,0 +1,2 @@
++md5	f748dd75fc057e675e352421ee53e037  Flask-JSONRPC-0.2.tar.gz
++sha256	60fa63b76f191f84baa392c9f2c97e50155ce739e68f0e044d745aa85049f5e0  Flask-JSONRPC-0.2.tar.gz

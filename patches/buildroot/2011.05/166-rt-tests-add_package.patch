@@ -1,0 +1,178 @@
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/rt-tests/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/rt-tests/Config.in	2011-12-06 14:41:21.000000000 +0100
+@@ -0,0 +1,52 @@
++config BR2_PACKAGE_RT_TESTS
++	bool "rt-tests"
++	help
++	  rt-tests is a set of programs that test and measure various
++	  components of real-time kernel behavior. This package measures
++	  timer, signal, and hardware latency. It also tests the functioning
++	  of priority-inheritance mutexes.
++
++	  https://rt.wiki.kernel.org/articles/c/y/c/Cyclictest.html
++
++menu "RT tests to install"
++	depends on BR2_PACKAGE_RT_TESTS
++
++config BR2_PACKAGE_RT_TESTS_CYCLICTEST
++	bool "cyclictest"
++	default y
++
++config BR2_PACKAGE_RT_TESTS_PI_STRESS
++	bool "pi_stress"
++
++config BR2_PACKAGE_RT_TESTS_SIGNALTEST
++	bool "signaltest"
++
++config BR2_PACKAGE_RT_TESTS_HWLATDETECT
++	depends on BR2_PACKAGE_PYTHON
++	bool "hwlatdetect"
++
++config BR2_PACKAGE_RT_TESTS_RT_MIGRATE_TEST
++	bool "rt-migrate-test"
++
++config BR2_PACKAGE_RT_TESTS_PIP_STRESS
++	bool "pip_stress"
++
++config BR2_PACKAGE_RT_TESTS_PTSEMATEST
++	bool "ptsematest"
++
++config BR2_PACKAGE_RT_TESTS_SENDME
++	bool "sendme"
++
++config BR2_PACKAGE_RT_TESTS_SIGWAITTEST
++	bool "sigwaittest"
++
++config BR2_PACKAGE_RT_TESTS_SVSEMATEST
++	bool "svsematest"
++
++config BR2_PACKAGE_RT_TESTS_PMQTEST
++	bool "pmqtest"
++
++config BR2_PACKAGE_RT_TESTS_HACKBENCH
++	bool "hackbench"
++
++endmenu
+Index: buildroot/package/rt-tests/rt-tests.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/rt-tests/rt-tests.mk	2011-12-06 14:41:21.000000000 +0100
+@@ -0,0 +1,81 @@
++#############################################################
++#
++# rt-tests
++#
++#############################################################
++
++# v0.82:
++RT_TESTS_VERSION = e1fab5b28076ec1f61601498f393c08a0cb817cd
++RT_TESTS_SITE = git://git.pengutronix.de/git/ukl/rt-tests.git
++RT_TEST_CFLAGS = $(TARGET_CFLAGS) -D_GNU_SOURCE -Wall -Wno-nonnull \
++			-Isrc/include
++
++ifeq ($(BR2_PACKAGE_RT_TESTS_CYCLICTEST),y)
++RT_TESTS_BINARIES += cyclictest
++endif
++
++ifeq ($(BR2_PACKAGE_RT_TESTS_PI_STRESS),y)
++RT_TESTS_BINARIES += pi_stress
++endif
++
++ifeq ($(BR2_PACKAGE_RT_TESTS_SIGNALTEST),y)
++RT_TESTS_BINARIES += signaltest
++endif
++
++ifeq ($(BR2_PACKAGE_RT_TESTS_HWLATDETECT),y)
++RT_TESTS_BINARIES += hwlatdetect
++endif
++
++ifeq ($(BR2_PACKAGE_RT_TESTS_RT_MIGRATE_TEST),y)
++RT_TESTS_BINARIES += rt-migrate-test
++endif
++
++ifeq ($(BR2_PACKAGE_RT_TESTS_PIP_STRESS),y)
++RT_TESTS_BINARIES += pip_stress
++endif
++
++ifeq ($(BR2_PACKAGE_RT_TESTS_PTSEMATEST),y)
++RT_TESTS_BINARIES += ptsematest
++endif
++
++ifeq ($(BR2_PACKAGE_RT_TESTS_SENDME),y)
++RT_TESTS_BINARIES += sendme
++endif
++
++ifeq ($(BR2_PACKAGE_RT_TESTS_SIGWAITTEST),y)
++RT_TESTS_BINARIES += sigwaittest
++endif
++
++ifeq ($(BR2_PACKAGE_RT_TESTS_SVSEMATEST),y)
++RT_TESTS_BINARIES += svsematest
++endif
++
++ifeq ($(BR2_PACKAGE_RT_TESTS_PMQTEST),y)
++RT_TESTS_BINARIES += pmqtest
++endif
++
++ifeq ($(BR2_PACKAGE_RT_TESTS_HACKBENCH),y)
++RT_TESTS_BINARIES += hackbench
++endif
++
++define RT_TESTS_BUILD_CMDS
++	$(MAKE) -C $(@D) CC="$(TARGET_CC)" CFLAGS="$(RT_TEST_CFLAGS)" NUMA=0
++endef
++
++define RT_TESTS_INSTALL_TARGET_CMDS
++	for tool in $(RT_TESTS_BINARIES); do \
++		$(INSTALL) -D $(@D)/$$tool $(TARGET_DIR)/bin/$$tool ; \
++	done
++endef
++
++define RT_TESTS_UNINSTALL_TARGET_CMDS
++	for tool in $(RT_TESTS_BINARIES); do \
++		rm -f $(TARGET_DIR)/bin/$$tool ; \
++	done
++endef
++
++define RT_TESTS_CLEAN_CMDS
++	$(MAKE) -C $(@D) clean
++endef
++
++$(eval $(call GENTARGETS,package,rt-tests))
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2011-12-06 14:41:21.000000000 +0100
++++ buildroot/package/Config.in	2011-12-06 14:41:21.000000000 +0100
+@@ -31,6 +31,7 @@
+ source "package/memstat/Config.in"
+ source "package/netperf/Config.in"
+ source "package/oprofile/Config.in"
++source "package/rt-tests/Config.in"
+ source "package/strace/Config.in"
+ source "package/whetstone/Config.in"
+ source "package/valgrind/Config.in"
+Index: buildroot/package/rt-tests/rt-tests-fix-non-numa-build.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/rt-tests/rt-tests-fix-non-numa-build.patch	2011-12-06 14:46:04.000000000 +0100
+@@ -0,0 +1,15 @@
++Makes "NUMA" Makefile variable overloadable.
++
++Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
++
++--- a/Makefile	2011-09-21 16:37:38.000000000 +0200
+++++ b/Makefile	2011-12-02 12:14:18.000000000 +0100
++@@ -26,7 +26,7 @@
++ 	CFLAGS	+= -O0 -g
++ endif
++ 
++-ifdef NUMA
+++ifeq ($(NUMA),1)
++ 	CFLAGS += -DNUMA
++ 	NUMA_LIBS = -lnuma
++ endif

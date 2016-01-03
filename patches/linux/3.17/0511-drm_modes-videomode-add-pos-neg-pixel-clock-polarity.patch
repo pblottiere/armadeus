@@ -1,0 +1,44 @@
+From 20008681bca50b680be33e390065e44fd28a8c23 Mon Sep 17 00:00:00 2001
+From: Steve Longerbeam <steve_longerbeam@mentor.com>
+Date: Tue, 1 Apr 2014 18:08:40 -0700
+Subject: [PATCH 1/2] drm_modes: videomode: add pos/neg pixel clock polarity
+ flag
+
+Signed-off-by: Steve Longerbeam <steve_longerbeam@mentor.com>
+---
+ drivers/gpu/drm/drm_modes.c | 4 ++++
+ include/uapi/drm/drm_mode.h | 4 ++++
+ 2 files changed, 8 insertions(+)
+
+diff --git a/drivers/gpu/drm/drm_modes.c b/drivers/gpu/drm/drm_modes.c
+index d1b7d20..5016099 100644
+--- a/drivers/gpu/drm/drm_modes.c
++++ b/drivers/gpu/drm/drm_modes.c
+@@ -611,6 +611,10 @@ void drm_display_mode_from_videomode(const struct videomode *vm,
+		dmode->flags |= DRM_MODE_FLAG_DBLSCAN;
+	if (vm->flags & DISPLAY_FLAGS_DOUBLECLK)
+		dmode->flags |= DRM_MODE_FLAG_DBLCLK;
++	if (vm->flags & DISPLAY_FLAGS_PIXDATA_POSEDGE)
++		dmode->flags |= DRM_MODE_FLAG_PCLK;
++	else if (vm->flags & DISPLAY_FLAGS_PIXDATA_NEGEDGE)
++		dmode->flags |= DRM_MODE_FLAG_NCLK;
+	drm_mode_set_name(dmode);
+ }
+ EXPORT_SYMBOL_GPL(drm_display_mode_from_videomode);
+diff --git a/include/uapi/drm/drm_mode.h b/include/uapi/drm/drm_mode.h
+index 8d98cd0..d5d045c 100644
+--- a/include/uapi/drm/drm_mode.h
++++ b/include/uapi/drm/drm_mode.h
+@@ -72,6 +72,10 @@
+ #define  DRM_MODE_FLAG_3D_L_DEPTH_GFX_GFX_DEPTH	(6<<14)
+ #define  DRM_MODE_FLAG_3D_TOP_AND_BOTTOM	(7<<14)
+ #define  DRM_MODE_FLAG_3D_SIDE_BY_SIDE_HALF	(8<<14)
++/* drive data on rising pixclk edge */
++#define DRM_MODE_FLAG_PCLK			(1<<19)
++/* drive data on falling pixclk edge */
++#define DRM_MODE_FLAG_NCLK			(1<<20)
+
+
+ /* DPMS flags */
+--
+1.8.5.5

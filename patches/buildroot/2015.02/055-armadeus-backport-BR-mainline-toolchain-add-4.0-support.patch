@@ -1,0 +1,32 @@
+From e714ee9412ea873af68a48edbe60f48029728186 Mon Sep 17 00:00:00 2001
+From: Gustavo Zacarias <gustavo@zacarias.com.ar>
+Date: Mon, 13 Apr 2015 10:00:23 -0300
+Subject: [PATCH] toolchain: add 4.0.x choice for headers
+
+Signed-off-by: Gustavo Zacarias <gustavo@zacarias.com.ar>
+Signed-off-by: Thomas Petazzoni <thomas.petazzoni@free-electrons.com>
+---
+ toolchain/toolchain-common.in          |    5 +++++
+ toolchain/toolchain-external/Config.in |    4 ++++
+ 2 files changed, 9 insertions(+), 0 deletions(-)
+
+Index: b/toolchain/toolchain-common.in
+===================================================================
+--- a/toolchain/toolchain-common.in
++++ b/toolchain/toolchain-common.in
+@@ -225,10 +225,15 @@ config BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_
+ 	bool
+ 	select BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_18
+ 
++config BR2_TOOLCHAIN_HEADERS_AT_LEAST_4_0
++	bool
++	select BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_19
++
+ # This order guarantees that the highest version is set, as kconfig
+ # stops affecting a value on the first matching default.
+ config BR2_TOOLCHAIN_HEADERS_AT_LEAST
+ 	string
++	default "4.0"  if BR2_TOOLCHAIN_HEADERS_AT_LEAST_4_0
+ 	default "3.19" if BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_19
+ 	default "3.18" if BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_18
+ 	default "3.17" if BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_17

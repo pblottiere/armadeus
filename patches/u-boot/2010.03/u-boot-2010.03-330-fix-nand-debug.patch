@@ -1,0 +1,13 @@
+Index: u-boot-2010.03/drivers/mtd/nand/nand_bbt.c
+===================================================================
+--- u-boot-2010.03.orig/drivers/mtd/nand/nand_bbt.c	2011-01-05 18:08:52.000000000 +0100
++++ u-boot-2010.03/drivers/mtd/nand/nand_bbt.c	2011-01-05 18:10:29.000000000 +0100
+@@ -529,7 +529,7 @@
+ 		if (td->pages[i] == -1)
+ 			printk(KERN_WARNING "Bad block table not found for chip %d\n", i);
+ 		else
+-			MTDDEBUG(MTD_DEBUG_LEVEL1 "Bad block table found at page %d, version 0x%02X\n", td->pages[i],
++			MTDDEBUG(MTD_DEBUG_LEVEL1, "Bad block table found at page %d, version 0x%02X\n", td->pages[i],
+ 			       td->version[i]);
+ 	}
+ 	return 0;

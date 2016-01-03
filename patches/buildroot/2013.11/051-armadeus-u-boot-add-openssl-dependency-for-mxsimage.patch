@@ -1,0 +1,33 @@
+Otherwise recent U-Boot version compilation for i.MX28 fails with:
+tools/mxsimage.c:18:25: fatal error: openssl/evp.h: No such file or directory
+ #include <openssl/evp.h>
+
+Another solution is to install openssl-dev package on Host but I think u-boot
+doesn't have to look after Host installed devt libraries.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/boot/uboot/uboot.mk
+===================================================================
+--- buildroot.orig/boot/uboot/uboot.mk	2015-03-16 17:16:57.181593038 +0100
++++ buildroot/boot/uboot/uboot.mk	2015-03-16 17:27:42.000000000 +0100
+@@ -48,7 +48,7 @@
+ else ifeq ($(BR2_TARGET_UBOOT_FORMAT_SB),y)
+ UBOOT_BIN          = u-boot.sb
+ UBOOT_MAKE_TARGET  = $(UBOOT_BIN)
+-UBOOT_DEPENDENCIES += host-elftosb
++UBOOT_DEPENDENCIES += host-elftosb host-openssl
+ else ifeq ($(BR2_TARGET_UBOOT_FORMAT_CUSTOM),y)
+ UBOOT_BIN          = $(call qstrip,$(BR2_TARGET_UBOOT_FORMAT_CUSTOM_NAME))
+ else
+@@ -61,7 +61,9 @@
+ UBOOT_CONFIGURE_OPTS += CONFIG_NOSOFTFLOAT=1
+ UBOOT_MAKE_OPTS += \
+ 	CROSS_COMPILE="$(CCACHE) $(TARGET_CROSS)" \
+-	ARCH=$(UBOOT_ARCH)
++	ARCH=$(UBOOT_ARCH) \
++	HOSTCFLAGS="$(HOST_CFLAGS)" \
++	HOSTLDFLAGS="$(HOST_LDFLAGS)"
+ 
+ # Helper function to fill the U-Boot config.h file.
+ # Argument 1: option name

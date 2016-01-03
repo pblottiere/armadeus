@@ -1,0 +1,32 @@
+From 5948d826c99ff1acb617f5c0f992a7e0ffe50831 Mon Sep 17 00:00:00 2001
+From: Philippe Reynes <tremyfr@yahoo.fr>
+Date: Mon, 20 May 2013 10:40:19 +0200
+Subject: [PATCH] apf27: move ethernet to aipi2 on dts
+
+In the file imx27.dtsi, aipi was splitted in two
+aipi (aipi1 and aipi2), and ethernet was moved to
+aipi2. So we just update apf27 dts to use the same
+declaration.
+
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+---
+ arch/arm/boot/dts/imx27-apf27.dts |    2 ++
+ 1 files changed, 2 insertions(+), 0 deletions(-)
+
+diff --git a/arch/arm/boot/dts/imx27-apf27.dts b/arch/arm/boot/dts/imx27-apf27.dts
+index c0327c0..04087f2 100644
+--- a/arch/arm/boot/dts/imx27-apf27.dts
++++ b/arch/arm/boot/dts/imx27-apf27.dts
+@@ -38,7 +38,9 @@
+ 			serial@1000a000 {
+ 				status = "okay";
+ 			};
++		};
+ 
++		aipi@10020000 {
+ 			ethernet@1002b000 {
+ 				status = "okay";
+ 			};
+-- 
+1.7.4.4
+

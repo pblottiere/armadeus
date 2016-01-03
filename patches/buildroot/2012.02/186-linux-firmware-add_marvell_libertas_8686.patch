@@ -1,0 +1,101 @@
+Add Marvell Libertas 88W8686 to linux-firmware.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/linux-firmware/Config.in
+===================================================================
+--- buildroot.orig/package/linux-firmware/Config.in	2012-02-29 23:19:47.000000000 +0100
++++ buildroot/package/linux-firmware/Config.in	2012-06-19 19:05:58.000000000 +0200
+@@ -8,6 +8,37 @@
+ 
+ if BR2_PACKAGE_LINUX_FIRMWARE
+ 
++menu "Marvell"
++
++config BR2_PACKAGE_LINUX_FIRMWARE_88W8686
++	bool "88W8686 (Libertas)"
++
++choice
++	prompt "Firmware version"
++	default BR2_PACKAGE_LINUX_FIRMWARE_88W8686_V9
++	depends on BR2_PACKAGE_LINUX_FIRMWARE_88W8686
++	help
++	  SDIO firmware is available in v8 or v9 version.
++
++config BR2_PACKAGE_LINUX_FIRMWARE_88W8686_V8
++	bool "v8"
++
++config BR2_PACKAGE_LINUX_FIRMWARE_88W8686_V9
++	bool "v9"
++
++endchoice
++
++config BR2_PACKAGE_LINUX_FIRMWARE_88W8686_SDIO
++	bool "SDIO"
++	default y
++	depends on BR2_PACKAGE_LINUX_FIRMWARE_88W8686
++
++config BR2_PACKAGE_LINUX_FIRMWARE_88W8686_GSPI
++	bool "GSPI"
++	depends on BR2_PACKAGE_LINUX_FIRMWARE_88W8686
++
++endmenu
++
+ menu "Ralink"
+ 
+ config BR2_PACKAGE_LINUX_FIRMWARE_RALINK_RT61
+Index: buildroot/package/linux-firmware/linux-firmware.mk
+===================================================================
+--- buildroot.orig/package/linux-firmware/linux-firmware.mk	2012-02-29 23:19:47.000000000 +0100
++++ buildroot/package/linux-firmware/linux-firmware.mk	2012-06-19 19:14:45.000000000 +0200
+@@ -3,10 +3,28 @@
+ # linux-firmware
+ #
+ #############################################################
++ifeq ($(BR2_PACKAGE_LINUX_FIRMWARE_88W8686_SDIO),y)
++LINUX_FIRMWARE_VERSION = af5222c5ded5d944267acfbd001571409bea7eeb
++else
+ LINUX_FIRMWARE_VERSION = 8ccddee5ee23a0e192da38d98bcbbbb41bf385dd
++endif
+ LINUX_FIRMWARE_SITE = git://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git
+ LINUX_FIRMWARE_SITE_METHOD = git
+ 
++# Libertas 88W8686
++ifeq ($(strip $(BR2_PACKAGE_LINUX_FIRMWARE_88W8686_V8)),y)
++LINUX_FIRMWARE_88W8686_VERSION = v8
++else
++LINUX_FIRMWARE_88W8686_VERSION = v9
++endif
++LINUX_FIRMWARE_FILES_$(BR2_PACKAGE_LINUX_FIRMWARE_88W8686_SDIO) += \
++	libertas/sd8686_$(LINUX_FIRMWARE_88W8686_VERSION)_helper.bin \
++	libertas/sd8686_$(LINUX_FIRMWARE_88W8686_VERSION).bin
++
++LINUX_FIRMWARE_FILES_$(BR2_PACKAGE_LINUX_FIRMWARE_88W8686_GSPI) += \
++	libertas/gspi8686_$(LINUX_FIRMWARE_88W8686_VERSION)_helper.bin \
++	libertas/gspi8686_$(LINUX_FIRMWARE_88W8686_VERSION).bin
++
+ # rt2501/rt61
+ LINUX_FIRMWARE_FILES_$(BR2_PACKAGE_LINUX_FIRMWARE_RALINK_RT61) += \
+ 	rt2561.bin rt2561s.bin rt2661.bin LICENCE.ralink-firmware.txt
+@@ -45,6 +63,13 @@
+ 	ti-connectivity/TIInit_7.2.31.bts 			\
+ 	LICENCE.ti-connectivity
+ 
++ifeq ($(BR2_PACKAGE_LINUX_FIRMWARE_88W8686_SDIO),y)
++define ARMADEUS_LIBERTAS_OLD_KERNELS_COMPATIBILITY
++	cd $(TARGET_DIR)/lib/firmware; \
++		ln -sf ./libertas/sd8686_$(LINUX_FIRMWARE_88W8686_VERSION)_helper.bin ./sd8686_helper.bin ; \
++		ln -sf ./libertas/sd8686_$(LINUX_FIRMWARE_88W8686_VERSION).bin ./sd8686.bin
++endef
++endif
+ 
+ ifneq ($(LINUX_FIRMWARE_FILES_y),)
+ 
+@@ -52,6 +77,7 @@
+ 	mkdir -p $(TARGET_DIR)/lib/firmware
+ 	$(TAR) c -C $(@D) $(LINUX_FIRMWARE_FILES_y) | \
+ 		$(TAR) x -C $(TARGET_DIR)/lib/firmware
++	$(ARMADEUS_LIBERTAS_OLD_KERNELS_COMPATIBILITY)
+ endef
+ 
+ endif

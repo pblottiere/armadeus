@@ -1,0 +1,1279 @@
+Add HMS Anybus module support
+
+Signed-off-by: Kevin JOLY <joly.kevin25@gmail.com>
+---
+
+Index: linux-2.6.38.1/drivers/net/Kconfig
+===================================================================
+--- linux-2.6.38.1.orig/drivers/net/Kconfig	2011-03-23 21:04:47.000000000 +0100
++++ linux-2.6.38.1/drivers/net/Kconfig	2011-07-27 17:57:17.822242001 +0200
+@@ -3422,4 +3422,12 @@
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called vmxnet3.
+ 
++config ANYBUS_INTERFACE
++	tristate "HMS Anybus driver"
++	help
++	  Driver for the HMS Anybus module.
++
++	  To compile this driver as a module, choose M here. The module
++	  will be called anybus_interface.
++
+ endif # NETDEVICES
+Index: linux-2.6.38.1/drivers/net/Makefile
+===================================================================
+--- linux-2.6.38.1.orig/drivers/net/Makefile	2011-03-23 21:04:47.000000000 +0100
++++ linux-2.6.38.1/drivers/net/Makefile	2011-07-27 17:57:17.826242000 +0200
+@@ -242,6 +242,7 @@
+ obj-$(CONFIG_R8169) += r8169.o
+ obj-$(CONFIG_AMD8111_ETH) += amd8111e.o
+ obj-$(CONFIG_IBMVETH) += ibmveth.o
++obj-$(CONFIG_ANYBUS_INTERFACE) += anybus_interface.o
+ obj-$(CONFIG_S2IO) += s2io.o
+ obj-$(CONFIG_VXGE) += vxge/
+ obj-$(CONFIG_MYRI10GE) += myri10ge/
+Index: linux-2.6.38.1/drivers/net/anybus_interface.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.38.1/drivers/net/anybus_interface.c	2011-07-27 18:25:21.902241997 +0200
+@@ -0,0 +1,1178 @@
++/*
++ * HMS Anybus module driver
++ *
++ * (C) Copyright 2011 - Armadeus Systems <support@armadeus.com>
++ * Author: Kevin JOLY joly.kevin25@gmail.com
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2, or (at your option)
++ * any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
++ */
++
++#include <linux/platform_device.h>
++#include <linux/io.h>
++#include <linux/netdevice.h>
++#include <linux/if_arp.h>
++#include <linux/delay.h>
++#include <linux/etherdevice.h>
++#include <linux/gpio.h>
++#include <linux/cdev.h>
++#include <linux/fs.h>
++#include <linux/string.h>
++#include <linux/poll.h>
++
++
++#include <net/anybus_interface.h>
++
++/* Interface registers */
++#define IFRG_ID 0x00
++#define IFRG_CTRL 0x02
++#define IFRG_ADDR 0x04
++#define IFRG_DATA 0x06
++
++/* Interface control register values */
++#define IFRG_CTRL_TRANSMIT 0x02
++#define IFRG_CTRL_RECEIVE 0x04
++#define IFRG_CTRL_CLOCK_CYCLES(x) (x << 3)
++#define IFRG_CTRL_TRANSMISSION_ERROR 0x01
++
++/* Anybus registers */
++#define INPUT_AREA_START 0x000
++#define INPUT_AREA_END 0x1FF
++#define OUTPUT_AREA_START 0x200
++#define OUTPUT_AREA_END 0x3FF
++#define FBCTRL_AREA_START 0x640
++#define FBCTRL_AREA_END 0x7FD
++#define MB_IN_ID 0x400
++#define MB_IN_MSG_INFO 0x402
++#define MB_IN_COM 0x404
++#define MB_IN_DATA_SIZE 0x406
++#define MB_IN_EXTENDED 0x410
++#define MB_IN_DATA 0x420
++#define MB_OUT_ID 0x520
++#define MB_OUT_MSG_INFO 0x522
++#define MB_OUT_COM 0x524
++#define MB_OUT_DATA_SIZE 0x526
++#define MB_OUT_EXTENDED 0x530
++#define MB_OUT_DATA 0x540
++#define APPLICATION_VERSION_MSB 0x7C2
++#define APPLICATION_VERSION_LSB 0x7C3
++#define SERIAL_NUMBER0 0x7C6
++#define SERIAL_NUMBER1 0x7C7
++#define SERIAL_NUMBER2 0x7C8
++#define SERIAL_NUMBER3 0x7C9
++#define FIELDBUS_TYPE_MSB 0x7CC
++#define FIELDBUS_TYPE_LSB 0x7CD
++#define EVENT_NOTIFICATION_CAUSE 0x7ED
++#define EVENT_NOTIFICATION_SOURCE 0x7EF
++#define APPLICATION_INDICATION_REG 0x7FE
++#define ANYBUS_INDICATION_REG 0x7FF
++
++/* Anybus indication register values */
++#define AB_MIN 0x80
++#define AB_MOUT 0x40
++#define AB_EVENT 0x20
++#define AB_INIT 0x10
++#define AB_IN 0x04
++#define AB_OUT 0x02
++#define AB_FBCTRL 0x01
++
++/* Application indication register values */
++#define AP_MIN 0x80
++#define AP_MOUT 0x40
++#define AP_EVENT 0x20
++#define ACTION_BIT 0x10
++#define LOCK_BIT 0x08
++#define AP_IN 0x04
++#define AP_OUT 0x02
++#define AP_FBCTRL 0x01
++#define ACTION_REQ 0x100
++#define ACTION_REL 0x200
++#define LOCK 0x400
++#define UNLOCK 0x800
++
++/* Event notification values */
++#define EN_DC 0x01
++#define EN_FBOF 0x02
++#define EN_FBON 0x04
++#define EN_RST 0x08
++
++static DECLARE_WAIT_QUEUE_HEAD(anybus_read_wait_queue);
++
++unsigned short anybus_indication_reg_status;
++bool sending_mailbox_message;
++bool received_mailbox_message;
++bool module_initialized;
++bool anybus_available;
++
++struct platform_device *platform_dev;
++
++struct anybus_private {
++	void __iomem *reg_base;
++	int gpio_reset;
++	int irq_flags;
++	struct cdev *cdev;
++	struct class *anybus_class;
++};
++
++static u16 anybus_interface_read(struct anybus_private *anybus_priv, int reg)
++{
++	return ioread16(anybus_priv->reg_base + reg);
++}
++
++void anybus_interface_write(struct anybus_private *anybus_priv, u16 value,
++								       int reg)
++{
++	iowrite16(value, anybus_priv->reg_base + reg);
++}
++
++static int anybus_reg_read(struct anybus_private *anybus_priv, int reg)
++{
++	int i;
++
++	for (i = 0 ; i < 3 ; i++) {
++		anybus_interface_write(anybus_priv, reg, IFRG_ADDR);
++		anybus_interface_write(anybus_priv,
++		     IFRG_CTRL_CLOCK_CYCLES(4) | IFRG_CTRL_RECEIVE, IFRG_CTRL);
++
++		if (!(anybus_interface_read(anybus_priv,
++				  IFRG_CTRL) & IFRG_CTRL_TRANSMISSION_ERROR)) {
++			return anybus_interface_read(anybus_priv, IFRG_DATA);
++		}
++	}
++
++	return -EIO;
++}
++
++static int anybus_reg_write(struct anybus_private *anybus_priv, int reg,
++							  unsigned short value)
++{
++	int i;
++
++	for (i = 0 ; i < 3 ; i++) {
++		anybus_interface_write(anybus_priv, reg, IFRG_ADDR);
++		anybus_interface_write(anybus_priv, value, IFRG_DATA);
++		anybus_interface_write(anybus_priv,
++		    IFRG_CTRL_CLOCK_CYCLES(4) | IFRG_CTRL_TRANSMIT, IFRG_CTRL);
++
++		if (!(anybus_interface_read(anybus_priv,
++				 IFRG_CTRL) & IFRG_CTRL_TRANSMISSION_ERROR)) {
++			return 0;
++		}
++	}
++
++	return -EIO;
++}
++
++int application_indication_register(struct anybus_private *anybus_priv,
++							  unsigned short value)
++{
++	unsigned short register_status;
++	int ret;
++
++	ret = anybus_reg_read(anybus_priv, APPLICATION_INDICATION_REG);
++
++	if (ret < 0) {
++		dev_err(&platform_dev->dev, "Unable to read on anybus module\n");
++		return -EIO;
++	}
++
++	register_status = ret;
++
++	if (value & AP_MIN)
++		register_status ^= AP_MIN;
++	if (value & AP_MOUT)
++		register_status ^= AP_MOUT;
++	if (value & AP_EVENT)
++		register_status ^= AP_EVENT;
++	if (value & ACTION_REQ)
++		register_status |= ACTION_BIT;
++	if (value & ACTION_REL)
++		register_status &= ~ACTION_BIT;
++	if (value & LOCK)
++		register_status |= LOCK_BIT;
++	if (value & UNLOCK)
++		register_status &= ~LOCK_BIT;
++	if (value & AP_IN)
++		register_status |= AP_IN;
++	else
++		register_status &= ~AP_IN;
++	if (value & AP_OUT)
++		register_status |= AP_OUT;
++	else
++		register_status &= ~AP_OUT;
++	if (value & AP_FBCTRL)
++		register_status |= AP_FBCTRL;
++	else
++		register_status &= ~AP_FBCTRL;
++
++	if (anybus_reg_write(anybus_priv, APPLICATION_INDICATION_REG,
++							register_status) < 0) {
++		dev_err(&platform_dev->dev,
++					"Unable to write on anybus module\n");
++		return -EIO;
++	}
++
++	return 0;
++}
++
++void anybus_area_allocation(struct anybus_private *anybus_priv,
++			       unsigned short area, unsigned short access_type)
++{
++
++	application_indication_register(anybus_priv,
++					     area | access_type | ACTION_REQ);
++
++	while (!(anybus_indication_reg_status & area)) /* TODO : Timeout */
++		cpu_relax();
++
++	return;
++}
++
++void anybus_area_deallocation(struct anybus_private *anybus_priv,
++			       unsigned short area, unsigned short access_type)
++{
++
++	application_indication_register(anybus_priv,
++					     area | access_type | ACTION_REL);
++
++	while (anybus_indication_reg_status & area)
++		cpu_relax();
++
++	return;
++}
++
++int anybus_receive(struct net_device *dev)
++{
++	int i, ret;
++	struct anybus_frame frame;
++	struct anybus_private *anybus_priv = netdev_priv(dev);
++	struct sk_buff *skb;
++
++	frame.len = OUTPUT_AREA_END - OUTPUT_AREA_START;
++	frame.reg = 0;
++
++	application_indication_register(anybus_priv,
++						  AB_OUT | LOCK | ACTION_REQ);
++
++	while (!(anybus_indication_reg_status & AB_OUT)) {
++
++		ret = anybus_reg_read(anybus_priv, ANYBUS_INDICATION_REG);
++
++		if (ret < 0) {
++			dev_err(&platform_dev->dev, "Communication error.\n");
++			return -EIO;
++		}
++
++		anybus_indication_reg_status = ret;
++		cpu_relax();
++	}
++
++	for (i = 0 ; i <= (OUTPUT_AREA_END - OUTPUT_AREA_START) / 2; i++) {
++		ret = anybus_reg_read(anybus_priv,
++					      i * 2 + OUTPUT_AREA_START);
++		if (ret < 0) {
++			dev->stats.rx_errors++;
++			dev->stats.rx_dropped++;
++			return -EAGAIN;
++		}
++
++		frame.data[i] = ret << 8;
++
++		dev->stats.rx_bytes++;
++
++		ret = anybus_reg_read(anybus_priv,
++						i * 2 + OUTPUT_AREA_START + 1);
++
++		if (ret < 0) {
++			dev->stats.rx_errors++;
++			dev->stats.rx_dropped++;
++			return -EAGAIN;
++		}
++		frame.data[i] |= ret;
++
++
++		dev->stats.rx_bytes++;
++	}
++
++	application_indication_register(anybus_priv,
++						AB_OUT | UNLOCK | ACTION_REL);
++	while (anybus_indication_reg_status & AB_OUT) {
++
++		ret = anybus_reg_read(anybus_priv, ANYBUS_INDICATION_REG);
++
++		if (ret < 0) {
++			dev_err(&platform_dev->dev, "Communication error.\n");
++			return -EIO;
++		}
++
++		anybus_indication_reg_status = ret;
++		cpu_relax();
++	}
++
++	skb = dev_alloc_skb(sizeof(frame) + 2);
++	if (!skb) {
++		dev_err(&platform_dev->dev, "Low memory space available.\n");
++		dev->stats.rx_dropped++;
++	}
++
++	memcpy(skb_put(skb, sizeof(frame)), &frame, sizeof(frame));
++
++	skb->dev = dev;
++	skb->protocol = IPPROTO_UDP;
++skb->pkt_type = PACKET_BROADCAST;
++	skb->ip_summed = CHECKSUM_UNNECESSARY;
++
++	dev->stats.rx_packets++;
++
++	if (netif_rx(skb))
++		dev->stats.rx_dropped++;
++	else
++		dev->stats.rx_packets++;
++
++	return 0;
++}
++
++irqreturn_t anybus_interrupt(int irq, void *dev_id)
++{
++	struct anybus_private *anybus_priv = netdev_priv(dev_id);
++	unsigned short application_indication_reg;
++	int ret;
++
++	ret = anybus_reg_read(anybus_priv, ANYBUS_INDICATION_REG);
++
++	if (ret < 0) {
++		dev_err(&platform_dev->dev, "Communication error.\n");
++		return IRQ_NONE;
++	}
++
++	anybus_indication_reg_status = ret;
++
++	anybus_available = 1;
++
++	ret = anybus_reg_read(anybus_priv, APPLICATION_INDICATION_REG);
++
++	if (ret < 0) {
++			dev_err(&platform_dev->dev, "Communication error.\n");
++		return IRQ_NONE;
++	}
++
++	application_indication_reg = ret;
++
++	if (!((anybus_indication_reg_status ^ application_indication_reg)
++								  & AB_MIN)) {
++		sending_mailbox_message = 0;
++	}
++
++	if ((anybus_indication_reg_status ^ application_indication_reg)
++								  & AB_MOUT) {
++		received_mailbox_message = 1;
++		wake_up_interruptible(&anybus_read_wait_queue);
++	}
++
++	if ((anybus_indication_reg_status ^ application_indication_reg)
++								 & AB_EVENT) {
++
++		application_indication_register(anybus_priv,
++					       AB_FBCTRL | LOCK | ACTION_REQ);
++
++		while (!(anybus_indication_reg_status & AB_FBCTRL)) {
++
++			ret = anybus_reg_read(anybus_priv,
++							 ANYBUS_INDICATION_REG);
++
++			if (ret < 0) {
++				dev_err(&platform_dev->dev,
++						    "Communication error.\n");
++				return IRQ_NONE;
++			}
++
++			anybus_indication_reg_status = ret;
++			cpu_relax();
++		}
++
++		ret = anybus_reg_read(anybus_priv, EVENT_NOTIFICATION_CAUSE);
++
++		if (ret < 0) {
++			dev_err(&platform_dev->dev,
++			    "Unable to read in the Anybus module register\n");
++			return IRQ_NONE;
++		}
++
++		if (anybus_reg_write(anybus_priv, EVENT_NOTIFICATION_CAUSE,
++								  0x00) < 0) {
++			dev_err(&platform_dev->dev,
++			    "Unable to read in the Anybus module register\n");
++			return IRQ_NONE;
++		}
++
++		if (ret & EN_DC)
++			anybus_receive((struct net_device *)dev_id);
++
++		application_indication_register(anybus_priv,
++					     AB_FBCTRL | UNLOCK | ACTION_REL);
++		while (anybus_indication_reg_status & AB_FBCTRL) {
++
++			ret = anybus_reg_read(anybus_priv,
++						       ANYBUS_INDICATION_REG);
++
++			if (ret < 0) {
++				dev_err(&platform_dev->dev,
++						    "Communication error.\n");
++				return IRQ_NONE;
++			}
++
++			anybus_indication_reg_status = ret;
++			cpu_relax();
++		}
++
++		ret = anybus_reg_read(anybus_priv, ANYBUS_INDICATION_REG);
++
++		if (ret < 0) {
++			dev_err(&platform_dev->dev, "Communication error.\n");
++			return IRQ_NONE;
++		}
++
++		if (application_indication_register(anybus_priv, AP_EVENT)) {
++			dev_err(&platform_dev->dev, "Communication error.\n");
++			return IRQ_NONE;
++		}
++	}
++
++	return IRQ_HANDLED;
++}
++
++int write_mailbox_message(struct anybus_private *anybus_priv,
++						    struct mailbox_msg message)
++{
++	int i;
++
++	if (message.data_size > ANYBUS_MAILBOX_DATA_LEN)
++		message.data_size = ANYBUS_MAILBOX_DATA_LEN;
++
++	sending_mailbox_message = 1;
++
++	anybus_reg_write(anybus_priv, MB_IN_ID, message.id >> 8);
++	anybus_reg_write(anybus_priv, MB_IN_ID + 1, message.id & 0xFF);
++
++	anybus_reg_write(anybus_priv, MB_IN_MSG_INFO,
++						 message.msg_information >> 8);
++	anybus_reg_write(anybus_priv, MB_IN_MSG_INFO + 1,
++					       message.msg_information & 0xFF);
++
++	anybus_reg_write(anybus_priv, MB_IN_COM, message.command_number >> 8);
++	anybus_reg_write(anybus_priv, MB_IN_COM + 1,
++						message.command_number & 0xFF);
++
++	anybus_reg_write(anybus_priv, MB_IN_DATA_SIZE, message.data_size >> 8);
++	anybus_reg_write(anybus_priv, MB_IN_DATA_SIZE + 1,
++						     message.data_size & 0xFF);
++
++	anybus_reg_write(anybus_priv, 0x0408, 0x00);
++	anybus_reg_write(anybus_priv, 0x0409, 0x01);
++
++	anybus_reg_write(anybus_priv, 0x040a, 0x00);
++	anybus_reg_write(anybus_priv, 0x040b, 0x01);
++
++	anybus_reg_write(anybus_priv, 0x040c, 0x00);
++	anybus_reg_write(anybus_priv, 0x040d, 0x00);
++
++	anybus_reg_write(anybus_priv, 0x040e, 0x00);
++	anybus_reg_write(anybus_priv, 0x040f, 0x00);
++
++	for (i = 0 ; i < 8 ; i++) {
++		anybus_reg_write(anybus_priv, MB_IN_EXTENDED + i*2,
++						message.extended_word[i] >> 8);
++		anybus_reg_write(anybus_priv, MB_IN_EXTENDED + i*2 + 1,
++					      message.extended_word[i] & 0xFF);
++	}
++
++	for (i = 0 ; i < message.data_size/2 ; i++) {
++		anybus_reg_write(anybus_priv, MB_IN_DATA + i*2,
++							 message.data[i] >> 8);
++		anybus_reg_write(anybus_priv, MB_IN_DATA + 1 + i*2,
++						       message.data[i] & 0xFF);
++	}
++
++	application_indication_register(anybus_priv, AP_MIN);
++
++	while (sending_mailbox_message) { /* XXX */
++		msleep(100);
++		i++;
++		if (i > 10)
++			return -ETIMEDOUT;
++	}
++
++	return 0;
++}
++
++struct mailbox_msg read_mailbox_message(struct anybus_private *anybus_priv)
++{
++	int i;
++	struct mailbox_msg message;
++
++	message.id = anybus_reg_read(anybus_priv, MB_OUT_ID) << 8;
++	message.id = anybus_reg_read(anybus_priv, MB_OUT_ID + 1) + message.id;
++
++	message.msg_information = anybus_reg_read(anybus_priv,
++						       MB_OUT_MSG_INFO) << 8;
++	message.msg_information = anybus_reg_read(anybus_priv,
++				MB_OUT_MSG_INFO + 1) + message.msg_information;
++
++	message.command_number = anybus_reg_read(anybus_priv,
++							    MB_OUT_COM) << 8;
++	message.command_number = anybus_reg_read(anybus_priv, MB_OUT_COM + 1)
++						     + message.command_number;
++
++	message.data_size = anybus_reg_read(anybus_priv,
++						      MB_OUT_DATA_SIZE) << 8;
++	message.data_size = anybus_reg_read(anybus_priv, MB_OUT_DATA_SIZE + 1)
++							  + message.data_size;
++
++	for (i = 0 ; i < 8 ; i++) {
++		message.extended_word[i] = anybus_reg_read(anybus_priv,
++						   MB_OUT_EXTENDED + i) << 8;
++		message.extended_word[i] = anybus_reg_read(anybus_priv,
++			  MB_OUT_EXTENDED + 1 + i) + message.extended_word[i];
++	}
++
++	for (i = 0 ; i < message.data_size ; i++) {
++		message.data[i] = anybus_reg_read(anybus_priv,
++						     MB_OUT_DATA + i*2) << 8;
++		message.data[i] = anybus_reg_read(anybus_priv,
++				     MB_OUT_DATA + 1 + i*2) + message.data[i];
++	}
++
++	application_indication_register(anybus_priv, AP_MOUT);
++
++	return message;
++}
++
++static int anybus_stop(struct net_device *dev)
++{
++	struct anybus_private *anybus_priv = netdev_priv(dev);
++
++	free_irq(dev->irq, (void *)dev);
++	gpio_set_value(anybus_priv->gpio_reset, 1);
++	module_initialized = 0;
++
++	return 0;
++}
++
++static int set_mac_address(struct net_device *dev)
++{
++	struct anybus_private *anybus_priv = netdev_priv(dev);
++	int ret;
++
++	dev->addr_len = 8;
++
++	ret = anybus_reg_read(anybus_priv, FIELDBUS_TYPE_MSB);
++
++	if (ret < 0) {
++		dev_err(&platform_dev->dev, "Communication error.\n");
++		return -EAGAIN;
++	}
++
++	dev->dev_addr[0] = ret;
++
++	ret = anybus_reg_read(anybus_priv, FIELDBUS_TYPE_LSB);
++
++	if (ret < 0) {
++		dev_err(&platform_dev->dev, "Communication error.\n");
++		return -EAGAIN;
++	}
++
++	dev->dev_addr[1] = ret;
++
++	ret = anybus_reg_read(anybus_priv, APPLICATION_VERSION_MSB);
++
++	if (ret < 0) {
++		dev_err(&platform_dev->dev, "Communication error.\n");
++		return -EAGAIN;
++	}
++
++	dev->dev_addr[2] = ret;
++
++	ret = anybus_reg_read(anybus_priv, APPLICATION_VERSION_LSB);
++
++	if (ret < 0) {
++		dev_err(&platform_dev->dev, "Communication error.\n");
++		return -EAGAIN;
++	}
++
++	dev->dev_addr[3] = ret;
++
++	ret = anybus_reg_read(anybus_priv, SERIAL_NUMBER0);
++
++	if (ret < 0) {
++		dev_err(&platform_dev->dev, "Communication error.\n");
++		return -EAGAIN;
++	}
++
++	dev->dev_addr[4] = ret;
++
++	ret = anybus_reg_read(anybus_priv, SERIAL_NUMBER1);
++
++	if (ret < 0) {
++		dev_err(&platform_dev->dev, "Communication error.\n");
++		return -EAGAIN;
++	}
++
++	dev->dev_addr[5] = ret;
++
++	ret = anybus_reg_read(anybus_priv, SERIAL_NUMBER2);
++
++	if (ret < 0) {
++		dev_err(&platform_dev->dev, "Communication error.\n");
++		return -EAGAIN;
++	}
++
++	dev->dev_addr[6] = ret;
++
++	ret = anybus_reg_read(anybus_priv, SERIAL_NUMBER3);
++
++	if (ret < 0) {
++		dev_err(&platform_dev->dev, "Communication error.\n");
++		return -EAGAIN;
++	}
++
++	dev->dev_addr[7] = ret;
++
++	return 0;
++}
++
++static int anybus_open(struct net_device *dev)
++{
++	struct anybus_private *anybus_priv = netdev_priv(dev);
++	struct mailbox_msg message;
++	const unsigned short start_init_anybus_data_msg[] = {0x0200, 0x0200,
++	       0x0200, 0x0200, 0x0200, 0x0200, 0x0200, 0x0000 | EN_DC, 0x0000};
++	int i;
++
++	sending_mailbox_message = 0;
++	anybus_available = 0;
++	received_mailbox_message = 0;
++	module_initialized = 0;
++
++if (!netif_carrier_ok(dev))
++	netif_carrier_on(dev);
++
++if (netif_queue_stopped(dev))
++	netif_wake_queue(dev);
++
++	if (request_irq(dev->irq, anybus_interrupt, anybus_priv->irq_flags,
++						dev->name, (void *)dev) < 0) {
++		dev_err(&platform_dev->dev,
++				   "Unable to request irq n° %d (GPIO %d)\n",
++					     dev->irq, irq_to_gpio(dev->irq));
++		return -EAGAIN;
++	}
++
++	gpio_set_value(anybus_priv->gpio_reset, 0);
++
++	i = 0;
++	while (!anybus_available) {
++		msleep(100);
++		i++;
++		if (i > 50) {
++			i = 0;
++			anybus_stop(dev);
++			dev_err(&platform_dev->dev,
++					       "The module is unavailable.\n");
++			return -ETIMEDOUT;
++		}
++	}
++
++	message.id = 0x0001;
++	message.msg_information = 0x4001;
++	message.command_number = 0x0001;
++	message.data_size = 0x0000;
++	for (i = 0 ; i < 9 ; i++)
++		message.extended_word[i] = 0;
++
++	if (write_mailbox_message(anybus_priv, message)) {
++		dev_err(&platform_dev->dev,
++		   "Unable to write in the Anybus module mailbox register\n");
++		return -EIO;
++	}
++
++	i = 0;
++	while (!received_mailbox_message) {
++		msleep(100);
++		i++;
++		if (i > 50) {
++			i = 0;
++			anybus_stop(dev);
++			dev_err(&platform_dev->dev,
++					     "The module hasn't responded.\n");
++			return -ETIMEDOUT;
++		}
++	}
++
++	received_mailbox_message = 0;
++
++	message = read_mailbox_message(anybus_priv);
++	if ((message.id != 0x0001) || (message.msg_information != 0x0001)) {
++		dev_err(&platform_dev->dev,
++			     "Error while checking response of start init\n");
++		dev_err(&platform_dev->dev, "id: 0x%X msg info: 0x%X\n",
++					 message.id, message.msg_information);
++		anybus_stop(dev);
++		return -EAGAIN;
++	}
++
++	message.id = 0x0002;
++	message.msg_information = 0x4001;
++	message.command_number = 0x0002;
++	message.data_size = 0x0012;
++	for (i = 0 ; i < 9 ; i++)
++		message.extended_word[i] = 0;
++
++	for (i = 0; i < message.data_size/2; i++)
++		message.data[i] = start_init_anybus_data_msg[i];
++
++	if (write_mailbox_message(anybus_priv, message)) {
++		dev_err(&platform_dev->dev,
++		   "Unable to write in the Anybus module mailbox register\n");
++		return -EIO;
++	}
++
++	i = 0;
++	while (!received_mailbox_message) {
++		msleep(100);
++		i++;
++		if (i > 50) {
++			i = 0;
++			anybus_stop(dev);
++			return -ETIMEDOUT;
++		}
++	}
++
++	received_mailbox_message = 0;
++
++	message = read_mailbox_message(anybus_priv);
++	if ((message.id != 0x0002) || (message.msg_information != 0x0001)) {
++		dev_err(&platform_dev->dev,
++			    "Error while checking response of init anybus\n");
++		dev_err(&platform_dev->dev, "id: 0x%X msg info: 0x%X\n",
++					 message.id, message.msg_information);
++		return -EAGAIN;
++	}
++
++	message.id = 0x0003;
++	message.msg_information = 0x4001;
++	message.command_number = 0x0003;
++	message.data_size = 0x0000;
++	for (i = 0 ; i < 9 ; i++)
++		message.extended_word[i] = 0;
++
++	if (write_mailbox_message(anybus_priv, message)) {
++		dev_err(&platform_dev->dev,
++		   "Unable to write in the Anybus module mailbox register\n");
++		return -EIO;
++	}
++
++		i = 0;
++	while (!received_mailbox_message) {
++		msleep(100);
++		i++;
++		if (i > 50) {
++			i = 0;
++			anybus_stop(dev);
++			dev_err(&platform_dev->dev,
++					     "The module hasn't responded.\n");
++			return -ETIMEDOUT;
++		}
++	}
++
++	received_mailbox_message = 0;
++
++	message = read_mailbox_message(anybus_priv);
++	if ((message.id != 0x0003) || (message.msg_information != 0x0001)) {
++		dev_err(&platform_dev->dev,
++				"Error while checking response of end init\n");
++		dev_err(&platform_dev->dev, "id: 0x%X msg info: 0x%X\n",
++					 message.id, message.msg_information);
++		return -EAGAIN;
++	}
++
++	module_initialized = 1;
++
++	return set_mac_address(dev);
++}
++
++netdev_tx_t anybus_start_xmit(struct sk_buff *skb, struct net_device *dev)
++{
++	int i;
++	struct anybus_frame *frame = (struct anybus_frame *)skb->data;
++	struct anybus_private *anybus_priv = netdev_priv(dev);
++
++	if ((frame->reg + frame->len) > (INPUT_AREA_END / 2) + 1) {
++		dev_err(&platform_dev->dev,
++				 "Overflow in the Anybus input data area.\n");
++		dev->stats.tx_errors++;
++		dev->stats.tx_dropped++;
++		return -EINVAL;
++	}
++
++	anybus_area_allocation(anybus_priv, AB_IN, LOCK);
++
++	for (i = 0 ; i < frame->len * 2; i += 2) {
++		if (anybus_reg_write(anybus_priv, INPUT_AREA_START + i +
++				      frame->reg * 2, frame->data[i/2] >> 8)) {
++			dev->stats.tx_errors++;
++			dev->stats.tx_dropped++;
++			return -EAGAIN;
++		}
++		dev->stats.tx_bytes++;
++		if (anybus_reg_write(anybus_priv, INPUT_AREA_START + i +
++				frame->reg * 2 + 1, frame->data[i/2] & 0xFF)) {
++			dev->stats.tx_errors++;
++			dev->stats.tx_dropped++;
++			return -EAGAIN;
++		}
++		dev->stats.tx_bytes++;
++	}
++
++	anybus_area_deallocation(anybus_priv, AB_IN, UNLOCK);
++
++	dev->stats.tx_packets++;
++	dev_kfree_skb(skb);
++
++	return 0;
++}
++
++long anybus_ioctl(struct file *filp, unsigned int cmd, unsigned long ptr_data)
++{
++	struct net_device *dev = dev_get_drvdata(&platform_dev->dev);
++	struct anybus_private *anybus_priv = netdev_priv(dev);
++	struct mailbox_msg mail;
++	struct anybus_register *anybus_reg;
++	int i, ret;
++
++	if (cmd == ANYBUS_MB_READ) {
++
++		memcpy(&mail, (struct mailbox_msg *)ptr_data,
++						   sizeof(struct mailbox_msg));
++
++		if (received_mailbox_message) {
++			mail = read_mailbox_message(anybus_priv);
++			memcpy((struct mailbox_msg *)ptr_data,
++					     &mail,
++						   sizeof(struct mailbox_msg));
++			received_mailbox_message = 0;
++		} else
++			return -EAGAIN;
++	} else if (cmd == ANYBUS_MB_WRITE) {
++
++		memcpy(&mail, (struct mailbox_msg *)ptr_data,
++						   sizeof(struct mailbox_msg));
++
++		if (write_mailbox_message(anybus_priv, mail))
++			return -EIO;
++	} else if (cmd == ANYBUS_MAP_INPUT) {
++
++		anybus_area_allocation(anybus_priv, AB_IN, LOCK);
++
++		for (i = 0 ; i <= (INPUT_AREA_END - INPUT_AREA_START) / 2;
++									 i++) {
++			ret = anybus_reg_read(anybus_priv,
++						     i * 2 + INPUT_AREA_START);
++			if (ret < 0)
++				return -EAGAIN;
++
++			((unsigned short *)(ptr_data))[i] = ret << 8;
++
++			ret = anybus_reg_read(anybus_priv,
++						 i * 2 + INPUT_AREA_START + 1);
++			if (ret < 0)
++				return -EAGAIN;
++			((unsigned short *)(ptr_data))[i] |= ret;
++		}
++
++		anybus_area_deallocation(anybus_priv, AB_IN, UNLOCK);
++
++	} else if (cmd == ANYBUS_MAP_OUTPUT) {
++
++		anybus_area_allocation(anybus_priv, AB_OUT, LOCK);
++
++		for (i = 0 ; i <= (OUTPUT_AREA_END - OUTPUT_AREA_START) / 2;
++									 i++) {
++			ret = anybus_reg_read(anybus_priv,
++						    i * 2 + OUTPUT_AREA_START);
++			if (ret < 0)
++				return -EAGAIN;
++
++			((unsigned short *)(ptr_data))[i] = ret << 8;
++
++			ret = anybus_reg_read(anybus_priv,
++						i * 2 + OUTPUT_AREA_START + 1);
++
++			if (ret < 0)
++				return -EAGAIN;
++			((unsigned short *)(ptr_data))[i] |= ret;
++
++		}
++
++		anybus_area_deallocation(anybus_priv, AB_OUT, UNLOCK);
++	} else if (cmd == ANYBUS_READ_REG) {
++		anybus_reg = (struct anybus_register *)ptr_data;
++
++		if ((anybus_reg->address <= INPUT_AREA_END) &&
++				     (anybus_reg->address >= INPUT_AREA_START))
++			anybus_area_allocation(anybus_priv, AB_IN, LOCK);
++		else if ((anybus_reg->address <= OUTPUT_AREA_END) &&
++				    (anybus_reg->address >= OUTPUT_AREA_START))
++			anybus_area_allocation(anybus_priv, AB_OUT, LOCK);
++		else if ((anybus_reg->address <= FBCTRL_AREA_END) &&
++				    (anybus_reg->address >= FBCTRL_AREA_START))
++			anybus_area_allocation(anybus_priv, AB_FBCTRL, LOCK);
++		else if (anybus_reg->address > ANYBUS_INDICATION_REG)
++			return -EINVAL;
++
++			ret = anybus_reg_read(anybus_priv, anybus_reg->address);
++			if (ret < 0)
++				return -EAGAIN;
++
++			anybus_reg->value = ret;
++
++		if ((anybus_reg->address <= INPUT_AREA_END) &&
++				     (anybus_reg->address >= INPUT_AREA_START))
++			anybus_area_deallocation(anybus_priv, AB_IN, LOCK);
++		else if ((anybus_reg->address <= OUTPUT_AREA_END) &&
++				    (anybus_reg->address >= OUTPUT_AREA_START))
++			anybus_area_deallocation(anybus_priv, AB_OUT, LOCK);
++		else if ((anybus_reg->address <= FBCTRL_AREA_END) &&
++				    (anybus_reg->address >= FBCTRL_AREA_START))
++			anybus_area_deallocation(anybus_priv, AB_FBCTRL, LOCK);
++	}
++
++	return 0;
++}
++
++static unsigned int anybus_poll(struct file *filp, struct poll_table_struct *p)
++{
++	poll_wait(filp, &anybus_read_wait_queue, p);
++
++	if ((received_mailbox_message) && (module_initialized))
++		return POLLIN;
++	else
++		return 0;
++}
++
++static const struct file_operations anybus_fops = {
++	.unlocked_ioctl = anybus_ioctl,
++.poll = anybus_poll
++};
++
++static void anybus_setup(struct net_device *dev)
++{
++	dev->type = ARPHRD_NONE;
++	dev->mtu = sizeof(struct anybus_frame);
++	dev->hard_header_len = 0;
++	dev->addr_len = 0;
++	dev->tx_queue_len = 10;
++dev->flags = IFF_POINTOPOINT | IFF_NOARP | IFF_MULTICAST;
++
++	dev->flags = IFF_NOARP;
++	dev->features = NETIF_F_NO_CSUM;
++}
++
++struct net_device_ops anybus_netdev_ops = {
++	.ndo_open = anybus_open,
++	.ndo_stop = anybus_stop,
++	.ndo_start_xmit = anybus_start_xmit,
++};
++
++static int anybus_interface_probe(struct platform_device *pdev)
++{
++	struct resource *resource_memory, *resource_irq, *resource_reset;
++	struct net_device *dev = alloc_netdev(sizeof(struct anybus_private),
++						    "anybus%d", anybus_setup);
++	struct anybus_private *anybus_priv = netdev_priv(dev);
++	char dev_mailbox_name[20];
++	void __iomem *mem;
++	int err = 0;
++	u16 id;
++
++	module_initialized = 0;
++
++	resource_memory = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	resource_irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
++	resource_reset = platform_get_resource(pdev, IORESOURCE_IO, 0);
++
++	if (!resource_memory || !resource_irq || !resource_reset) {
++		err = -ENODEV;
++		dev_err(&pdev->dev, "Device Anybus not found\n");
++		goto exit_free;
++	}
++
++	anybus_priv->irq_flags =  resource_irq->flags &
++					    (IRQF_TRIGGER_MASK | IRQF_SHARED);
++	anybus_priv->gpio_reset = resource_reset->start;
++	platform_dev = pdev;
++
++	err = gpio_request_one(anybus_priv->gpio_reset,
++			    GPIOF_OUT_INIT_HIGH, ANYBUS_INTERFACE_DRIVER_NAME);
++
++	if (err) {
++		dev_err(&pdev->dev, "GPIO request fail\n");
++		goto exit_free;
++	}
++
++	if (!request_mem_region(resource_memory->start,
++	resource_size(resource_memory), ANYBUS_INTERFACE_DRIVER_NAME)) {
++		dev_err(&pdev->dev, "Can't request memory region %x to %x\n",
++		resource_memory->start, resource_memory->start +
++			resource_memory->end);
++		err = -ENOMEM;
++		goto exit_release_gpio;
++	}
++
++	mem = ioremap_nocache(resource_memory->start,
++					      resource_size(resource_memory));
++
++	anybus_priv->reg_base = mem;
++
++	dev_set_drvdata(&pdev->dev, dev);
++
++	dev->irq = resource_irq->start;
++
++	dev->netdev_ops = &anybus_netdev_ops;
++
++	/*Check if ID is correct*/
++	id = anybus_interface_read(anybus_priv, IFRG_ID);
++	if (pdev->id != id) {
++		dev_err(&pdev->dev,
++			  "Driver id %d doesn't match with the device id %d\n",
++								 pdev->id, id);
++		err = -ENODEV;
++		goto exit_iounmap;
++	}
++
++	err = register_netdev(dev);
++
++	if (err) {
++		dev_err(&pdev->dev, "Could not register netdevice\n");
++		goto exit_iounmap;
++	}
++
++	/* Clear interrupts */
++	err = anybus_reg_read(anybus_priv, ANYBUS_INDICATION_REG);
++	if (err < 0)
++		return err;
++
++	anybus_indication_reg_status = err;
++
++	gpio_set_value(anybus_priv->gpio_reset, 1);
++
++	anybus_priv->cdev = cdev_alloc();
++	err = alloc_chrdev_region(&anybus_priv->cdev->dev, 1, 1,
++						 ANYBUS_INTERFACE_DRIVER_NAME);
++	if (err) {
++		dev_err(&pdev->dev, "Unable to allocate device numbers\n");
++		goto exit_iounmap;
++	}
++
++	anybus_priv->cdev->owner = THIS_MODULE;
++	anybus_priv->cdev->ops = &anybus_fops;
++	err = cdev_add(anybus_priv->cdev, anybus_priv->cdev->dev, 256);
++	if (err) {
++		dev_err(&pdev->dev, "Unable to add cdev\n");
++		goto exit_unreg;
++	}
++
++	anybus_priv->anybus_class = class_create(THIS_MODULE,
++						 ANYBUS_INTERFACE_DRIVER_NAME);
++	if (IS_ERR(anybus_priv->anybus_class)) {
++		dev_err(&pdev->dev, "Unable to create anybus class device\n");
++		err = PTR_ERR(anybus_priv->anybus_class);
++		goto exit_unreg;
++	}
++
++	strcpy(dev_mailbox_name, dev->name);
++	strcat(dev_mailbox_name, "_device");
++	if (device_create(anybus_priv->anybus_class, NULL,
++		     anybus_priv->cdev->dev, NULL, dev_mailbox_name) == NULL) {
++		dev_err(&pdev->dev, "Unable to create device\n");
++		goto exit_class_destroy;
++	}
++
++	return 0;
++
++exit_class_destroy:
++	class_destroy(anybus_priv->anybus_class);
++exit_unreg:
++	unregister_chrdev_region(anybus_priv->cdev->dev, 1);
++exit_iounmap:
++	iounmap(anybus_priv->reg_base);
++	release_mem_region(resource_memory->start,
++				resource_size(resource_memory));
++exit_release_gpio:
++	gpio_free(anybus_priv->gpio_reset);
++exit_free:
++	free_netdev(dev);
++	return err;
++}
++
++static int anybus_interface_remove(struct platform_device *pdev)
++{
++	struct net_device *dev = dev_get_drvdata(&pdev->dev);
++	struct anybus_private *anybus_priv = netdev_priv(dev);
++	struct resource *resource_memory;
++
++	device_destroy(anybus_priv->anybus_class, anybus_priv->cdev->dev);
++	class_destroy(anybus_priv->anybus_class);
++	unregister_chrdev_region(anybus_priv->cdev->dev, 1);
++
++	unregister_netdev(dev);
++	dev_set_drvdata(&pdev->dev, NULL);
++
++	resource_memory = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	release_mem_region(resource_memory->start,
++				resource_size(resource_memory));
++
++	if (anybus_priv->reg_base)
++		iounmap(anybus_priv->reg_base);
++
++	gpio_free(anybus_priv->gpio_reset);
++
++	free_netdev(dev);
++
++	return 0;
++}
++
++static struct platform_driver anybus_interface_drv = {
++	.driver = {
++		.name = ANYBUS_INTERFACE_DRIVER_NAME,
++		.owner = THIS_MODULE,
++	},
++	.probe = anybus_interface_probe,
++	.remove = anybus_interface_remove
++};
++
++static int __init anybus_interface_init(void)
++{
++	return platform_driver_register(&anybus_interface_drv);
++}
++module_init(anybus_interface_init);
++
++static void __exit anybus_interface_exit(void)
++{
++	platform_driver_unregister(&anybus_interface_drv);
++}
++module_exit(anybus_interface_exit);
++
++MODULE_AUTHOR("Kevin Joly <joly.kevin25@gmail.com>");
++MODULE_DESCRIPTION("HMS Anybus module driver");
++MODULE_LICENSE("GPL");
+Index: linux-2.6.38.1/include/net/anybus_interface.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.38.1/include/net/anybus_interface.h	2011-07-26 18:03:35.000000000 +0200
+@@ -0,0 +1,57 @@
++/*
++ * Definitions for the module HMS anybus
++ *
++ * (C) Copyright 2011 - Armadeus Systems <support@armadeus.com>
++ * Author: Kevin JOLY joly.kevin25@gmail.com
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2, or (at your option)
++ * any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
++ */
++
++#ifndef LINUX_ANYBUS_INTERFACE
++#define LINUX_ANYBUS_INTERFACE
++
++#define ANYBUS_MB_READ 10
++#define ANYBUS_MB_WRITE 11
++#define ANYBUS_MAP_INPUT 12
++#define ANYBUS_MAP_OUTPUT 13
++#define ANYBUS_READ_REG 14
++
++
++#define ANYBUS_DATA_LEN 256
++#define ANYBUS_MAILBOX_DATA_LEN 256
++
++#define ANYBUS_INTERFACE_DRIVER_NAME "anybus_interface"
++
++struct anybus_frame {
++	int reg;
++	unsigned short data[ANYBUS_DATA_LEN];
++	int len;
++};
++
++struct anybus_register {
++	unsigned short address;
++	unsigned short value;
++};
++
++struct mailbox_msg {
++	unsigned short id;
++	unsigned short msg_information;
++	unsigned short command_number;
++	unsigned short data_size;
++	unsigned short extended_word[8];
++	unsigned short data[ANYBUS_DATA_LEN];
++};
++
++#endif

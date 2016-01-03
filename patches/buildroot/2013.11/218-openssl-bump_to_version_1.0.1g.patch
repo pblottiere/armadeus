@@ -1,0 +1,17 @@
+Fixes highly critical CVE-2014-0160. See http://heartbleed.com
+
+Signed-off-by: Baruch Siach <baruch@tkos.co.il>
+Signed-off-by: Peter Korsgaard <peter@korsgaard.com>
+
+diff --git a/package/openssl/openssl.mk b/package/openssl/openssl.mk
+--- a/package/openssl/openssl.mk
++++ b/package/openssl/openssl.mk
+@@ -4,7 +4,7 @@
+ #
+ ################################################################################
+ 
+-OPENSSL_VERSION = 1.0.1e
++OPENSSL_VERSION = 1.0.1g
+ OPENSSL_SITE = http://www.openssl.org/source
+ OPENSSL_LICENSE = OpenSSL or SSLeay
+ OPENSSL_LICENSE_FILES = LICENSE

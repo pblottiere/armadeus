@@ -1,0 +1,36 @@
+From BR mainline.
+Will be removed when upgrading to latest BR.
+
+Index: buildroot/linux/linux.mk
+===================================================================
+--- buildroot.orig/linux/linux.mk	2011-11-07 19:43:26.000000000 +0100
++++ buildroot/linux/linux.mk	2011-11-08 10:34:24.000000000 +0100
+@@ -12,7 +12,11 @@
+ LINUX26_SOURCE:=$(notdir $(LINUX26_TARBALL))
+ else
+ LINUX26_SOURCE:=linux-$(LINUX26_VERSION).tar.bz2
+-LINUX26_SITE:=$(BR2_KERNEL_MIRROR)/linux/kernel/v2.6/
++ ifeq ($(findstring x2.6.,x$(LINUX26_VERSION)),x2.6.)
++ LINUX26_SITE:=$(BR2_KERNEL_MIRROR)/linux/kernel/v2.6/
++ else
++ LINUX26_SITE:=$(BR2_KERNEL_MIRROR)/linux/kernel/v3.x/
++ endif
+ endif
+ 
+ LINUX26_DIR:=$(BUILD_DIR)/linux-$(LINUX26_VERSION)
+Index: buildroot/toolchain/kernel-headers/kernel-headers.mk
+===================================================================
+--- buildroot.orig/toolchain/kernel-headers/kernel-headers.mk	2011-11-07 21:24:23.000000000 +0100
++++ buildroot/toolchain/kernel-headers/kernel-headers.mk	2011-11-07 21:25:21.000000000 +0100
+@@ -26,7 +26,11 @@
+ EXTRAVERSION:=$(if $(EXTRAVERSION),.$(EXTRAVERSION),)
+ 
+ LINUX_HEADERS_VERSION:=$(VERSION).$(PATCHLEVEL)$(SUBLEVEL)$(EXTRAVERSION)
++ifeq ($(findstring x2.6.,x$(DEFAULT_KERNEL_HEADERS)),x2.6.)
+ LINUX_HEADERS_SITE:=$(BR2_KERNEL_MIRROR)/linux/kernel/v2.6/
++else
++LINUX_HEADERS_SITE:=$(BR2_KERNEL_MIRROR)/linux/kernel/v3.x/
++endif
+ LINUX_HEADERS_SOURCE:=linux-$(LINUX_HEADERS_VERSION).tar.bz2
+ LINUX_HEADERS_CAT:=$(BZCAT)
+ LINUX_HEADERS_UNPACK_DIR:=$(TOOLCHAIN_DIR)/linux-$(LINUX_HEADERS_VERSION)

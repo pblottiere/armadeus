@@ -1,0 +1,6 @@
+Two simple C programs to show shared memory programming.
+The writer creates a shared memory object called "armadeus-shm".
+The shared memory object will be located in /dev/shm.
+
+USAGE:
+First run shmwriter then run shmreader and follows instructions.

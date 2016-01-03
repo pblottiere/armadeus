@@ -1,0 +1,15 @@
+# All subdirs:
+/*/
+
+/Config.in
+/Config.in.bak
+/Makefile.autotools.in
+/Makefile.package.in
+/Makefile.in
+/buildroot-libtool*.patch
+/Config.in.host
+/pkg-*.mk
+/doc-asciidoc.mk
+
+# except:
+!/armadeus/

@@ -1,0 +1,20 @@
+pwm-imx driver needs two clock: ipg and per. The first clock must be renamed
+according to the driver and the second must be added.
+
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+---
+
+Index: linux-3.7.6/arch/arm/mach-imx/clk-imx27.c
+===================================================================
+--- linux-3.7.6.orig/arch/arm/mach-imx/clk-imx27.c
++++ linux-3.7.6/arch/arm/mach-imx/clk-imx27.c
+@@ -222,7 +222,8 @@ int __init mx27_clocks_init(unsigned lon
+ 	clk_register_clkdev(clk[per1_gate], "per", "imx-gpt.4");
+ 	clk_register_clkdev(clk[gpt6_ipg_gate], "ipg", "imx-gpt.5");
+ 	clk_register_clkdev(clk[per1_gate], "per", "imx-gpt.5");
+-	clk_register_clkdev(clk[pwm_ipg_gate], NULL, "mxc_pwm.0");
++	clk_register_clkdev(clk[pwm_ipg_gate], "ipg", "imx27-pwm.0");
++	clk_register_clkdev(clk[per1_gate], "per", "imx27-pwm.0");
+ 	clk_register_clkdev(clk[per2_gate], "per", "mxc-mmc.0");
+ 	clk_register_clkdev(clk[sdhc1_ipg_gate], "ipg", "mxc-mmc.0");
+ 	clk_register_clkdev(clk[per2_gate], "per", "mxc-mmc.1");

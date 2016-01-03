@@ -1,0 +1,55 @@
+Gnokii: add sms management program gnokii
+
+Signed-off-by: Fabien Marteau <fabien.marteau@armadeus.com>
+---
+
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in
++++ buildroot/package/Config.in
+@@ -1030,6 +1030,7 @@ endif
+	source "package/foomatic-filters/Config.in"
+	source "package/fping/Config.in"
+	source "package/gesftpserver/Config.in"
++	source "package/gnokii/Config.in"
+	source "package/gutenprint/Config.in"
+	source "package/hiawatha/Config.in"
+	source "package/hostapd/Config.in"
+Index: buildroot/package/gnokii/Config.in
+===================================================================
+--- /dev/null
++++ buildroot/package/gnokii/Config.in
+@@ -0,0 +1,7 @@
++config BR2_PACKAGE_GNOKII
++	bool "gnokii program"
++	help
++	  gnokii provides tools and a user space driver for use with mobile phone
++
++	  http://gnokii.org/
++
+Index: buildroot/package/gnokii/gnokii.mk
+===================================================================
+--- /dev/null
++++ buildroot/package/gnokii/gnokii.mk
+@@ -0,0 +1,21 @@
++#############################################################
++#
++# GNOKII
++#
++#############################################################
++
++GNOKII_VERSION = 24395006a399bc9a5aa90708c6c9b817032b5345
++GNOKII_SITE = git://git.savannah.nongnu.org/gnokii.git
++GNOKII_AUTORECONF = YES
++GNOKII_CONF_OPTS = --without-x --disable-xdebug --disable-rlpdebug --disable-nls
++
++GNOKII_AC_LOCAL_FLAGS=-I m4/
++
++define GNOKII_INTLTOOLIZE
++	cd $(@D) && $(HOST_DIR)/usr/bin/intltoolize --force --copy --automake
++endef
++
++GNOKII_PRE_CONFIGURE_HOOKS += GNOKII_INTLTOOLIZE
++
++GNOKII_DEPENDENCIES = libglib2 host-intltool
++$(eval $(autotools-package))

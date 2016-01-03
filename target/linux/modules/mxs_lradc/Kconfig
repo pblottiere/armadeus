@@ -1,0 +1,10 @@
+#
+#
+
+config ARMADEUS_SENSOR_MXS_LRADC
+	tristate "MXS LRADC"
+	default n
+	depends on ARMADEUS_DRIVERS && MXS_LRADC && HWMON
+	---help---
+	  Use MXS LRADC as generic hardware monitor device.
+

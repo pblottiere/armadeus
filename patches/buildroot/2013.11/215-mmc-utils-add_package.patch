@@ -1,0 +1,55 @@
+Index: buildroot/package/mmc-utils/Config.in
+===================================================================
+--- /dev/null
++++ buildroot/package/mmc-utils/Config.in
+@@ -0,0 +1,10 @@
++config BR2_PACKAGE_MMC_UTILS
++	bool "mmc-utils"
++	depends on BR2_LARGEFILE
++	help
++	  MMC utils
++
++	  https://git.kernel.org/cgit/linux/kernel/git/cjb/mmc-utils.git
++
++comment "mmc-utils needs a toolchain w/ largefile"
++	depends on !BR2_LARGEFILE
+Index: buildroot/package/mmc-utils/mmc-utils.mk
+===================================================================
+--- /dev/null
++++ buildroot/package/mmc-utils/mmc-utils.mk
+@@ -0,0 +1,23 @@
++################################################################################
++#
++# mmc-utils
++#
++################################################################################
++
++MMC_UTILS_VERSION = 11f2ceabc4ad3f0dd568e0ce68166e4803e0615b
++MMC_UTILS_SITE    = git://git.kernel.org/pub/scm/linux/kernel/git/cjb/mmc-utils.git
++MMC_UTILS_LICENSE = GPLv2
++
++define MMC_UTILS_BUILD_CMDS
++	$(MAKE) -C $(@D) $(TARGET_CONFIGURE_OPTS)
++endef
++
++define MMC_UTILS_INSTALL_TARGET_CMDS
++	$(INSTALL) -D -m 0755 $(@D)/mmc $(TARGET_DIR)/usr/bin/mmc
++endef
++
++define MMC_UTILS_UNINSTALL_TARGET_CMDS
++	$(RM) $(TARGET_DIR)/usr/bin/mmc
++endef
++
++$(eval $(generic-package))
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in
++++ buildroot/package/Config.in
+@@ -328,6 +328,7 @@ source "package/mdadm/Config.in"
+ source "package/media-ctl/Config.in"
+ source "package/memtester/Config.in"
+ source "package/minicom/Config.in"
++source "package/mmc-utils/Config.in"
+ source "package/nanocom/Config.in"
+ source "package/neard/Config.in"
+ source "package/ofono/Config.in"

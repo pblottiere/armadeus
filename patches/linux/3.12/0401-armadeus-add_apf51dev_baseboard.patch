@@ -1,0 +1,96 @@
+The APF51Dev is a docking board for an APF51 SOM
+
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+Signed-off-by: Laurent Cans <laurent.cans@gmail.com>
+---
+Index: linux-3.12.6/arch/arm/boot/dts/imx51-apf51dev.dts
+===================================================================
+--- linux-3.12.6.orig/arch/arm/boot/dts/imx51-apf51dev.dts
++++ linux-3.12.6/arch/arm/boot/dts/imx51-apf51dev.dts
+@@ -34,6 +34,40 @@
+ 			gpios = <&gpio1 2 0>;
+ 			linux,default-trigger = "heartbeat";
+ 		};
++
++		backlight {
++			label = "Backlight";
++			gpios = <&gpio3 4 0>;
++			default-state = "on";
++		};
++	};
++
++	/* Copied fom Gwenhael Goavec-Merou's patch */
++	display@di1 {
++		compatible = "fsl,imx-parallel-display";
++		crtcs = <&ipu 0>;
++		interface-pix-fmt = "bgr666";
++		pinctrl-names = "default";
++		pinctrl-0 = <&pinctrl_ipu_disp1_1>;
++
++		display-timings {
++			lw700 {
++				native-mode;
++				clock-frequency = <33000033>;
++				hactive = <800>;
++				vactive = <480>;
++				hback-porch = <96>;
++				hfront-porch = <96>;
++				vback-porch = <20>;
++				vfront-porch = <21>;
++				hsync-len = <64>;
++				vsync-len = <4>;
++				hsync-active = <1>;
++				vsync-active = <1>;
++				de-active = <1>;
++				pixelclk-active = <0>;
++			};
++		};
+ 	};
+ };
+ 
+@@ -51,6 +85,14 @@
+ 	fsl,spi-num-chipselects = <2>;
+ 	cs-gpios = <&gpio3 28 1>, <&gpio3 27 1>;
+ 	status = "okay";
++
++	spidev: spidev@1 {
++		#address-cells = <1>;
++		#size-cells = <1>;
++		compatible = "spidev";
++		spi-max-frequency = <25000000>;
++		reg = <1>;
++	};
+ };
+ 
+ &esdhc1 {
+@@ -65,6 +107,7 @@
+ 	pinctrl-names = "default";
+ 	pinctrl-0 = <&pinctrl_esdhc2_1>;
+ 	bus-width = <4>;
++	fsl,no_sdio_irq;
+ 	non-removable;
+ 	status = "okay";
+ };
+@@ -75,6 +118,13 @@
+ 	status = "okay";
+ };
+ 
++&uart2 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_uart2_1>;
++	fsl,uart-has-rtscts;
++	status = "okay";
++};
++
+ &iomuxc {
+ 	pinctrl-names = "default";
+ 	pinctrl-0 = <&pinctrl_hog>;
+@@ -91,6 +141,8 @@
+ 				MX51_PAD_CSPI1_SS1__GPIO4_25 0x0C5
+ 				MX51_PAD_GPIO1_2__GPIO1_2    0x0C5
+ 				MX51_PAD_GPIO1_3__GPIO1_3    0x0C5
++				MX51_PAD_DI1_D1_CS__GPIO3_4  0x0C5
++				MX51_PAD_EIM_CS3__GPIO2_28   0x0C5
+ 			>;
+ 		};
+ 	};

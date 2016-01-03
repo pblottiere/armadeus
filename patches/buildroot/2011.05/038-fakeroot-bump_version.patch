@@ -1,0 +1,16 @@
+Index: buildroot/package/fakeroot/fakeroot.mk
+===================================================================
+--- buildroot.orig/package/fakeroot/fakeroot.mk	2011-05-27 16:18:21.000000000 +0200
++++ buildroot/package/fakeroot/fakeroot.mk	2012-01-18 18:53:56.000000000 +0100
+@@ -3,9 +3,9 @@
+ # fakeroot
+ #
+ #############################################################
+-FAKEROOT_VERSION:=1.9.5
++FAKEROOT_VERSION:=1.11
+ FAKEROOT_SOURCE:=fakeroot_$(FAKEROOT_VERSION).tar.gz
+-FAKEROOT_SITE:=http://snapshot.debian.org/archive/debian/20080427T000000Z/pool/main/f/fakeroot/
++FAKEROOT_SITE:=http://ftp.debian.org/debian/pool/main/f/fakeroot/
+ FAKEROOT_CONF_OPT = --program-prefix=''
+ 
+ define FAKEROOT_PATCH_FAKEROOT_IN

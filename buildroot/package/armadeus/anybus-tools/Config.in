@@ -1,0 +1,9 @@
+config BR2_PACKAGE_ANYBUS_TOOLS
+	bool "anybus-tools"
+	depends on BR2_PACKAGE_NCURSES
+	help
+	  Tools for HMS module anybus.
+
+comment "anybus-tools requires package ncurses"
+	depends on !BR2_PACKAGE_NCURSES
+

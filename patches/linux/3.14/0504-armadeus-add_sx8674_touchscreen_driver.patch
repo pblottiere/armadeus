@@ -1,0 +1,516 @@
+Index: linux-3.14/drivers/input/touchscreen/Kconfig
+===================================================================
+--- linux-3.14.orig/drivers/input/touchscreen/Kconfig
++++ linux-3.14/drivers/input/touchscreen/Kconfig
+@@ -944,6 +944,17 @@ config TOUCHSCREEN_TPS6507X
+	  To compile this driver as a module, choose M here: the
+	  module will be called tps6507x_ts.
+
++config TOUCHSCREEN_SX8674
++	tristate "Semtech SX8674 touchscreen controllers"
++	depends on I2C
++	help
++	  Say Y here if you have a Semtech SX8674 touchscreen controller.
++
++	  If unsure, say N
++
++	  To compile this driver as a module, choose M here: the
++	  module will be called sx8674.
++
+ config TOUCHSCREEN_ZFORCE
+	tristate "Neonode zForce infrared touchscreens"
+	depends on I2C
+Index: linux-3.14/drivers/input/touchscreen/Makefile
+===================================================================
+--- linux-3.14.orig/drivers/input/touchscreen/Makefile
++++ linux-3.14/drivers/input/touchscreen/Makefile
+@@ -55,6 +55,7 @@ obj-$(CONFIG_TOUCHSCREEN_S3C2410)	+= s3c
+ obj-$(CONFIG_TOUCHSCREEN_ST1232)	+= st1232.o
+ obj-$(CONFIG_TOUCHSCREEN_STMPE)		+= stmpe-ts.o
+ obj-$(CONFIG_TOUCHSCREEN_SUR40)		+= sur40.o
++obj-$(CONFIG_TOUCHSCREEN_SX8674)        += sx8674.o
+ obj-$(CONFIG_TOUCHSCREEN_TI_AM335X_TSC)	+= ti_am335x_tsc.o
+ obj-$(CONFIG_TOUCHSCREEN_TNETV107X)	+= tnetv107x-ts.o
+ obj-$(CONFIG_TOUCHSCREEN_TOUCHIT213)	+= touchit213.o
+Index: linux-3.14/drivers/input/touchscreen/sx8674.c
+===================================================================
+--- /dev/null
++++ linux-3.14/drivers/input/touchscreen/sx8674.c
+@@ -0,0 +1,477 @@
++/*
++ * drivers/input/touchscreen/sx8674.c
++ *
++ * Copyright (c) 2014 ARMadeus Systems
++ *	Sébastien Szymanski <sebastien.szymanski@armadeus.com>
++ *
++ *
++ * Using code from:
++ *  - sx865x.c
++ *	Copyright (c) 2013 U-MoBo Srl
++ *	Pierluigi Passaro <p.passaro@u-mobo.com>
++ *  - sx8650.c
++ *      Copyright (c) 2009 Wayne Roberts
++ *  - tsc2007.c
++ *      Copyright (c) 2008 Kwangwoo Lee
++ *  - ads7846.c
++ *      Copyright (c) 2005 David Brownell
++ *      Copyright (c) 2006 Nokia Corporation
++ *  - corgi_ts.c
++ *      Copyright (C) 2004-2005 Richard Purdie
++ *  - omap_ts.[hc], ads7846.h, ts_osk.c
++ *      Copyright (C) 2002 MontaVista Software
++ *      Copyright (C) 2004 Texas Instruments
++ *      Copyright (C) 2005 Dirk Behme
++ *
++ *  This program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License version 2 as
++ *  published by the Free Software Foundation.
++ */
++
++#include <linux/i2c.h>
++#include <linux/init.h>
++#include <linux/input.h>
++#include <linux/interrupt.h>
++#include <linux/irq.h>
++#include <linux/module.h>
++#include <linux/of_irq.h>
++#include <linux/slab.h>
++
++/* analog channels */
++#define CH_X			0
++#define CH_Y			1
++#define CH_Z1			2
++#define CH_Z2			3
++#define CH_RX			5
++#define CH_RY			6
++
++/* commands */
++#define CMD_READ_REGISTER	0x40
++#define CMD_PENTRG		0xe0
++
++/* register addresses */
++#define I2C_REG_TOUCH0		0x00
++#define I2C_REG_TOUCH1		0x01
++#define I2C_REG_TOUCH2		0x02
++#define I2C_REG_TOUCH3		0x03
++#define I2C_REG_CHANMASK	0x04
++#define I2C_REG_IRQMASK		0x22
++#define I2C_REG_IRQSRC		0x23
++#define I2C_REG_STAT		0x24
++#define I2C_REG_SOFTRESET	0x3f
++
++/* value for I2C_REG_SOFTRESET */
++#define SOFTRESET_VALUE		0xde
++
++/* bits for I2C_REG_IRQSRC */
++#define IRQ_HAPTSHORT			(1 << 7)
++#define IRQ_PROXCLOSE			(1 << 6)
++#define IRQ_PROXFAR_CONVDONE		(1 << 5)
++#define IRQ_PROXCOMPDONE		(1 << 4)
++#define IRQ_PENTOUCH_TOUCHCONVDONE	(1 << 3)
++#define IRQ_PENRELEASE			(1 << 2)
++#define IRQ_TEMPWARNING			(1 << 1)
++#define IRQ_TEMPALARM			(1 << 0)
++
++/* bits for RegTouch1 */
++#define CONDIRQ			0x20
++#define FILT_NONE		0x00	/* no averaging */
++#define FILT_3SA		0x01	/* 3 sample averaging */
++#define FILT_5SA		0x02	/* 5 sample averaging */
++#define FILT_7SA		0x03	/* 7 samples, sort, then average of 3 middle samples */
++
++/* bits for I2C_REG_CHANMASK */
++#define CONV_X			0x80
++#define CONV_Y			0x40
++#define CONV_Z1			0x20
++#define CONV_Z2			0x10
++#define CONV_AUX		0x08
++#define CONV_RX			0x04
++#define CONV_RY			0x02
++
++/* cordinantes rate: higher nibble of CTRL0 register */
++#define RATE_MANUAL		0x00
++#define RATE_10CPS		0x10
++#define RATE_20CPS		0x20
++#define RATE_40CPS		0x30
++#define RATE_60CPS		0x40
++#define RATE_80CPS		0x50
++#define RATE_100CPS		0x60
++#define RATE_200CPS		0x70
++#define RATE_300CPS		0x80
++#define RATE_400CPS		0x90
++#define RATE_500CPS		0xa0
++#define RATE_1000CPS		0xb0
++#define RATE_2000CPS		0xc0
++#define RATE_3000CPS		0xd0
++#define RATE_4000CPS		0xe0
++#define RATE_5000CPS		0xf0
++
++/* power delay: lower nibble of CTRL0 register */
++#define POWDLY_IMMEDIATE	0x00
++#define POWDLY_1_1US		0x01
++#define POWDLY_2_2US		0x02
++#define POWDLY_4_4US		0x03
++#define POWDLY_8_9US		0x04
++#define POWDLY_17_8US		0x05
++#define POWDLY_35_5US		0x06
++#define POWDLY_71US		0x07
++#define POWDLY_140US		0x08
++#define POWDLY_280US		0x09
++#define POWDLY_570US		0x0a
++#define POWDLY_1_1MS		0x0b
++#define POWDLY_2_3MS		0x0c
++#define POWDLY_4_6MS		0x0d
++#define POWDLY_9MS		0x0e
++#define POWDLY_18MS		0x0f
++
++#define MAX_12BIT		((1 << 12) - 1)
++
++/* when changing the channel mask, also change the read length appropriately */
++#define CHAN_SINGLETOUCH_MASK	(CONV_X | CONV_Y | CONV_Z1 | CONV_Z2)
++#define CHAN_MULTITOUCH_MASK	(CHAN_SINGLETOUCH_MASK | CONV_RX | CONV_RY)
++#define NUM_SINGLETOUCH_CHANS	4
++#define NUM_MULTITOUCH_CHANS	6
++#define NUM_MAX_CHANS		NUM_MULTITOUCH_CHANS
++#define CHAN_READ_LENGTH(chans)	(chans << 1)
++
++#define SX_MULTITOUCH		0x01
++#define SX_PROXIMITY_SENSING	0x02
++#define SX_HAPTICS_GENERIC	0x04
++#define SX_HAPTICS_IMMERSION	0x08
++
++struct ts_event {
++	u16 x, y;
++	u16 z1, z2;
++	u16 rx, ry;
++};
++
++struct sx8674 {
++	struct input_dev *input;
++	struct ts_event tc;
++
++	struct i2c_client *client;
++
++	struct workqueue_struct *ts_workq;
++	struct delayed_work pen_event_work;
++
++	u16 features;
++	u16 x_plate_ohms;
++	u16 y_plate_ohms;
++
++	int irq;
++};
++
++static const struct i2c_device_id sx8674_idtable[] = {
++	{ "sx8654", SX_PROXIMITY_SENSING | SX_HAPTICS_GENERIC },
++	{ "sx8674", SX_MULTITOUCH | SX_PROXIMITY_SENSING | SX_HAPTICS_GENERIC },
++	{ /* sentinel */ }
++};
++MODULE_DEVICE_TABLE(i2c, sx8674_idtable);
++
++static int sx8674_read_values(struct sx8674 *ts)
++{
++	s32 data;
++	u16 vals[NUM_MAX_CHANS+1];	// +1 for last dummy read
++	int length, chan_read_length;
++	int i;
++
++	memset(&(ts->tc), 0, sizeof(ts->tc));
++	/* The protocol and raw data format from i2c interface:
++	 * S Addr R A [DataLow] A [DataHigh] A (repeat) NA P
++	 * Where DataLow has (channel | [D11-D8]), DataHigh has [D7-D0].
++	 */
++	if (ts->features & SX_MULTITOUCH)
++		chan_read_length = CHAN_READ_LENGTH(NUM_MULTITOUCH_CHANS);
++	else
++		chan_read_length = CHAN_READ_LENGTH(NUM_SINGLETOUCH_CHANS);
++
++	length = i2c_master_recv(ts->client, (char *)vals, chan_read_length);
++
++	if (likely(length == chan_read_length)) {
++		length >>= 1;
++		for (i = 0; i < length; i++) {
++			u16 ch;
++			data = swab16(vals[i]);
++			if (unlikely(data & 0x8000)) {
++				dev_err(&ts->client->dev, "hibit @ %d [0x%04x]\n", i, data);
++				return -EAGAIN;
++			}
++			ch = data >> 12;
++			if (ch == CH_X)
++				ts->tc.x = data & 0xfff;
++			else if (ch == CH_Y)
++				ts->tc.y = data & 0xfff;
++			else if (ch == CH_Z1)
++				ts->tc.z1 = data & 0xfff;
++			else if (ch == CH_Z2)
++				ts->tc.z2 = data & 0xfff;
++			else if (ch == CH_RX)
++				ts->tc.rx = data & 0xfff;
++			else if (ch == CH_RY)
++				ts->tc.ry = data & 0xfff;
++			else
++				dev_err(&ts->client->dev, "? CH%d %x\n", ch, data & 0xfff);
++		}
++	} else
++		dev_err(&ts->client->dev, "%d = recv()\n", length);
++
++	dev_dbg(&ts->client->dev, "X:%d Y:%d Z1:%d Z2:%d RX:%d RY:%d\n",
++		ts->tc.x, ts->tc.y, ts->tc.z1, ts->tc.z2, ts->tc.rx, ts->tc.ry);
++	dev_dbg(&ts->client->dev, "X+:%d Y+:%d X-:%d Y-:%d\n",
++		ts->tc.x+ts->tc.rx, ts->tc.y+ts->tc.ry, ts->tc.x-ts->tc.rx, ts->tc.y-ts->tc.ry);
++
++	return !ts->tc.z1;	/* return 0 only if pressure not 0 */
++}
++
++static void sx8674_pen_irq_worker(struct work_struct *work)
++{
++	struct sx8674 *ts = container_of(work, struct sx8674, pen_event_work.work);
++	u8 irqsrc;
++
++	dev_dbg(&ts->client->dev, "%s\n", __func__);
++
++	irqsrc = i2c_smbus_read_byte_data(ts->client, CMD_READ_REGISTER | I2C_REG_IRQSRC);
++	dev_dbg(&ts->client->dev, "irqsrc: 0x%x", irqsrc);
++
++	if (irqsrc & IRQ_PENRELEASE) {
++		dev_dbg(&ts->client->dev, "pen release interrupt");
++		input_report_key(ts->input, BTN_TOUCH, 0);
++		input_sync(ts->input);
++	}
++
++	if (irqsrc & IRQ_PENTOUCH_TOUCHCONVDONE) {
++		dev_dbg(&ts->client->dev, "pen touch interrupt");
++
++		sx8674_read_values(ts);
++
++		input_report_abs(ts->input, ABS_X, ts->tc.x);
++		input_report_abs(ts->input, ABS_Y, ts->tc.y);
++		input_report_key(ts->input, BTN_TOUCH, 1);
++		input_sync(ts->input);
++
++		dev_dbg(&ts->client->dev, "point(%4d,%4d), pressure (%4u)\n", ts->tc.x, ts->tc.y, 0);
++	}
++}
++
++static irqreturn_t sx8674_irq(int irq, void *handle)
++{
++	struct sx8674 *ts = handle;
++
++	/* the reading of the samples can be time-consuming if using
++	 * a slow i2c, so the work is done in a queue */
++	queue_delayed_work(ts->ts_workq, &ts->pen_event_work, 0);
++
++	return IRQ_HANDLED;
++}
++
++static int get_rmsel(u16 plate_ohms)
++{
++	int rmsel;
++
++	if (plate_ohms < 187)
++		rmsel = 0;
++	else if (plate_ohms < 312)
++		rmsel = 1;
++	else if (plate_ohms < 938)
++		rmsel = 2;
++	else if (plate_ohms < 1875)
++		rmsel = 3;
++	else if (plate_ohms < 4375)
++		rmsel = 4;
++	else if (plate_ohms < 9375)
++		rmsel = 5;
++	else if (plate_ohms < 18780)
++		rmsel = 6;
++	else
++		rmsel = 7;
++
++	return rmsel;
++}
++
++static int sx8674_parse_dt(struct device *dev, struct sx8674 *ts) {
++	struct device_node *node;
++
++	if (!dev || !ts)
++		return -ENOENT;
++
++	node = dev->of_node;
++	if (!node)
++		return -ENOENT;
++
++	ts->irq = irq_of_parse_and_map(node, 0);
++	if (!ts->irq)
++		return -EINVAL;
++
++	if(of_property_read_u16(node, "x-plate-ohms", &ts->x_plate_ohms))
++		return -EINVAL;
++
++	if(of_property_read_u16(node, "y-plate-ohms", &ts->y_plate_ohms))
++		return -EINVAL;
++
++	return 0;
++}
++
++static int sx8674_probe(struct i2c_client *client,
++			const struct i2c_device_id *id)
++{
++	struct sx8674 *ts;
++	struct input_dev *input_dev;
++	int err;
++	u16 rmselx, rmsely;
++
++	if (!i2c_check_functionality(client->adapter,
++				     I2C_FUNC_SMBUS_READ_WORD_DATA))
++		return -EIO;
++
++	ts = devm_kzalloc(&client->dev, sizeof(struct sx8674), GFP_KERNEL);
++	input_dev = devm_input_allocate_device(&client->dev);
++	if (!ts || !input_dev)
++		return -ENOMEM;
++
++	err = sx8674_parse_dt(&client->dev, ts);
++	if (err)
++		return err;
++
++	ts->client = client;
++	i2c_set_clientdata(client, ts);
++
++	ts->input = input_dev;
++
++	ts->features = id->driver_data;
++
++	input_dev->name = "SX8674 Touchscreen";
++	input_dev->id.bustype = BUS_I2C;
++	input_dev->dev.parent = &client->dev;
++	input_set_drvdata(input_dev, ts);
++
++	__set_bit(EV_ABS, input_dev->evbit);
++	__set_bit(EV_KEY, input_dev->evbit);
++	__set_bit(BTN_TOUCH, input_dev->keybit);
++	__set_bit(INPUT_PROP_DIRECT, input_dev->propbit);
++
++	input_set_abs_params(input_dev, ABS_X, 0, MAX_12BIT, 0, 0);
++	input_set_abs_params(input_dev, ABS_Y, 0, MAX_12BIT, 0, 0);
++	/* TODO */
++	/*input_set_abs_params(input_dev, ABS_PRESSURE, 0, MAX_12BIT, 0, 0);*/
++
++	err = i2c_smbus_write_byte_data(client, I2C_REG_SOFTRESET,
++					SOFTRESET_VALUE);
++	if (err < 0) {
++		dev_err(&client->dev, "writing softreset value failed");
++		return -EIO;
++	}
++
++	if (ts->features & SX_MULTITOUCH) {
++		input_set_abs_params(input_dev, ABS_MT_POSITION_X, 0, MAX_12BIT, 0, 0);
++		input_set_abs_params(input_dev, ABS_MT_POSITION_Y, 0, MAX_12BIT, 0, 0);
++		input_set_abs_params(input_dev, ABS_MT_PRESSURE, 0, MAX_12BIT, 0, 0);
++		input_set_abs_params(input_dev, ABS_MT_TRACKING_ID, 0, 1, 0, 0);
++
++		/* set mask to convert X, Y, Z1, Z2, RX, RY for CH_SEQ */
++		err = i2c_smbus_write_byte_data(client, I2C_REG_CHANMASK,
++						CHAN_MULTITOUCH_MASK);
++		if (err < 0) {
++			dev_err(&client->dev, "writing to I2C_REG_CHANMASK failed");
++			return -EIO;
++		}
++
++		if (ts->x_plate_ohms < 100)
++			ts->x_plate_ohms = 100;
++		if (ts->y_plate_ohms < 100)
++			ts->y_plate_ohms = 100;
++		rmselx = get_rmsel(ts->x_plate_ohms);
++		rmsely = get_rmsel(ts->y_plate_ohms);
++
++		err = i2c_smbus_write_byte_data(client, I2C_REG_TOUCH3,
++						(rmsely << 3) | rmselx);
++		if (err < 0) {
++			dev_err(&client->dev, "writing to I2C_REG_TOUCH3 failed");
++			return -EIO;
++		}
++	} else {
++		/* set mask to convert X, Y, Z1, Z2 for CH_SEQ */
++		err = i2c_smbus_write_byte_data(client, I2C_REG_CHANMASK, CHAN_SINGLETOUCH_MASK);
++		if (err < 0) {
++			dev_err(&client->dev, "writing to I2C_REG_CHANMASK failed");
++			return -EIO;
++		}
++	}
++
++	err = i2c_smbus_write_byte_data(client, I2C_REG_IRQMASK, (IRQ_PENTOUCH_TOUCHCONVDONE | IRQ_PENRELEASE));
++	if (err < 0) {
++		dev_err(&client->dev, "writing to I2C_REG_IRQMASK failed");
++		return -EIO;
++	}
++
++	err = i2c_smbus_write_byte_data(client, I2C_REG_TOUCH1, CONDIRQ | FILT_7SA);
++	if (err < 0) {
++		dev_err(&client->dev, "writing to I2C_REG_TOUCH1 failed");
++		return -EIO;
++	}
++
++	err = i2c_smbus_write_byte_data(client, I2C_REG_TOUCH0, RATE_5000CPS | POWDLY_1_1MS);
++	if (err < 0) {
++		dev_err(&client->dev, "writing to I2C_REG_TOUCH0 failed");
++		return -EIO;
++	}
++
++	ts->ts_workq = create_singlethread_workqueue("sx8674");
++	if (ts->ts_workq == NULL) {
++		dev_err(&client->dev, "failed to create workqueue\n");
++		return -ENOENT;
++	}
++
++	INIT_DELAYED_WORK(&ts->pen_event_work, sx8674_pen_irq_worker);
++
++	err = devm_request_threaded_irq(&client->dev, ts->irq,
++					NULL, sx8674_irq,
++					IRQF_ONESHOT | IRQF_TRIGGER_FALLING,
++					client->dev.driver->name, ts);
++	if (err < 0) {
++		dev_err(&client->dev, "irq %d busy?\n", ts->irq);
++		return -EBUSY;
++	}
++
++	err = input_register_device(input_dev);
++	if (err)
++		return -ENONET;
++
++	/* enter pen-trigger mode */
++	err = i2c_smbus_write_byte(client, CMD_PENTRG);
++	if (err < 0) {
++		dev_err(&client->dev, "writing command CMD_PENTRG failed");
++		input_unregister_device(input_dev);
++		return -EIO;
++	}
++
++	return 0;
++}
++
++static int sx8674_remove(struct i2c_client *client)
++{
++	struct sx8674 *ts = i2c_get_clientdata(client);
++
++	input_unregister_device(ts->input);
++
++	cancel_delayed_work_sync(&ts->pen_event_work);
++	destroy_workqueue(ts->ts_workq);
++
++	return 0;
++}
++
++static struct i2c_driver sx8674_driver = {
++	.driver = {
++		.owner = THIS_MODULE,
++		.name = "sx8674"
++	},
++	.id_table = sx8674_idtable,
++	.probe = sx8674_probe,
++	.remove	= sx8674_remove,
++};
++
++module_i2c_driver(sx8674_driver)
++
++MODULE_AUTHOR("Sébastien Szymanski <sebastien.szymanski@armadeus.com>");
++MODULE_DESCRIPTION("SX8674 Touchscreen Driver");
++MODULE_LICENSE("GPL");

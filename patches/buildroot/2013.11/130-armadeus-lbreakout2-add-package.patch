@@ -1,0 +1,86 @@
+Add LBreakout2 games to BR.
+
+Integrated in BR mainline since 6th Jan 2014.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2013-09-02 17:49:40.103333069 +0200
++++ buildroot/package/Config.in	2013-09-02 18:24:40.857750147 +0200
+@@ -104,6 +104,7 @@
+ menu "Games"
+ source "package/e-uae/Config.in"
+ source "package/gnuchess/Config.in"
++source "package/lbreakout2/Config.in"
+ source "package/opentyrian/Config.in"
+ source "package/prboom/Config.in"
+ source "package/quake-pak/Config.in"
+Index: buildroot/package/lbreakout2/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/lbreakout2/Config.in	2013-09-02 17:49:40.119333151 +0200
+@@ -0,0 +1,28 @@
++config BR2_PACKAGE_LBREAKOUT2
++	bool "LBreakout2"
++	select BR2_PACKAGE_SDL
++	select BR2_PACKAGE_LIBPNG
++	help
++	  LBreakout2 is the successor to LBreakout, a breakout-style arcade
++	  game in the manner of Arkanoid. Requires SDL, libpng, a display with
++ 	  minimum 640x480 resolution and optionnally SDL_mixer/SDL_net.
++
++	  http://lgames.sourceforge.net/index.php?project=LBreakout2
++
++if BR2_PACKAGE_LBREAKOUT2
++
++config BR2_PACKAGE_LBREAKOUT2_AUDIO
++	bool "audio support"
++	default y
++	select BR2_PACKAGE_SDL_MIXER
++	help
++	  Activates audio support in LBreakout2. Will add SDL_mixer.
++
++config BR2_PACKAGE_LBREAKOUT2_NET
++	bool "network support"
++	default y
++	select BR2_PACKAGE_SDL_NET
++	help
++	  Activates network support LBreakout2. Will add SDL_net.
++
++endif
+Index: buildroot/package/lbreakout2/lbreakout2.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/lbreakout2/lbreakout2.mk	2013-09-02 18:23:05.225275930 +0200
+@@ -0,0 +1,30 @@
++#############################################################
++#
++# LBreakout2
++#
++#############################################################
++
++LBREAKOUT2_SITE = http://sourceforge.net/projects/lgames/files/lbreakout2/2.6/
++LBREAKOUT2_VERSION = 2.6.3
++LBREAKOUT2_LICENSE = GPLv2
++LBREAKOUT2_LICENSE_FILES = COPYING
++
++LBREAKOUT2_DEPENDENCIES = sdl libpng
++LBREAKOUT2_CONF_OPT += --disable-nls
++
++ifeq ($(BR2_PACKAGE_LBREAKOUT2_AUDIO),y)
++LBREAKOUT2_DEPENDENCIES += sdl_mixer
++else
++LBREAKOUT2_CONF_OPT += --disable-audio
++endif
++
++ifeq ($(BR2_PACKAGE_LBREAKOUT2_NET),y)
++LBREAKOUT2_DEPENDENCIES += sdl_net
++else
++LBREAKOUT2_CONF_OPT += --disable-network
++endif
++
++LBREAKOUT2_CONF_ENV = \
++	SDL_CONFIG="$(STAGING_DIR)/usr/bin/sdl-config"
++
++$(eval $(autotools-package))

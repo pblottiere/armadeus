@@ -1,0 +1,33 @@
+Pin contrast level is always high when LPCR PCD is equal to 0. By setting
+per3clk_div to have a 134 MHz clock, PCD is greater than 0 and the PWM is
+working.
+
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+---
+
+Index: linux-3.8-rc1/drivers/video/imxfb.c
+===================================================================
+--- linux-3.8-rc1.orig/drivers/video/imxfb.c	2013-01-02 12:45:11.000000000 +0100
++++ linux-3.8-rc1/drivers/video/imxfb.c	2013-01-02 13:07:08.000000000 +0100
+@@ -771,6 +771,7 @@
+ 	struct imx_fb_platform_data *pdata;
+ 	struct resource *res;
+ 	int ret, i;
++	unsigned long per3clk;
+ 
+ 	dev_info(&pdev->dev, "i.MX Framebuffer driver\n");
+ 
+@@ -825,6 +826,13 @@
+ 		goto failed_getclock;
+ 	}
+ 
++#ifdef CONFIG_SOC_IMX27
++	per3clk = clk_round_rate(fbi->clk_per, 134000000);
++	if (clk_set_rate(fbi->clk_per, per3clk)) {
++		pr_debug("mx2fb: Unable to set clock to %lu\n", per3clk);
++	}
++#endif
++
+ 	fbi->regs = ioremap(res->start, resource_size(res));
+ 	if (fbi->regs == NULL) {
+ 		dev_err(&pdev->dev, "Cannot map frame buffer registers\n");

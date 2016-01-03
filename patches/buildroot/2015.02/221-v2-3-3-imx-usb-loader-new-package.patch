@@ -1,0 +1,291 @@
+From patchwork Wed Oct  1 15:03:46 2014
+Content-Type: text/plain; charset="utf-8"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Subject: [v2,3/3] imx-usb-loader: new package
+From: Luca Ceresoli <luca@lucaceresoli.net>
+X-Patchwork-Id: 395569
+Message-Id: <1412175826-9010-4-git-send-email-luca@lucaceresoli.net>
+To: buildroot@uclibc.org
+Cc: Luca Ceresoli <luca@lucaceresoli.net>
+Date: Wed,  1 Oct 2014 17:03:46 +0200
+
+Signed-off-by: Luca Ceresoli <luca@lucaceresoli.net>
+---
+ package/Config.in.host                   |  1 +
+ package/imx-usb-loader/Config.in.host    | 14 ++++++++++++++
+ package/imx-usb-loader/imx-usb-loader.mk | 22 ++++++++++++++++++++++
+ 3 files changed, 37 insertions(+)
+ create mode 100644 package/imx-usb-loader/Config.in.host
+ create mode 100644 package/imx-usb-loader/imx-usb-loader.mk
+
+Index: buildroot/package/Config.in.host
+===================================================================
+--- buildroot.orig/package/Config.in.host
++++ buildroot/package/Config.in.host
+@@ -10,6 +10,7 @@ menu "Host utilities"
+ 	source "package/genext2fs/Config.in.host"
+ 	source "package/genimage/Config.in.host"
+ 	source "package/genpart/Config.in.host"
++	source "package/imx-usb-loader/Config.in.host"
+ 	source "package/lpc3250loader/Config.in.host"
+ 	source "package/mke2img/Config.in.host"
+ 	source "package/mtd/Config.in.host"
+Index: buildroot/package/imx-usb-loader/Config.in.host
+===================================================================
+--- /dev/null
++++ buildroot/package/imx-usb-loader/Config.in.host
+@@ -0,0 +1,13 @@
++config BR2_PACKAGE_HOST_IMX_USB_LOADER
++	bool "host imx-usb-loader"
++	depends on BR2_arm || BR2_armeb
++	help
++	  This utility allows to download and execute code on Freescale
++	  i.MX5/i.MX6 and Vybrid SoCs through the Serial Download Protocol
++	  (SDP). Depending on the board, there is usually some kind of recovery
++	  button to bring the SoC into serial download boot mode, check
++	  documentation of your hardware.
++
++	  The utility support USB and UART as serial link.
++
++	  https://github.com/boundarydevices/imx_usb_loader
+Index: buildroot/package/imx-usb-loader/imx-usb-loader.mk
+===================================================================
+--- /dev/null
++++ buildroot/package/imx-usb-loader/imx-usb-loader.mk
+@@ -0,0 +1,36 @@
++################################################################################
++#
++# imx-usb-loader
++#
++################################################################################
++
++IMX_USB_LOADER_VERSION = f96aee286ea17c832b7ec922dd76842deb5ce299
++IMX_USB_LOADER_SITE = https://github.com/boundarydevices/imx_usb_loader.git
++IMX_USB_LOADER_SITE_METHOD = git
++IMX_USB_LOADER_DEPENDENCIES = libusb
++HOST_IMX_USB_LOADER_DEPENDENCIES = host-libusb
++
++define IMX_USB_LOADER_BUILD_CMDS
++	$(MAKE) $(TARGET_CONFIGURE_OPTS) -C $(@D)
++endef
++
++define IMX_USB_LOADER_INSTALL_TARGET_CMDS
++	$(INSTALL) -D -m 0755 $(@D)/imx_usb $(TARGET_DIR)/usr/bin/imx_usb
++	$(INSTALL) -D -m 0755 $(@D)/imx_uart $(TARGET_DIR)/usr/bin/imx_uart
++	mkdir -p $(TARGET_DIR)/usr/share/imx_usb_loader
++        $(INSTALL) -D -m 0644 $(@D)/*.conf $(TARGET_DIR)/usr/share/imx_usb_loader
++endef
++
++define HOST_IMX_USB_LOADER_BUILD_CMDS
++	$(HOST_MAKE_ENV) $(MAKE) $(HOST_CONFIGURE_OPTS) -C $(@D)
++endef
++
++define HOST_IMX_USB_LOADER_INSTALL_CMDS
++	$(INSTALL) -D -m 0755 $(@D)/imx_usb $(HOST_DIR)/usr/bin/imx_usb
++	$(INSTALL) -D -m 0755 $(@D)/imx_uart $(HOST_DIR)/usr/bin/imx_uart
++	mkdir -p $(HOST_DIR)/usr/share/imx_usb_loader
++        $(INSTALL) -D -m 0644 $(@D)/*.conf $(HOST_DIR)/usr/share/imx_usb_loader
++endef
++
++$(eval $(generic-package))
++$(eval $(host-generic-package))
+Index: buildroot/package/imx-usb-loader/Config.in
+===================================================================
+--- /dev/null
++++ buildroot/package/imx-usb-loader/Config.in
+@@ -0,0 +1,14 @@
++config BR2_PACKAGE_IMX_USB_LOADER
++	bool "imx-usb-loader"
++	depends on BR2_arm || BR2_armeb
++	select BR2_PACKAGE_LIBUSB
++	help
++	  This utility allows to download and execute code on Freescale
++	  i.MX5/i.MX6 and Vybrid SoCs through the Serial Download Protocol
++	  (SDP). Depending on the board, there is usually some kind of recovery
++	  button to bring the SoC into serial download boot mode, check
++	  documentation of your hardware.
++
++	  The utility support USB and UART as serial link.
++
++	  https://github.com/boundarydevices/imx_usb_loader
+Index: buildroot/package/imx-usb-loader/imx-usb-loader-0001-fix-ram-size.patch
+===================================================================
+--- /dev/null
++++ buildroot/package/imx-usb-loader/imx-usb-loader-0001-fix-ram-size.patch
+@@ -0,0 +1,14 @@
++diff --git a/mx6_usb_work.conf b/mx6_usb_work.conf
++index b484c51..fa952e2 100644
++--- a/mx6_usb_work.conf
+++++ b/mx6_usb_work.conf
++@@ -1,6 +1,7 @@
++-mx6_qsb
+++apf6qdl
++ #hid/bulk,[old_header,]max packet size, {ram start, ram size}(repeat valid ram areas)
++-hid,1024,0x10000000,1G,0x00907000,0x31000
+++#IMX6 quad and dual have 196KB OCRAM Free Area but IMX6 dual light and solo have only 68KB.
+++hid,1024,0x00907000,0x11000
++ #file:dcd,plug,load nnn,jump [nnn/header/header2]
++ #jump nnn - header is after last downloaded word
++ #            entire file is loaded before jump, needs load nnn as well
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in
++++ buildroot/package/Config.in
+@@ -347,6 +347,7 @@ endif
+ 	source "package/hwdata/Config.in"
+ 	source "package/i2c-tools/Config.in"
+ 	source "package/imx-test/Config.in"
++	source "package/imx-usb-loader/Config.in"
+ 	source "package/input-event-daemon/Config.in"
+ 	source "package/input-tools/Config.in"
+ 	source "package/intel-microcode/Config.in"
+Index: buildroot/package/imx-usb-loader/imx-usb-loader-0002-fix-return-codes.patch
+===================================================================
+--- /dev/null
++++ buildroot/package/imx-usb-loader/imx-usb-loader-0002-fix-return-codes.patch
+@@ -0,0 +1,144 @@
++diff --git a/imx_usb.c b/imx_usb.c
++index 41f3369..78d575b 100644
++--- a/imx_usb.c
+++++ b/imx_usb.c
++@@ -404,8 +404,7 @@ int main(int argc, char * const argv[])
++ 	struct mach_id *mach;
++ 	libusb_device **devs;
++ 	libusb_device *dev;
++-	int r;
++-	int err;
+++	int ret;
++ 	ssize_t cnt;
++ 	libusb_device_handle *h = NULL;
++ 	int config = 0;
++@@ -416,9 +415,9 @@ int main(int argc, char * const argv[])
++ 	char const *base_path = get_base_path(argv[0]);
++ 	char const *conf_path = "/etc/imx-loader.d/";
++ 
++-	err = parse_opts(argc, argv, &conf_path, &verify, &cmd_head);
++-	if (err < 0)
++-		return -1;
+++	ret = parse_opts(argc, argv, &conf_path, &verify, &cmd_head);
+++	if (ret < 0)
+++		return ret;
++ 
++ 	// Get list of machines...
++ 	conf = conf_file_name("imx_usb.conf", base_path, conf_path);
++@@ -429,20 +428,20 @@ int main(int argc, char * const argv[])
++ 	if (!list)
++ 		return -1;
++ 
++-	r = libusb_init(NULL);
++-	if (r < 0)
+++	ret = libusb_init(NULL);
+++	if (ret != 0)
++ 		goto out;
++ 
++-	cnt = libusb_get_device_list(NULL, &devs);
++-	if (cnt < 0)
+++	ret = libusb_get_device_list(NULL, &devs);
+++	if (ret < 0)
++ 		goto out;
++ 
++ //	print_devs(devs);
++ 	dev = find_imx_dev(devs, &mach, list);
++ 	if (dev) {
++-		err = libusb_open(dev, &h);
++-		if (err)
++-			printf("%s:Could not open device vid=0x%x pid=0x%x err=%d\n", __func__, mach->vid, mach->pid, err);
+++		ret = libusb_open(dev, &h);
+++		if (ret)
+++			printf("%s:Could not open device vid=0x%x pid=0x%x err=%d\n", __func__, mach->vid, mach->pid, ret);
++ 	}
++ 	libusb_free_device_list(devs, 1);
++ 
++@@ -451,12 +450,16 @@ int main(int argc, char * const argv[])
++ 
++ 	// Get machine specific configuration file..
++ 	conf = conf_file_name(mach->file_name, base_path, conf_path);
++-	if (conf == NULL)
+++	if (conf == NULL) {
+++		ret = -1;
++ 		goto out;
+++	}
++ 
++ 	p_id = parse_conf(conf);
++-	if (!p_id)
+++	if (!p_id) {
+++		ret = -1;
++ 		goto out;
+++	}
++ 
++ 	if (p_id->mode == MODE_HID)
++ 		p_id->transfer = &transfer_hid;
++@@ -473,14 +476,14 @@ int main(int argc, char * const argv[])
++ 	if (libusb_kernel_driver_active(h, 0))
++ 		 libusb_detach_kernel_driver(h, 0);
++ 
++-	err = libusb_claim_interface(h, 0);
++-	if (err) {
+++	ret = libusb_claim_interface(h, 0);
+++	if (ret) {
++ 		printf("Claim failed\n");
++ 		goto out;
++ 	}
++ 	printf("Interface 0 claimed\n");
++-	err = do_status(p_id);
++-	if (err) {
+++	ret = do_status(p_id);
+++	if (ret) {
++ 		printf("status failed\n");
++ 		goto out;
++ 	}
++@@ -493,6 +496,7 @@ int main(int argc, char * const argv[])
++ 
++ 	if (curr == NULL) {
++ 		printf("no job found\n"); 
+++		ret = -1;
++ 		goto out;
++ 	}
++ 
++@@ -501,17 +505,17 @@ int main(int argc, char * const argv[])
++ 			perform_mem_work(p_id, curr->mem);
++ //		printf("jump_mode %x\n", curr->jump_mode);
++ 		if (curr->filename[0]) {
++-			err = DoIRomDownload(p_id, curr, verify);
+++			ret = DoIRomDownload(p_id, curr, verify);
++ 		}
++-		if (err) {
++-			err = do_status(p_id);
+++		if (ret) {
+++			ret = do_status(p_id);
++ 			break;
++ 		}
++ 		if (!curr->next && (!curr->plug || curr != cmd_head))
++ 			break;
++-		err = do_status(p_id);
++-		printf("jump_mode %x plug=%i err=%i\n", curr->jump_mode, curr->plug, err);
++-		if (err) {
+++		ret = do_status(p_id);
+++		printf("jump_mode %x plug=%i err=%i\n", curr->jump_mode, curr->plug, ret);
+++		if (ret) {
++ 			int retry;
++ 			/* Rediscovers device */
++ 			libusb_release_interface(h, 0);
++@@ -525,8 +529,10 @@ int main(int argc, char * const argv[])
++ 				if (h)
++ 					break;
++ 			}
++-			if (!h)
+++			if (!h) {
+++				ret = -1;
++ 				goto out;
+++			}
++ 		}
++ 		if (curr == cmd_head && curr->plug) {
++ 			curr->plug = 0;
++@@ -541,5 +547,5 @@ out:
++ 	if (h)
++ 		libusb_close(h);
++ 	libusb_exit(NULL);
++-	return 0;
+++	return ret;
++ }

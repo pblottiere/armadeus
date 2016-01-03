@@ -1,0 +1,84 @@
+Fixes I2C mutual exclusion bug when accessing I2C busses at the same time.
+
+Signed-off-by: Nicolas Colombain <nicolas.colombain@armadeus.com>
+
+Index: linux-2.6.29.6/drivers/i2c/busses/i2c-mxc.c
+===================================================================
+--- linux-2.6.29.6.orig/drivers/i2c/busses/i2c-mxc.c	2012-01-26 15:55:03.000000000 +0100
++++ linux-2.6.29.6/drivers/i2c/busses/i2c-mxc.c	2012-01-26 16:00:27.000000000 +0100
+@@ -46,20 +46,10 @@
+ 	bool low_power;
+ 	struct imx_i2c_platform_data *pdata;
+ 	int trans_flag;
++	bool transfer_done;
++	bool tx_success;
+ } imx_i2c_device;
+ 
+-/*
+- * HACK: Why is it not channel specific?
+- * Boolean to indicate if data was transferred
+- */
+-static bool transfer_done = false;
+-
+-/*
+- * HACK: Why is it not channel specific?
+- * Boolean to indicate if we received an ACK for the data transmitted
+- */
+-static bool tx_success = false;
+-
+ struct clk_div_table {
+ 	int reg_value;
+ 	int div;
+@@ -126,15 +116,15 @@
+ 	else
+ 		retry = 4;
+ 
+-	while (retry-- && !transfer_done) {
++	while (retry-- && !dev->transfer_done) {
+ 		wait_event_interruptible_timeout(dev->wq,
+-						 transfer_done,
++						 dev->transfer_done,
+ 						 dev->adap.timeout);
+ 	}
+-	transfer_done = false;
++	dev->transfer_done = false;
+ 
+ 	if (retry <= 0) {
+-		if (!tx_success) {
++		if (!dev->tx_success) {
+ 			/* An ACK was not received */
+ #ifdef I2C_DEBUG
+ 			printk(KERN_DEBUG "ACK not received \n");
+@@ -366,8 +356,8 @@
+ 		return -EREMOTEIO;
+ 	}
+ 
+-	transfer_done = false;
+-	tx_success = false;
++	dev->transfer_done = false;
++	dev->tx_success = false;
+ 	for (i = 0; i < num && ret >= 0; i++) {
+ 		addr_comp = 0;
+ 		dev->trans_flag = msgs[i].flags;
+@@ -471,16 +461,16 @@
+ #endif
+ 	} else {
+ 		/* Interrupt due byte transfer completion */
+-		tx_success = false;
++		dev->tx_success = false;
+ 		/* Check if RXAK is received in Transmit mode */
+ 		if (cr & MXC_I2CR_MTX) {
+ 			if( !(sr & MXC_I2SR_RXAK)) {
+-				tx_success = true;
+-				transfer_done = true;
++				dev->tx_success = true;
++				dev->transfer_done = true;
+ 			}
+ 		} else {
+-			tx_success = true;
+-			transfer_done = true;
++			dev->tx_success = true;
++			dev->transfer_done = true;
+ 		}
+ 		wake_up_interruptible(&dev->wq);
+ 	}

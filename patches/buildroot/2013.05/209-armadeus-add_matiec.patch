@@ -1,0 +1,73 @@
+Add matIEC compilator as host package.
+
+Signed-off-by: Fabien Marteau <fabien.marteau@armadeus.com>
+---
+
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2013-07-19 14:29:27.255886081 +0200
++++ buildroot/package/Config.in	2013-07-19 14:30:41.067884146 +0200
+@@ -83,6 +83,7 @@
+ endif
+ source "package/intltool/Config.in"
+ source "package/make/Config.in"
++source "package/matiec/Config.in"
+ source "package/libtool/Config.in"
+ source "package/m4/Config.in"
+ if BR2_PACKAGE_BUSYBOX_SHOW_OTHERS
+Index: buildroot/package/matiec/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/matiec/Config.in	2013-07-19 14:30:41.067884146 +0200
+@@ -0,0 +1,6 @@
++config BR2_PACKAGE_HOST_MATIEC
++	bool "matiec"
++	help
++	  IEC61131-3 compiler (host package).
++
++	  http://dev.automforge.net/matiec/
+Index: buildroot/package/matiec/matiec.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/matiec/matiec.mk	2013-07-19 14:30:41.067884146 +0200
+@@ -0,0 +1,22 @@
++#############################################################
++#
++# matiec
++#
++#############################################################
++MATIEC_VERSION = 62b55ca5b879
++MATIEC_SITE    = http://dev.automforge.net/matiec
++MATIEC_SITE_METHOD = hg
++MATIEC_SOURCE  = matiec-$(MATIEC_VERSION).tar.gz
++
++define HOST_MATIEC_AUTORECONFIGURE
++	(cd $(@D); autoreconf)
++endef
++
++define HOST_MATIEC_INSTALL_CMDS
++	mkdir -p $(HOST_DIR)/opt/matiec/
++	cp -r $(@D)/* $(HOST_DIR)/opt/matiec/
++endef
++
++HOST_MATIEC_PRE_CONFIGURE_HOOKS += HOST_MATIEC_AUTORECONFIGURE
++
++$(eval $(host-autotools-package))
+Index: buildroot/package/matiec/host-matiec-001-fix_bison_compilation_error.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/matiec/host-matiec-001-fix_bison_compilation_error.patch	2013-07-19 14:30:41.067884146 +0200
+@@ -0,0 +1,13 @@
++Index: matiec/stage1_2/iec_bison.yy
++===================================================================
++--- matiec.orig/stage1_2/iec_bison.yy	2013-07-05 15:52:53.959954579 +0200
+++++ matiec/stage1_2/iec_bison.yy	2013-07-19 13:05:39.164017882 +0200
++@@ -276,7 +276,7 @@
++     long int    last_order;
++ } YYLTYPE;
++ #define YYLTYPE_IS_DECLARED 1
++-#define YYLTYPE_IS_TRIVIAL 1
+++#define YYLTYPE_IS_TRIVIAL 0
++ #endif
++ 
++ }

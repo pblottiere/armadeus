@@ -1,0 +1,47 @@
+From b68e0790a8978026c7e9c52dba90579fb06c020f Mon Sep 17 00:00:00 2001
+From: Steve Longerbeam <steve_longerbeam@mentor.com>
+Date: Thu, 23 Oct 2014 15:46:43 -0700
+Subject: [PATCH 607/625] gpu: ipu-v3: Add ipu_csi_set_src()
+
+Adds ipu_csi_set_src() which is just a wrapper around
+ipu_set_csi_src_mux().
+
+Signed-off-by: Steve Longerbeam <steve_longerbeam@mentor.com>
+---
+ drivers/gpu/ipu-v3/ipu-csi.c | 8 ++++++++
+ include/video/imx-ipu-v3.h   | 1 +
+ 2 files changed, 9 insertions(+)
+
+diff --git a/drivers/gpu/ipu-v3/ipu-csi.c b/drivers/gpu/ipu-v3/ipu-csi.c
+index d6f56471..0765162 100644
+--- a/drivers/gpu/ipu-v3/ipu-csi.c
++++ b/drivers/gpu/ipu-v3/ipu-csi.c
+@@ -608,6 +608,14 @@ int ipu_csi_set_skip_smfc(struct ipu_csi *csi, u32 skip,
+ }
+ EXPORT_SYMBOL_GPL(ipu_csi_set_skip_smfc);
+
++int ipu_csi_set_src(struct ipu_csi *csi, u32 vc, bool select_mipi_csi2)
++{
++	ipu_set_csi_src_mux(csi->ipu, csi->id, select_mipi_csi2);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(ipu_csi_set_src);
++
+ int ipu_csi_set_dest(struct ipu_csi *csi, enum ipu_csi_dest csi_dest)
+ {
+	unsigned long flags;
+diff --git a/include/video/imx-ipu-v3.h b/include/video/imx-ipu-v3.h
+index 3fa4834..2674ae5 100644
+--- a/include/video/imx-ipu-v3.h
++++ b/include/video/imx-ipu-v3.h
+@@ -309,6 +309,7 @@ int ipu_csi_set_mipi_datatype(struct ipu_csi *csi, u32 vc,
+			      struct v4l2_mbus_framefmt *mbus_fmt);
+ int ipu_csi_set_skip_smfc(struct ipu_csi *csi, u32 skip,
+			  u32 max_ratio, u32 id);
++int ipu_csi_set_src(struct ipu_csi *csi, u32 vc, bool select_mipi_csi2);
+ int ipu_csi_set_dest(struct ipu_csi *csi, enum ipu_csi_dest csi_dest);
+ int ipu_csi_enable(struct ipu_csi *csi);
+ int ipu_csi_disable(struct ipu_csi *csi);
+--
+1.8.5.5

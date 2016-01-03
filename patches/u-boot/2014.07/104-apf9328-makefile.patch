@@ -1,0 +1,22 @@
+apf9328: add apf9328 board in Makefile
+
+add apf9328 board definition in makefile, MAKEALL and MAINTAINERS list
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+---
+ boards.cfg  |    1 +
+ 1 files changed, 1 insertions(+), 0 deletions(-)
+
+diff --git a/boards.cfg b/boards.cfg
+index 7c1fc74..8a40643 100644
+--- a/boards.cfg
++++ b/boards.cfg
+@@ -75,6 +75,7 @@ Active  arm         arm920t        at91
+ Active  arm         arm920t        at91        eukrea          cpuat91             cpuat91_ram                           cpuat91:RAMBOOT                                                                                                                   Eric Benard <eric@eukrea.com>
+ Active  arm         arm920t        ep93xx      cirrus          edb93xx             edb9315a                              edb93xx:MK_edb9315a                                                                                                               Sergey Kostanbaev <sergey.kostanbaev@fairwaves.ru>
+ Active  arm         arm920t        imx         -               scb9328             scb9328                               -                                                                                                                                 Torsten Koschorrek <koschorrek@synertronixx.de>
++Active  arm         arm920t        imx         armadeus        apf9328             apf9328                              -                                                                                                                                 Eric Jarrige <eric.jarrige@armadeus.org>
+ Active  arm         arm920t        ks8695      -               cm4008              cm4008                                -                                                                                                                                 Greg Ungerer <greg.ungerer@opengear.com>
+ Active  arm         arm920t        ks8695      -               cm41xx              cm41xx                                -                                                                                                                                 -
+ Active  arm         arm920t        s3c24x0     mpl             vcma9               VCMA9                                 -                                                                                                                                 David Müller <d.mueller@elsoft.ch>

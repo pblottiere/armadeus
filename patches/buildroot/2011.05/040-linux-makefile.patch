@@ -1,0 +1,42 @@
+Index: buildroot/linux/linux.mk
+===================================================================
+--- buildroot.orig/linux/linux.mk	2011-05-27 16:18:21.000000000 +0200
++++ buildroot/linux/linux.mk	2011-08-04 19:26:22.000000000 +0200
+@@ -28,7 +28,8 @@
+ 
+ # Get the real Linux version, which tells us where kernel modules are
+ # going to be installed in the target filesystem.
+-LINUX26_VERSION_PROBED = $(shell $(MAKE) $(LINUX26_MAKE_FLAGS) -C $(LINUX26_DIR) --no-print-directory -s kernelrelease)
++LINUX26_VERSION_PROBED = $(LINUX26_VERSION)
++#LINUX26_VERSION_PROBED = $(shell $(MAKE) $(LINUX26_MAKE_FLAGS) -C $(LINUX26_DIR) --no-print-directory -s kernelrelease)
+ 
+ ifeq ($(BR2_LINUX_KERNEL_IMAGE_TARGET_CUSTOM),y)
+ LINUX26_IMAGE_NAME=$(call qstrip,$(BR2_LINUX_KERNEL_IMAGE_TARGET_NAME))
+@@ -109,6 +110,9 @@
+ # Configuration
+ $(LINUX26_DIR)/.stamp_configured: $(LINUX26_DIR)/.stamp_patched
+ 	@$(call MESSAGE,"Configuring kernel")
++ifeq ($(strip $(BR2_TARGET_ARMADEUS)),y)
++	(ln -sf $(ARMADEUS_TOPDIR)/target/linux/modules/ $(LINUX26_DIR)/drivers/armadeus)
++endif
+ ifeq ($(BR2_LINUX_KERNEL_USE_DEFCONFIG),y)
+ 	$(TARGET_MAKE_ENV) $(MAKE1) $(LINUX26_MAKE_FLAGS) -C $(@D) $(call qstrip,$(BR2_LINUX_KERNEL_DEFCONFIG))_defconfig
+ else ifeq ($(BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG),y)
+@@ -157,7 +161,7 @@
+ # Installation
+ $(LINUX26_DIR)/.stamp_installed: $(LINUX26_DIR)/.stamp_compiled
+ 	@$(call MESSAGE,"Installing kernel")
+-	cp $(LINUX26_IMAGE_PATH) $(BINARIES_DIR)
++	cp $(LINUX26_IMAGE_PATH) $(BINARIES_DIR)/$(LINUX26_KERNEL_NAME)
+ 	# Install modules and remove symbolic links pointing to build
+ 	# directories, not relevant on the target
+ 	@if [ $(shell grep -c "CONFIG_MODULES=y" $(LINUX26_DIR)/.config) != 0 ] ; then 	\
+@@ -184,7 +188,7 @@
+ 	# Build the kernel.
+ 	$(TARGET_MAKE_ENV) $(MAKE) $(LINUX26_MAKE_FLAGS) -C $(@D) $(LINUX26_IMAGE_NAME)
+ 	# Copy the kernel image to its final destination
+-	cp $(LINUX26_IMAGE_PATH) $(BINARIES_DIR)
++	cp $(LINUX26_IMAGE_PATH) $(BINARIES_DIR)/$(LINUX26_KERNEL_NAME)
+ 	$(Q)touch $@
+ 
+ # The initramfs building code must make sure this target gets called

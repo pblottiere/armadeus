@@ -1,0 +1,106 @@
+Add package Poppler.
+
+Signed-off-by: Jérémie Scheer <jeremie.scheer@armadeus.com>
+---
+
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2013-09-03 11:27:09.000000000 +0200
++++ buildroot/package/Config.in	2013-09-03 11:27:09.000000000 +0200
+@@ -352,6 +352,7 @@
+ source "package/opencv/Config.in"
+ source "package/pango/Config.in"
+ source "package/pixman/Config.in"
++source "package/poppler/Config.in"
+ source "package/tiff/Config.in"
+ source "package/webkit/Config.in"
+ endmenu
+Index: buildroot/package/poppler/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/poppler/Config.in	2013-09-03 11:27:09.000000000 +0200
+@@ -0,0 +1,14 @@
++config BR2_PACKAGE_POPPLER
++	bool "poppler"
++	depends on BR2_INSTALL_LIBSTDCPP
++	select BR2_PACKAGE_QT
++	select BR2_PACKAGE_FONTCONFIG
++	select BR2_PACKAGE_XLIB_LIBX11 if BR2_PACKAGE_XORG7
++	select BR2_PACKAGE_XLIB_LIBXEXT if BR2_PACKAGE_XORG7
++	help
++	   Poppler is a PDF rendering library based on the xpdf-3.0 code base.
++
++	   http://poppler.freedesktop.org/
++
++comment "poppler requires a toolchain with C++ support enabled"
++	depends on !BR2_INSTALL_LIBSTDCPP
+Index: buildroot/package/poppler/poppler.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/poppler/poppler.mk	2013-09-03 11:29:00.000000000 +0200
+@@ -0,0 +1,65 @@
++#############################################################
++#
++# poppler
++#
++#############################################################
++
++POPPLER_VERSION = 0.24.1
++POPPLER_SITE = http://poppler.freedesktop.org
++POPPLER_SOURCE  = poppler-$(POPPLER_VERSION).tar.xz
++POPPLER_DEPENDENCIES = qt fontconfig
++POPPLER_LICENSE = GPLv2+
++POPPLER_LICENSE_FILES = COPYING
++POPPLER_CONF_OPT = --with-font-configuration=fontconfig
++POPPLER_INSTALL_STAGING = YES
++
++ifeq ($(BR2_PACKAGE_LCMS2),y)
++	POPPLER_CONF_OPT += --enable-cms=lcms2
++	POPPLER_DEPENDENCIES += lcms2
++else
++	POPPLER_CONF_OPT += --enable-cms=none
++endif
++
++ifeq ($(BR2_PACKAGE_TIFF),y)
++	POPPLER_CONF_OPT += --enable-libtiff
++	POPPLER_DEPENDENCIES += tiff
++else
++	POPPLER_CONF_OPT += --disable-libtiff
++endif
++
++ifeq ($(BR2_PACKAGE_JPEG),y)
++	POPPLER_CONF_OPT += --enable-libjpeg
++	POPPLER_DEPENDENCIES += jpeg
++else
++	POPPLER_CONF_OPT += --disable-libjpeg
++endif
++
++ifeq ($(BR2_PACKAGE_LIBPNG),y)
++	POPPLER_CONF_OPT += --enable-libpng
++	POPPLER_DEPENDENCIES += libpng
++else
++	POPPLER_CONF_OPT += --disable-libpng
++endif
++
++ifeq ($(BR2_PACKAGE_ZLIB),y)
++	POPPLER_CONF_OPT += --enable-zlib
++	POPPLER_DEPENDENCIES += zlib
++else
++	POPPLER_CONF_OPT += --disable-zlib
++endif
++
++ifeq ($(BR2_PACKAGE_POPPLER_LIBCURL),y)
++	POPPLER_CONF_OPT += --enable-libcurl
++	POPPLER_DEPENDENCIES += libcurl
++else
++	POPPLER_CONF_OPT += --disable-libcurl
++endif
++
++ifeq ($(BR2_PACKAGE_XORG7),y)
++	POPPLER_CONF_OPT += --with-x
++	POPPLER_DEPENDENCIES += xlib_libX11 xlib_libXext
++else
++	POPPLER_CONF_OPT += --without-x
++endif
++
++$(eval $(call AUTOTARGETS, package, popple))

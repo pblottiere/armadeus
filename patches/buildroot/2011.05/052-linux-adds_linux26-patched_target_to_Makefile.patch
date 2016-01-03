@@ -1,0 +1,15 @@
+Specific for Armadeus (needed by script/quiltify.sh)
+
+Index: buildroot/linux/linux.mk
+===================================================================
+--- buildroot.orig/linux/linux.mk	2011-08-08 12:12:49.000000000 +0200
++++ buildroot/linux/linux.mk	2011-08-08 12:14:28.000000000 +0200
+@@ -106,6 +106,8 @@
+ 	done
+ 	$(Q)touch $@
+ 
++linux26-patched: $(LINUX26_DIR)/.stamp_extracted
++	touch $(LINUX26_DIR)/.stamp_patched
+ 
+ # Configuration
+ $(LINUX26_DIR)/.stamp_configured: $(LINUX26_DIR)/.stamp_patched

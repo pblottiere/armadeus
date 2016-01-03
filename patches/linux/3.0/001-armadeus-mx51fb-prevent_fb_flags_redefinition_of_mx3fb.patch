@@ -1,0 +1,46 @@
+Temporary (?) hack.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: linux-3.0.10/arch/arm/plat-mxc/include/mach/mx3fb.h
+===================================================================
+--- linux-3.0.10.orig/arch/arm/plat-mxc/include/mach/mx3fb.h	2011-11-21 23:37:44.000000000 +0100
++++ linux-3.0.10/arch/arm/plat-mxc/include/mach/mx3fb.h	2011-12-01 16:21:20.000000000 +0100
+@@ -13,6 +13,7 @@
+ #include <linux/device.h>
+ #include <linux/fb.h>
+ 
++#if 0
+ /* Proprietary FB_SYNC_ flags */
+ #define FB_SYNC_OE_ACT_HIGH	0x80000000
+ #define FB_SYNC_CLK_INVERT	0x40000000
+@@ -21,6 +22,7 @@
+ #define FB_SYNC_SHARP_MODE	0x08000000
+ #define FB_SYNC_SWAP_RGB	0x04000000
+ #define FB_SYNC_CLK_SEL_EN	0x02000000
++#endif
+ 
+ /**
+  * struct mx3fb_platform_data - mx3fb platform data
+Index: linux-3.0.10/arch/arm/plat-mxc/include/mach/devices-common.h
+===================================================================
+--- linux-3.0.10.orig/arch/arm/plat-mxc/include/mach/devices-common.h	2011-12-01 16:40:17.000000000 +0100
++++ linux-3.0.10/arch/arm/plat-mxc/include/mach/devices-common.h	2011-12-01 16:41:01.000000000 +0100
+@@ -165,7 +165,7 @@
+ struct platform_device *__init imx_add_imx_udc(
+ 		const struct imx_imx_udc_data *data,
+ 		const struct imxusb_platform_data *pdata);
+-
++#if 0
+ #include <mach/ipu.h>
+ #include <mach/mx3fb.h>
+ #include <mach/mx3_camera.h>
+@@ -183,7 +183,7 @@
+ struct platform_device *__init imx_add_mx3_sdc_fb(
+ 		const struct imx_ipu_core_data *data,
+ 		struct mx3fb_platform_data *pdata);
+-
++#endif
+ #include <mach/mx1_camera.h>
+ struct imx_mx1_camera_data {
+ 	resource_size_t iobase;

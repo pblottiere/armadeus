@@ -1,0 +1,48 @@
+apf27: Support boot from RAM
+This patch adds capabilites to start U-Boot directly from RAM
+to test a new version of U-Boot before being programmed in FLASH.
+here is a typical use case: run download_uboot ; go a0000000
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+--- a/board/armadeus/apf27/apf27.c
++++ b/board/armadeus/apf27/apf27.c
+@@ -241,10 +241,22 @@ void board_init_f(ulong bootflag)
+ 	 * are 4-byte-aligned.
+ 	 */
+ 	ulong *start_ptr, *end_ptr, *link_ptr, *run_ptr, *dst;
++	register ulong reg0;
+ 	asm volatile ("ldr %0, =_start" : "=r"(start_ptr));
+ 	asm volatile ("ldr %0, =_end" : "=r"(end_ptr));
+ 	asm volatile ("ldr %0, =board_init_f" : "=r"(link_ptr));
+ 	asm volatile ("adr %0, board_init_f" : "=r"(run_ptr));
++	asm volatile ("mov %0, pc" : "=r"(reg0));
++	if ((reg0 > (ulong)PHYS_SDRAM_1) &&
++		(reg0 < (ulong)(PHYS_SDRAM_2+PHYS_SDRAM_2_SIZE))) {
++		/*
++		 * in the case we are already running from RAM we do not need
++		 * to load U-Boot from flash - so let's go to U-Boot in RAM.
++		 */
++		asm volatile ("ldr %0, =0xfffff800" : "=r"(reg0));
++		asm volatile ("and %0, %0, pc" : "=r"(reg0));
++		asm volatile ("add pc, %0, %1" : : "r" (reg0), "i" (CONFIG_SYS_NAND_U_BOOT_OFFS));
++	}
+ 	for (dst = start_ptr; dst < end_ptr; dst++)
+ 		*dst = *(dst+(run_ptr-link_ptr));
+ 
+--- a/board/armadeus/apf27/lowlevel_init.S
++++ b/board/armadeus/apf27/lowlevel_init.S
+@@ -162,6 +162,13 @@ lowlevel_init:
+ 	init_aipi
+ 	init_clock
+ #ifdef CONFIG_SPL_BUILD
++	/* skip sdram initialization if we run from RAM */
++	cmp	pc, #PHYS_SDRAM_1
++	bls	1f
++	cmp	pc, #(PHYS_SDRAM_2+PHYS_SDRAM_2_SIZE)
++	bhi	1f
++	mov	pc, lr
++1:
+ 	init_ddr
+ #endif
+ 

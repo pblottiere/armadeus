@@ -1,0 +1,101 @@
+From e6b267ce14f61d9da0151b97ee26ab4d38055567 Mon Sep 17 00:00:00 2001
+From: Fabio Estevam <fabio.estevam@freescale.com>
+Date: Wed, 16 Jan 2013 10:58:41 -0200
+Subject: [PATCH] video: imxfb: Do not crash on reboot
+
+Issuing a "reboot" command after the LCD times out causes the following
+warnings:
+
+Requesting system reboot
+------------[ cut here ]------------
+WARNING: at drivers/clk/clk.c:471 clk_disable+0x24/0x50()
+Modules linked in:
+[<c001ad90>] (unwind_backtrace+0x0/0xf4) from [<c0025aac>] (warn_slowpath_common+0x48/0x60)
+[<c0025aac>] (warn_slowpath_common+0x48/0x60) from [<c0025ae0>] (warn_slowpath_null+0x1c/0x24)
+[<c0025ae0>] (warn_slowpath_null+0x1c/0x24) from [<c03960a0>] (clk_disable+0x24/0x50)
+[<c03960a0>] (clk_disable+0x24/0x50) from [<c02695a0>] (imxfb_disable_controller+0x48/0x7c)
+[<c02695a0>] (imxfb_disable_controller+0x48/0x7c) from [<c029d838>] (platform_drv_shutdown+0x18/0x1c)
+[<c029d838>] (platform_drv_shutdown+0x18/0x1c) from [<c02990fc>] (device_shutdown+0x48/0x14c)
+[<c02990fc>] (device_shutdown+0x48/0x14c) from [<c003d09c>] (kernel_restart_prepare+0x2c/0x3c)
+[<c003d09c>] (kernel_restart_prepare+0x2c/0x3c) from [<c003d0e4>] (kernel_restart+0xc/0x48)
+[<c003d0e4>] (kernel_restart+0xc/0x48) from [<c003d1e8>] (sys_reboot+0xc0/0x1bc)
+[<c003d1e8>] (sys_reboot+0xc0/0x1bc) from [<c0014ca0>] (ret_fast_syscall+0x0/0x2c)
+---[ end trace da6b502ca79c854f ]---
+------------[ cut here ]------------
+WARNING: at drivers/clk/clk.c:380 clk_unprepare+0x1c/0x2c()
+Modules linked in:
+[<c001ad90>] (unwind_backtrace+0x0/0xf4) from [<c0025aac>] (warn_slowpath_common+0x48/0x60)
+[<c0025aac>] (warn_slowpath_common+0x48/0x60) from [<c0025ae0>] (warn_slowpath_null+0x1c/0x24)
+[<c0025ae0>] (warn_slowpath_null+0x1c/0x24) from [<c0396338>] (clk_unprepare+0x1c/0x2c)
+[<c0396338>] (clk_unprepare+0x1c/0x2c) from [<c02695a8>] (imxfb_disable_controller+0x50/0x7c)
+[<c02695a8>] (imxfb_disable_controller+0x50/0x7c) from [<c029d838>] (platform_drv_shutdown+0x18/0x1c)
+[<c029d838>] (platform_drv_shutdown+0x18/0x1c) from [<c02990fc>] (device_shutdown+0x48/0x14c)
+[<c02990fc>] (device_shutdown+0x48/0x14c) from [<c003d09c>] (kernel_restart_prepare+0x2c/0x3c)
+[<c003d09c>] (kernel_restart_prepare+0x2c/0x3c) from [<c003d0e4>] (kernel_restart+0xc/0x48)
+[<c003d0e4>] (kernel_restart+0xc/0x48) from [<c003d1e8>] (sys_reboot+0xc0/0x1bc)
+[<c003d1e8>] (sys_reboot+0xc0/0x1bc) from [<c0014ca0>] (ret_fast_syscall+0x0/0x2c)
+---[ end trace da6b502ca79c8550 ]---
+------------[ cut here ]------------
+
+This happens because "reboot" triggers imxfb_shutdown(), which calls
+imxfb_disable_controller with the clocks already disabled.
+
+To prevent this, add a clock enabled status so that we can check if the clocks
+are enabled before disabling them.
+
+Acked-by: Sascha Hauer <s.hauer@pengutronix.de>
+Signed-off-by: Fabio Estevam <fabio.estevam@freescale.com>
+Signed-off-by: Shawn Guo <shawn.guo@linaro.org>
+---
+ drivers/video/imxfb.c |   10 ++++++++++
+ 1 files changed, 10 insertions(+), 0 deletions(-)
+
+Index: linux-3.7.4/drivers/video/imxfb.c
+===================================================================
+--- linux-3.7.4.orig/drivers/video/imxfb.c	2013-01-30 22:53:27.000000000 +0100
++++ linux-3.7.4/drivers/video/imxfb.c	2013-01-31 09:00:57.000000000 +0100
+@@ -134,6 +134,7 @@
+ 	struct clk		*clk_ipg;
+ 	struct clk		*clk_ahb;
+ 	struct clk		*clk_per;
++	bool			enabled;
+ 
+ 	/*
+ 	 * These are the addresses we mapped
+@@ -514,6 +515,10 @@
+ 
+ static void imxfb_enable_controller(struct imxfb_info *fbi)
+ {
++
++	if (fbi->enabled)
++		return;
++
+ 	pr_debug("Enabling LCD controller\n");
+ 
+ 	writel(fbi->screen_dma, fbi->regs + LCDC_SSA);
+@@ -534,6 +539,7 @@
+ 	clk_prepare_enable(fbi->clk_ipg);
+ 	clk_prepare_enable(fbi->clk_ahb);
+ 	clk_prepare_enable(fbi->clk_per);
++	fbi->enabled = true;
+ 
+ 	if (fbi->backlight_power)
+ 		fbi->backlight_power(1);
+@@ -543,6 +549,9 @@
+ 
+ static void imxfb_disable_controller(struct imxfb_info *fbi)
+ {
++	if (!fbi->enabled)
++		return;
++
+ 	pr_debug("Disabling LCD controller\n");
+ 
+ 	if (fbi->backlight_power)
+@@ -553,6 +562,7 @@
+ 	clk_disable_unprepare(fbi->clk_per);
+ 	clk_disable_unprepare(fbi->clk_ipg);
+ 	clk_disable_unprepare(fbi->clk_ahb);
++	fbi->enabled = false;
+ 
+ 	writel(0, fbi->regs + LCDC_RMCR);
+ }

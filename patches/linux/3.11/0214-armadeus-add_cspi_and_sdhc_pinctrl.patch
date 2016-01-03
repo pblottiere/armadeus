@@ -1,0 +1,27 @@
+
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+---
+Index: linux-3.11-rc4/arch/arm/boot/dts/imx27.dtsi
+===================================================================
+--- linux-3.11-rc4.orig/arch/arm/boot/dts/imx27.dtsi
++++ linux-3.11-rc4/arch/arm/boot/dts/imx27.dtsi
+@@ -382,6 +382,19 @@
+ 					};
+ 				};
+ 
++				sdhc {
++					pinctrl_sdhc2: sdhc-2 {
++						fsl,pins = <
++							MX27_PAD_SD2_D0__SD2_D0 0x00
++							MX27_PAD_SD2_D1__SD2_D1 0x00
++							MX27_PAD_SD2_D2__SD2_D2 0x00
++							MX27_PAD_SD2_D3__SD2_D3 0x00
++							MX27_PAD_SD2_CMD__SD2_CMD 0x00
++							MX27_PAD_SD2_CLK__SD2_CLK 0x00
++						>;
++					};
++				};
++
+ 				uart {
+ 					pinctrl_uart1: uart-1 {
+ 						fsl,pins = <

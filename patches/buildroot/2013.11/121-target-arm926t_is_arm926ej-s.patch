@@ -1,0 +1,18 @@
+Real name for arm926t is arm926ej-s. arm926t is the old name still used in
+Linux & uClibc.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/target/Config.in.arch
+===================================================================
+--- buildroot/arch/Config.in.arm
++++ buildroot/arch/Config.in.arm
+@@ -22,7 +2,7 @@ config BR2_arm920t
+ 	bool "arm922t"
+ 	select BR2_ARM_CPU_HAS_THUMB
+ config BR2_arm926t
+-	bool "arm926t"
++	bool "arm926ej-s (arm926t)"
+ 	select BR2_ARM_CPU_MAYBE_HAS_VFPV2
+ 	select BR2_ARM_CPU_HAS_THUMB
+ config BR2_arm10t

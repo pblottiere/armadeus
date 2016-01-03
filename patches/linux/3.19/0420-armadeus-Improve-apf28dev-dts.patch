@@ -1,0 +1,132 @@
+Remaining Armadeus tweaks for APF28Dev device tree.
+
+---
+Index: linux-3.19.8/arch/arm/boot/dts/imx28-apf28dev.dts
+===================================================================
+--- linux-3.19.8.orig/arch/arm/boot/dts/imx28-apf28dev.dts
++++ linux-3.19.8/arch/arm/boot/dts/imx28-apf28dev.dts
+@@ -77,22 +77,35 @@
+ 					fsl,voltage = <MXS_VOLTAGE_HIGH>;
+ 					fsl,pull-up = <MXS_PULL_DISABLE>;
+ 				};
++
++				apf28dev_usb0_id_pins: apf28dev-usb0-id-pins@0 {
++					reg = <0>;
++					fsl,pinmux-ids = <
++						MX28_PAD_PWM2__USB0_ID
++					>;
++					fsl,voltage = <MXS_VOLTAGE_HIGH>;
++					fsl,pull-up = <MXS_PULL_ENABLE>;
++				};
+ 			};
+ 
+ 			lcdif@80030000 {
+				pinctrl-names = "default";
+				pinctrl-0 = <&lcdif_16bit_pins_a
+						&lcdif_pins_apf28dev>;
+-				display = <&display0>;
++				display = <&st0700>;
++				/*
++				* To use the Tianma TM035 LCD comment the line above
++				* and uncomment the line below.
++				*/
++				//display = <&tm035>;
+				status = "okay";
+
+-				display0: display0 {
++				st0700: st0700 {
+					bits-per-pixel = <16>;
+					bus-width = <16>;
+
+					display-timings {
+-						native-mode = <&timing0>;
+-						timing0: timing0 {
++						timing {
+							clock-frequency = <33000033>;
+							hactive = <800>;
+							vactive = <480>;
+@@ -109,6 +122,37 @@
+						};
+ 					};
+ 				};
++
++				tm035: tm035 {
++					bits-per-pixel = <16>;
++					bus-width = <16>;
++					red-blue-fix;
++
++					display-timings {
++						timing {
++							clock-frequency = <28000000>;
++							hactive = <320>;
++							vactive = <240>;
++							hback-porch = <10>;
++							hfront-porch = <15>;
++							vback-porch = <9>;
++							vfront-porch = <4>;
++							hsync-len = <60>;
++							vsync-len = <4>;
++							hsync-active = <0>;
++							vsync-active = <0>;
++							de-active = <0>;
++							pixelclk-active = <1>;
++						};
++					};
++				};
++			};
++
++			can0: can@80032000 {
++				pinctrl-names = "default";
++				pinctrl-0 = <&can0_pins_a>;
++				xceiver-supply = <&reg_can0_vcc>;
++				status = "okay";
+			};
+ 		};
+ 
+@@ -130,6 +174,13 @@
+ 				status = "okay";
+ 			};
+ 
++			auart0: serial@8006a000 {
++				pinctrl-names = "default";
++				pinctrl-0 = <&auart0_pins_a>;
++				fsl,uart-has-rtscts;
++				status = "okay";
++			};
++
+ 			usbphy0: usbphy@8007c000 {
+ 				status = "okay";
+ 			};
+@@ -143,7 +194,8 @@
+ 	ahb@80080000 {
+ 		usb0: usb@80080000 {
+ 			pinctrl-names = "default";
+-			pinctrl-0 = <&usb0_otg_apf28dev>;
++			pinctrl-0 = <&usb0_otg_apf28dev
++					&apf28dev_usb0_id_pins>;
+ 			vbus-supply = <&reg_usb0_vbus>;
+ 			status = "okay";
+ 		};
+@@ -175,6 +227,14 @@
+ 			gpio = <&gpio1 23 1>;
+ 			enable-active-high;
+ 		};
++
++		reg_can0_vcc: regulator@1 {
++			compatible = "regulator-fixed";
++			reg = <1>;
++			regulator-name = "can0_vcc";
++			regulator-min-microvolt = <5000000>;
++			regulator-max-microvolt = <5000000>;
++		};
+ 	};
+ 
+ 	leds {
+@@ -202,6 +262,7 @@
+ 			label = "User button";
+ 			gpios = <&gpio0 17 0>;
+ 			linux,code = <0x100>;
++			gpio-key,wakeup;
+ 		};
+ 	};
+ };

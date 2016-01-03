@@ -1,0 +1,74 @@
+Add Freescale elftosb tools
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+
+Index: buildroot/package/elftosb/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/elftosb/Config.in	2012-01-30 13:52:48.000000000 +0100
+@@ -0,0 +1,7 @@
++config BR2_PACKAGE_ELFTOSB
++	bool "elftosb"
++	depends on BR2_arm
++	help
++	  Freescale host toolset to generate bootcode for some i.MX CPUs:
++	  iMX28...
++
+Index: buildroot/package/elftosb/elftosb.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/elftosb/elftosb.mk	2012-01-30 14:31:44.000000000 +0100
+@@ -0,0 +1,35 @@
++#############################################################
++#
++# elftosb
++#
++#############################################################
++ELFTOSB_VERSION = 10.12.01
++ELFTOSB_SOURCE = elftosb-$(ELFTOSB_VERSION).tar.gz
++ELFTOSB_SITE = http://repository.timesys.com/buildsources/e/elftosb/elftosb-$(ELFTOSB_VERSION)
++
++ELFTOSB_HOST_CFLAGS = $(HOST_CFLAGS)
++ELFTOSB_HOST_CFLAGS += -I${@D}/elftosb2 -I${@D}/keygen -I${@D}/sbtool -I${@D}/common
++ELFTOSB_HOST_CFLAGS += -DLinux
++
++define HOST_ELFTOSB_BUILD_CMDS
++	$(TARGET_MAKE_ENV) $(MAKE) \
++		CFLAGS="$(ELFTOSB_HOST_CFLAGS)" \
++		-C $(@D) all
++endef
++
++define HOST_ELFTOSB_INSTALL_CMDS
++	$(INSTALL) -D -m 0755 $(@D)/bld/linux/elftosb $(HOST_DIR)/usr/bin/elftosb
++	$(INSTALL) -D -m 0755 $(@D)/bld/linux/keygen $(HOST_DIR)/usr/bin/keygen
++	$(INSTALL) -D -m 0755 $(@D)/bld/linux/sbtool $(HOST_DIR)/usr/bin/sbtool
++endef
++
++define HOST_ELFTOSB_CLEAN_CMDS
++	rm -rf $(@D)/bld/linux
++	rm -rf $(HOST_DIR)/usr/bin/elftosb
++	rm -rf $(HOST_DIR)/usr/bin/keygen
++	rm -rf $(HOST_DIR)/usr/bin/sbtool
++endef
++
++$(eval $(call GENTARGETS,package,elftosb))
++$(eval $(call GENTARGETS,package,elftosb,host))
++
+Index: buildroot/package/elftosb/elftosb10.12.01-fixes_includes.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/elftosb/elftosb10.12.01-fixes_includes.patch	2012-01-30 13:51:24.000000000 +0100
+@@ -0,0 +1,13 @@
++Index: host-elftosb-10.12.01/common/stdafx.h
++===================================================================
++--- host-elftosb-10.12.01.orig/common/stdafx.h	2012-01-30 12:43:35.000000000 +0100
+++++ host-elftosb-10.12.01/common/stdafx.h	2012-01-30 12:43:54.000000000 +0100
++@@ -27,7 +27,7 @@
++ // For Linux systems only, types.h only defines the signed
++ // integer types.  This is not professional code.
++ // Update: They are defined in the header files in the more recent version of redhat enterprise gcc.
++-#include "/usr/include/sys/types.h"
+++#include <sys/types.h>
++ #include <stdint.h>
++ //typedef unsigned long uint32_t;
++ //typedef unsigned short uint16_t;

@@ -1,0 +1,63 @@
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/apf-config/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/apf-config/Config.in	2015-07-27 16:16:25.679411119 +0200
+@@ -0,0 +1,21 @@
++config BR2_PACKAGE_APF_CONFIG
++	bool "apf-config"
++	depends on BR2_LARGEFILE	# e2fsprogs
++	depends on BR2_USE_WCHAR	# e2fsprogs
++	depends on BR2_USE_MMU		# e2fsprogs, util-linux
++	select BR2_PACKAGE_NEWT		# whiptail
++	select BR2_PACKAGE_NCURSES
++	select BR2_PACKAGE_NCURSES_TARGET_PROGS	# tput
++	select BR2_PACKAGE_E2FSPROGS
++	select BR2_PACKAGE_E2FSPROGS_E2FSCK
++	select BR2_PACKAGE_E2FSPROGS_RESIZE2FS
++	select BR2_PACKAGE_UTIL_LINUX	# fdisk
++	select BR2_PACKAGE_LUA
++	help
++	  Configuration tool for Armadeus APF6 modules
++	  (à la raspi-config).
++
++	  https://github.com/artemysfr/raspi-config
++
++comment "apf-config needs a toolchain w/ largefile, mmu, wchar"
++	depends on !(BR2_LARGEFILE && BR2_USE_WCHAR && BR2_USE_MMU)
+Index: buildroot/package/apf-config/apf-config.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/apf-config/apf-config.mk	2015-07-27 16:08:07.883416925 +0200
+@@ -0,0 +1,18 @@
++################################################################################
++#
++# apf-config
++#
++################################################################################
++
++APF_CONFIG_VERSION = 044378fc0f7b66bb6c66910f75abd49a9a29dfbc
++APF_CONFIG_SITE = $(call github,artemysfr,raspi-config,$(APF_CONFIG_VERSION))
++APF_CONFIG_LICENSE = MIT
++APF_CONFIG_LICENSE_FILES = LICENSE
++APF_CONFIG_DEPENDENCIES = e2fsprogs lua newt ncurses util-linux
++
++define APF_CONFIG_INSTALL_TARGET_CMDS
++	$(INSTALL) -D -m 755 $(@D)/apf-config $(TARGET_DIR)/usr/sbin/apf-config
++endef
++
++
++$(eval $(generic-package))
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2015-07-27 15:34:24.295440527 +0200
++++ buildroot/package/Config.in	2015-07-27 16:06:00.035418416 +0200
+@@ -305,6 +305,7 @@
+ 	source "package/a10disp/Config.in"
+ 	source "package/acpid/Config.in"
+ 	source "package/am335x-pru-package/Config.in"
++	source "package/apf-config/Config.in"
+ 	source "package/avrdude/Config.in"
+ 	source "package/bcache-tools/Config.in"
+ 	source "package/biosdevname/Config.in"

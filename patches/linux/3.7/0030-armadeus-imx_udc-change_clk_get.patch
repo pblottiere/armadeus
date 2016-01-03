@@ -1,0 +1,14 @@
+The usb clock is now register with device name.
+Index: linux-3.7-rc4/drivers/usb/gadget/imx_udc.c
+===================================================================
+--- linux-3.7-rc4.orig/drivers/usb/gadget/imx_udc.c	2012-11-04 20:07:39.000000000 +0100
++++ linux-3.7-rc4/drivers/usb/gadget/imx_udc.c	2012-11-06 09:06:02.000000000 +0100
+@@ -1426,7 +1426,7 @@
+ 		goto fail1;
+ 	}
+ 
+-	clk = clk_get(NULL, "usbd_clk");
++	clk = clk_get(&pdev->dev, NULL);
+ 	if (IS_ERR(clk)) {
+ 		ret = PTR_ERR(clk);
+ 		dev_err(&pdev->dev, "can't get USB clock\n");

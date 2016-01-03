@@ -1,0 +1,13 @@
+Index: buildroot/linux/linux.mk
+===================================================================
+--- buildroot.orig/linux/linux.mk	2012-02-21 20:57:58.000000000 +0100
++++ buildroot/linux/linux.mk	2012-02-21 20:59:44.000000000 +0100
+@@ -129,6 +129,8 @@
+ 
+ ifeq ($(strip $(BR2_TARGET_ARMADEUS)),y)
+ define ARMADEUS_LINUX_CONFIG_HACKS
++	$(SED) "s,^ARCH.*,ARCH=$(KERNEL_ARCH),g;" $(@D)/Makefile
++	$(SED) "s,^CROSS_COMPILE.*,CROSS_COMPILE=$(KERNEL_CROSS),g;" $(@D)/Makefile
+ 	ln -sf $(ARMADEUS_TOPDIR)/target/linux/modules/ $(@D)/drivers/armadeus
+ endef
+ endif

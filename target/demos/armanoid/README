@@ -1,0 +1,17 @@
+***********
+OOOOOOOOOO
+OOO OOOOOO
+O        O
+    *
+___---____
+
+ Armanoid
+***********
+
+* ARM compiling:
+ $ make clean; make install
+
+* x86 compiling (SDL devt package should be installed on your system)
+ $ make clean TARGET=x86; make TARGET=x86
+* x86 installing:
+ $ sudo make install TARGET=x86

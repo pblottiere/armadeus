@@ -1,0 +1,58 @@
+Adding python module crc16
+
+Signed-off-by: Fabien Marteau <fabien.marteau@armadeus.com> 
+---
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2012-10-16 13:51:37.000000000 +0200
++++ buildroot/package/Config.in	2012-10-16 13:52:57.000000000 +0200
+@@ -273,6 +273,7 @@
+ source "package/python/Config.in"
+ if BR2_PACKAGE_PYTHON
+ menu "external python modules"
++source "package/python-crc16/Config.in"
+ source "package/python-dpkt/Config.in"
+ source "package/python-mad/Config.in"
+ source "package/python-mysql/Config.in"
+Index: buildroot/package/python-crc16/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/python-crc16/Config.in	2012-10-16 13:53:29.000000000 +0200
+@@ -0,0 +1,7 @@
++config BR2_PACKAGE_PYTHON_CRC16
++	bool "python-crc16"
++	depends on BR2_PACKAGE_PYTHON
++	help
++	  calculate crc16
++
++	  http://code.google.com/p/pycrc16/
+Index: buildroot/package/python-crc16/python-crc16.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/python-crc16/python-crc16.mk	2012-10-16 13:53:29.000000000 +0200
+@@ -0,0 +1,25 @@
++#############################################################
++#
++# python-serial
++#
++#############################################################
++
++PYTHON_CRC16_VERSION =0.1.1
++PYTHON_CRC16_SOURCE  =crc16-$(PYTHON_CRC16_VERSION).tar.gz
++PYTHON_CRC16_SITE    =http://pycrc16.googlecode.com/files/
++
++PYTHON_CRC16_DEPENDENCIES = python
++
++define PYTHON_CRC16_BUILD_CMDS
++	(cd $(@D); \
++		$(TARGET_CONFIGURE_OPTS) \
++		CFLAGS="$(TARGET_CFLAGS)" \
++		LDSHARED="$(TARGET_CROSS)gcc -shared" \
++		$(HOST_DIR)/usr/bin/python setup.py build)
++endef
++
++define PYTHON_CRC16_INSTALL_TARGET_CMDS
++	(cd $(@D); $(HOST_DIR)/usr/bin/python setup.py install --prefix=$(TARGET_DIR)/usr)
++endef
++
++$(eval $(call GENTARGETS))

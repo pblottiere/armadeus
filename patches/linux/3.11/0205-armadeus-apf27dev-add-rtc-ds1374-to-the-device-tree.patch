@@ -1,0 +1,30 @@
+From 85e466fd3f5420bd2798bb85c2c07497eda04686 Mon Sep 17 00:00:00 2001
+From: Philippe Reynes <tremyfr@yahoo.fr>
+Date: Sat, 15 Jun 2013 23:30:25 +0200
+Subject: [PATCH] apf27dev: add rtc ds1374 to the device tree
+
+
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+---
+ arch/arm/boot/dts/imx27-apf27dev.dts |    5 +++++
+ 1 files changed, 5 insertions(+), 0 deletions(-)
+
+diff --git a/arch/arm/boot/dts/imx27-apf27dev.dts b/arch/arm/boot/dts/imx27-apf27dev.dts
+index 66b8e1c..2a377ca 100644
+--- a/arch/arm/boot/dts/imx27-apf27dev.dts
++++ b/arch/arm/boot/dts/imx27-apf27dev.dts
+@@ -53,6 +53,11 @@
+ &i2c1 {
+ 	clock-frequency = <400000>;
+ 	status = "okay";
++
++	rtc@68 {
++		compatible = "dallas,ds1374";
++		reg = <0x68>;
++	};
+ };
+ 
+ &i2c2 {
+-- 
+1.7.4.4
+

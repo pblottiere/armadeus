@@ -1,0 +1,27 @@
+add i2c eeprom and i2c2 bus to apf27.dts
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+
+Index: linux-3.15-rc1/arch/arm/boot/dts/imx27-apf27.dts
+===================================================================
+--- linux-3.15-rc1.orig/arch/arm/boot/dts/imx27-apf27.dts
++++ linux-3.15-rc1/arch/arm/boot/dts/imx27-apf27.dts
+@@ -80,6 +80,18 @@
+ 	status = "okay";
+ };
+ 
++&i2c2 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_i2c2_1>;
++	status = "okay";
++
++	eeprom@50 {
++		compatible = "atmel,24c02";
++		reg = <0x50>;
++		pagesize = <8>;
++	};
++};
++
+ &nfc {
+ 	status = "okay";
+ 	nand-bus-width = <16>;

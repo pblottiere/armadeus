@@ -1,0 +1,212 @@
+Add i.MX27 and i.MX31 to the usbmisc driver. (based on Alexexander Shiyan patches)
+
+TODO: add control to external USB VBUS power supply
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+--- linux-3.13-rc8/arch/arm/boot/dts/imx27.dtsi
++++ linux-3.13-rc8/arch/arm/boot/dts/imx27.dtsi
+@@ -31,6 +31,9 @@
+ 		spi0 = &cspi1;
+ 		spi1 = &cspi2;
+ 		spi2 = &cspi3;
++		usb0 = &usbotg;
++		usb1 = &usbh1;
++		usb2 = &usbh2;
+ 	};
+ 
+ 	aitc: aitc-interrupt-controller@e0000000 {
+@@ -411,6 +414,44 @@
+ 				iram = <&iram>;
+ 			};
+ 
++			usbotg: usb@10024000 {
++				compatible = "fsl,imx27-usb";
++				reg = <0x10024000 0x200>;
++				interrupts = <56>;
++				clocks = <&clks 15>, <&clks 75>, <&clks 62>;
++				clock-names = "per", "ipg", "ahb";
++				usbmisc = <&usbmisc 0>;
++				status = "disabled";
++			};
++
++			usbh1: usb@10024200 {
++				compatible = "fsl,imx27-usb";
++				reg = <0x10024200 0x200>;
++				interrupts = <54>;
++				clocks = <&clks 15>, <&clks 75>, <&clks 62>;
++				clock-names = "per", "ipg", "ahb";
++				usbmisc = <&usbmisc 1>;
++				status = "disabled";
++			};
++
++			usbh2: usb@10024400 {
++				compatible = "fsl,imx27-usb";
++				reg = <0x10024400 0x200>;
++				interrupts = <55>;
++				clocks = <&clks 15>, <&clks 75>, <&clks 62>;
++				clock-names = "per", "ipg", "ahb";
++				usbmisc = <&usbmisc 2>;
++				status = "disabled";
++			};
++
++			usbmisc: usbmisc@10024600 {
++				#index-cells = <1>;
++				compatible = "fsl,imx27-usbmisc";
++				reg = <0x10024600 0x4>;
++				clocks = <&clks 62>;
++				status = "disabled";
++			};
++
+ 			sahara2: sahara@10025000 {
+ 				compatible = "fsl,imx27-sahara";
+ 				reg = <0x10025000 0x1000>;
+--- linux-3.13-rc8/drivers/usb/chipidea/ci_hdrc_imx.c
++++ linux-3.13-rc8/drivers/usb/chipidea/ci_hdrc_imx.c
+@@ -37,6 +37,7 @@ static struct imx_usbmisc_data *usbmisc_
+ 	struct device_node *np = dev->of_node;
+ 	struct of_phandle_args args;
+ 	struct imx_usbmisc_data *data;
++	u32 sic;
+ 	int ret;
+ 
+ 	/*
+@@ -70,6 +71,14 @@ static struct imx_usbmisc_data *usbmisc_
+ 	if (!of_find_property(np, "ext-clk-en", NULL))
+ 		data->ext_clk_en = 1;
+ 
++	if (of_find_property(np, "disable-tll", NULL))
++		data->disable_tll = 1;
++
++	if (!of_property_read_u32(np, "sic", &sic)) {
++		data->enable_sic = 1;
++		data->sic = sic & 0x3;
++	}
++
+ 	return data;
+ }
+ 
+--- linux-3.13-rc8.ref2/drivers/usb/chipidea/ci_hdrc_imx.h
++++ linux-3.13-rc8/drivers/usb/chipidea/ci_hdrc_imx.h
+@@ -15,6 +15,9 @@ struct imx_usbmisc_data {
+ 	unsigned int disable_oc:1; /* over current detect disabled */
+ 	unsigned int evdo:1; /* set external vbus divider option */
+ 	unsigned int ext_clk_en:1; /* select the clock from external PHY*/
++	unsigned int disable_tll:1; /* disable transceiver-less link logic */
++	unsigned int enable_sic:1; /* enable serial interface configuration */
++	unsigned int sic:2; /* serial interface configuration */
+ };
+ 
+ int imx_usbmisc_init(struct imx_usbmisc_data *);
+--- linux-3.13-rc8/drivers/usb/chipidea/usbmisc_imx.c
++++ linux-3.13-rc8/drivers/usb/chipidea/usbmisc_imx.c
+@@ -21,6 +21,18 @@
+ #define MX25_USB_PHY_CTRL_OFFSET	0x08
+ #define MX25_BM_EXTERNAL_VBUS_DIVIDER	BIT(23)
+ 
++#define MX27_H1_PM_BIT			BIT(8)
++#define MX27_H1_SIC_OFFSET		13
++#define MX27_H1_SIC_MASK		0x00006000
++#define MX27_H1_TLL_BIT			BIT(4)
++#define MX27_H2_PM_BIT			BIT(16)
++#define MX27_H2_SIC_OFFSET		21
++#define MX27_H2_SIC_MASK		0x00600000
++#define MX27_H2_TLL_BIT			BIT(5)
++#define MX27_OTG_PM_BIT			BIT(24)
++#define MX27_OTG_SIC_OFFSET		29
++#define MX27_OTG_SIC_MASK		0x60000000
++
+ #define MX51_USB_OTG_PHY_CTRL_OFFSET	0x00
+ #define MX51_USB_OTG_PHY_CTRL_0_OFFSET	0x08
+ #define MX51_USB_OTG_PHY_CTRL_1_OFFSET	0x0c
+@@ -170,6 +182,66 @@ static int usbmisc_imx51_post(struct imx
+ 	return 0;
+ }
+ 
++static int usbmisc_imx27_init(struct imx_usbmisc_data *data)
++{
++	unsigned long flags;
++	u32 val=0;
++	u32 mask;
++	u32 reg;
++
++	switch (data->index) {
++	case 0:
++		mask = MX27_OTG_PM_BIT;
++		if (data->disable_oc)
++			val |= MX27_OTG_PM_BIT;
++
++		if (data->enable_sic) {
++			mask |= MX27_OTG_SIC_MASK;
++			val |= data->sic << MX27_OTG_SIC_OFFSET;
++		}
++
++		break;
++	case 1:
++		mask = MX27_H1_PM_BIT;
++		if (data->disable_oc)
++			val |= MX27_H1_PM_BIT;
++
++		if (data->enable_sic) {
++			mask |= MX27_H1_SIC_MASK;
++			val |= data->sic << MX27_H1_SIC_OFFSET;
++		}
++
++		if (data->disable_tll)
++			val |= MX27_H1_TLL_BIT;
++
++		break;
++	case 2:
++		mask = MX27_H2_PM_BIT;
++		if (data->disable_oc)
++			val |= MX27_H2_PM_BIT;
++
++		if (data->enable_sic) {
++			mask |= MX27_H2_SIC_MASK;
++			val |= data->sic << MX27_H2_SIC_OFFSET;
++		}
++
++		if (data->disable_tll)
++			val |= MX27_H2_TLL_BIT;
++
++		break;
++	default:
++		return -EINVAL;
++	};
++
++	spin_lock_irqsave(&usbmisc->lock, flags);
++	reg = readl(usbmisc->base);
++	reg = (reg  & ~mask) | val;
++	writel(reg, usbmisc->base);
++	spin_unlock_irqrestore(&usbmisc->lock, flags);
++
++	return 0;
++}
++
+ static int usbmisc_imx53_init(struct imx_usbmisc_data *data)
+ {
+ 	void __iomem *reg = NULL;
+@@ -235,6 +307,10 @@ static const struct usbmisc_ops imx51_us
+ 	.post = usbmisc_imx51_post,
+ };
+ 
++static const struct usbmisc_ops imx27_usbmisc_ops = {
++	.init = usbmisc_imx27_init,
++};
++
+ static const struct usbmisc_ops imx53_usbmisc_ops = {
+ 	.init = usbmisc_imx53_init,
+ };
+@@ -273,7 +349,10 @@ static const struct of_device_id usbmisc
+ 		.data = &imx51_usbmisc_ops,
+ 	},
+ 	{
+-		.compatible = "fsl,imx53-usbmisc",
++		.compatible = "fsl,imx27-usbmisc",
++		.data = &imx27_usbmisc_ops,
++	},
++	{	.compatible = "fsl,imx53-usbmisc",
+ 		.data = &imx53_usbmisc_ops,
+ 	},
+ 	{
+--

@@ -1,0 +1,29 @@
+From a921b974de6b9ae585787a7b46354e32a630145f Mon Sep 17 00:00:00 2001
+From: Steve Longerbeam <steve_longerbeam@mentor.com>
+Date: Fri, 17 Oct 2014 18:23:18 -0700
+Subject: [PATCH 2/2] imx-drm: ipuv3-crtc: Use DRM mode flags to configure
+ pixel clock polarity
+
+Previously, pixel clock polarity was hardcoded and wasn't configurable.
+This patch adds support to configure the pixel clock polarity from the
+DRM mode flags.
+
+Signed-off-by: Mohsin Kazmi <mohsin_kazmi@mentor.com>
+Signed-off-by: Steve Longerbeam <steve_longerbeam@mentor.com>
+---
+ drivers/gpu/drm/imx/ipuv3-crtc.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+Index: linux-4.0-rc1/drivers/gpu/drm/imx/ipuv3-crtc.c
+===================================================================
+--- linux-4.0-rc1.orig/drivers/gpu/drm/imx/ipuv3-crtc.c
++++ linux-4.0-rc1/drivers/gpu/drm/imx/ipuv3-crtc.c
+@@ -174,7 +174,7 @@ static int ipu_crtc_mode_set(struct drm_
+ 	out_pixel_fmt = ipu_crtc->interface_pix_fmt;
+ 
+ 	sig_cfg.enable_pol = 1;
+-	sig_cfg.clk_pol = 0;
++	sig_cfg.clk_pol = (mode->flags & DRM_MODE_FLAG_PCLK) ? 1 : 0;
+ 	sig_cfg.pixel_fmt = out_pixel_fmt;
+ 	sig_cfg.v_to_h_sync = 0;
+ 	sig_cfg.hsync_pin = ipu_crtc->di_hsync_pin;

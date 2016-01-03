@@ -1,0 +1,55 @@
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/owfs/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/owfs/Config.in	2014-02-19 10:46:11.457222352 +0100
+@@ -0,0 +1,11 @@
++config BR2_PACKAGE_OWFS
++	bool "owfs"
++	select BR2_PACKAGE_LIBFUSE
++	help
++	  OWFS is an easy way to use the powerful 1-wire system of
++	  Dallas/Maxim.
++	  OWFS is a simple and flexible program to monitor and control the
++	  physical environment. You can write scripts to read temperature,
++	  flash lights, write to an LCD, log and graph, ...
++
++	  http://owfs.org/
+Index: buildroot/package/owfs/owfs.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/owfs/owfs.mk	2014-02-19 10:46:11.457222352 +0100
+@@ -0,0 +1,20 @@
++###############################################################################
++#
++# owfs
++#
++###############################################################################
++
++OWFS_SITE = http://downloads.sourceforge.net/owfs/
++OWFS_VERSION = 2.9p2
++OWFS_DEPENDENCIES = libfuse
++OWFS_CONF_OPT += --disable-owhttpd --disable-owftpd --disable-swig
++OWFS_INSTALL_STAGING = YES
++
++ifeq ($(BR2_PACKAGE_LIBUSB),y)
++OWFS_DEPENDENCIES += libusb
++OWFS_CONF_OPT += --enable-usb
++else
++OWFS_CONF_OPT += --disable-usb
++endif
++
++$(eval $(autotools-package))
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2014-02-19 10:46:24.141285251 +0100
++++ buildroot/package/Config.in	2014-02-19 10:47:03.169478779 +0100
+@@ -337,6 +337,7 @@
+ source "package/open2300/Config.in"
+ source "package/openocd/Config.in"
+ source "package/openpowerlink/Config.in"
++source "package/owfs/Config.in"
+ source "package/owl-linux/Config.in"
+ source "package/parted/Config.in"
+ source "package/pciutils/Config.in"

@@ -1,0 +1,13 @@
+Index: buildroot/package/mplayer/mplayer.mk
+===================================================================
+--- buildroot.orig/package/mplayer/mplayer.mk
++++ buildroot/package/mplayer/mplayer.mk
+@@ -113,7 +113,7 @@ MPLAYER_CONF_OPTS += --enable-armv6
+ endif
+
+ ifeq ($(BR2_ARM_CPU_HAS_NEON),y)
+-MPLAYER_CONF_OPTS += --enable-neon
++MPLAYER_CONF_OPTS += --enable-armv6
+ endif
+
+ ifeq ($(BR2_i386),y)

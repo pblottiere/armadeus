@@ -1,0 +1,417 @@
+Index: linux-2.6.38.8/drivers/video/display/hx8369.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.38.8/drivers/video/display/hx8369.c	2011-12-15 09:35:04.000000000 +0100
+@@ -0,0 +1,262 @@
++/*
++ * Display Driver for hx8369 controler for AMOLED
++ *
++ * Copyright (c) 2009-2012 Armadeus systems / Author: F. Marteau
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ *
++ */
++
++#include <linux/module.h>
++#include <linux/kernel.h>
++#include <linux/init.h>
++#include <linux/platform_device.h>
++#include <linux/mutex.h>
++#include <linux/fb.h>
++#include <linux/delay.h>
++
++#include <linux/display.h>
++#include <linux/spi/spi.h>
++
++#include <linux/version.h>
++#include <mach/imxfb.h>	/* Backlight machinfo struct is defined here */
++#include <mach/hardware.h>
++
++#include <video/hx8369.h>
++
++#define DRIVER_NAME	"hx8369-display"
++#define DRIVER_VERSION "0.3"
++
++/* write value hx8369 display register via SPI */
++void hx8369_write(struct hx8369_display *hx8369_dev, u8 address, u16 data)
++{
++	struct spi_message	message;
++	struct spi_transfer	x[1];
++	int i;
++	u8	cmd_send;
++	unsigned char buf[64];
++	unsigned char buf_read[64];
++
++	cmd_send = address;
++
++	spi_message_init(&message);
++	memset(x, 0, sizeof x);
++	memset(buf, 0, sizeof(buf));
++	memset(buf_read, 0, sizeof(buf_read));
++
++	buf[0] = 0;
++	for (i = 1; i < 9; i++) {
++		buf[i] = ((cmd_send & 0x80)>>7);
++		cmd_send = cmd_send << 1;
++	}
++	buf[9] = 1;
++
++	cmd_send = data;
++
++	for (i = 10; i < 18; i++) {
++		buf[i] = ((cmd_send & 0x80)>>7);
++		cmd_send = cmd_send << 1;
++	}
++
++	x[0].tx_buf = buf;
++	x[0].len = 18;
++	x[0].rx_buf = buf_read;
++	x[0].speed_hz = 1000000;
++	x[0].bits_per_word = 1;
++	spi_message_add_tail(&x[0], &message);
++
++	spi_sync(hx8369_dev->spi, &message);
++}
++
++u8 hx8369_read(struct hx8369_display *hx8369_dev, u8 address)
++{
++	struct spi_message	message;
++	struct spi_transfer	x[1];
++	int status, i;
++	u8	cmd_send;
++	unsigned char buf[64];
++	unsigned char buf_read[64];
++	int ret_value=0;
++
++	cmd_send = address;
++
++	spi_message_init(&message);
++	memset(x, 0, sizeof x);
++	memset(buf, 0, sizeof(buf));
++	memset(buf_read, 0, sizeof(buf_read));
++
++	buf[0] = 0;
++	for (i = 1; i < 9; i++) {
++		buf[i] = ((cmd_send & 0x80)>>7);
++		cmd_send = cmd_send << 1;
++	}
++
++	x[0].tx_buf = buf;
++	x[0].len = 17;
++	x[0].rx_buf = buf_read;
++	x[0].speed_hz = 1000000;
++	x[0].bits_per_word = 1;
++	spi_message_add_tail(&x[0], &message);
++
++	status = spi_sync(hx8369_dev->spi, &message);
++	if (status < 0)
++		return status;
++
++	for (i = 0; i < 17 ; i++) {
++		ret_value = ret_value << 1;
++		ret_value = ret_value | (buf_read[i]&0x01);
++	}
++
++	return (u8)ret_value;
++}
++
++static int hx8369_display_get_contrast(struct display_device *dev)
++{
++	struct hx8369_display *hx8369_dev = dev->priv_data;
++
++	return hx8369_dev->gcontrast_value;
++}
++
++static int hx8369_display_set_contrast(struct display_device *dev, unsigned int value)
++{
++	return value;
++}
++
++static int hx8369_display_probe(struct display_device *dev, void *data)
++{
++	return 1;
++}
++
++static int hx8369_display_remove(struct display_device *dev)
++{
++	return 0;
++}
++
++#ifdef CONFIG_PM
++static void hx8369_display_suspend(struct display_device *dev, pm_message_t state)
++{
++}
++
++static void hx8369_display_resume(struct display_device *dev)
++{
++}
++#else
++#define hx8369_display_suspend	NULL
++#define hx8369_display_resume	NULL
++#endif /* CONFIG_PM */
++
++static struct display_driver hx8369_ops = {
++	.get_contrast 	= hx8369_display_get_contrast,
++	.set_contrast 	= hx8369_display_set_contrast,
++	.probe	 	= hx8369_display_probe,
++	.suspend	= hx8369_display_suspend,
++	.resume		= hx8369_display_resume,
++	.remove		= hx8369_display_remove,
++	.max_contrast	= 63,
++};
++
++
++static void hx8369_init_sequence(struct hx8369_display *hx8369_dev)
++{
++	/* initial procedure for 24-bit parallel RGB (DE) */
++	hx8369_write(hx8369_dev, HX8369_DISPON, 0);
++	hx8369_write(hx8369_dev, HX8369_SLPOUT, 0);
++}
++
++static int hx8369_spi_probe(struct spi_device *pdev)
++{
++	int err = -EINVAL;
++	struct display_device *disp_dev;
++	struct hx8369_display *hx8369_dev = pdev->dev.platform_data;
++
++	/* fill hx8369 display structure */
++	disp_dev = display_device_register(&hx8369_ops,
++					&pdev->dev,
++					hx8369_dev);
++	if (disp_dev == NULL)
++		goto display_device_error;
++	disp_dev->priv_data = hx8369_dev;
++	hx8369_dev->display_dev = disp_dev;
++	hx8369_dev->spi = pdev;
++
++	/* configure spi */
++	hx8369_dev->spi->mode = SPI_MODE_0;
++	hx8369_dev->spi->bits_per_word = 1;
++	hx8369_dev->spi->dev.power.power_state = PMSG_ON;
++	err = spi_setup(hx8369_dev->spi);
++	if (err < 0)
++		goto spi_error;
++
++	hx8369_init_sequence(hx8369_dev);
++
++	return 0;
++
++spi_error:
++	printk("ERROR: can't setup spi for hx8369\n");
++	display_device_unregister(hx8369_dev->display_dev);
++display_device_error:
++	printk("ERROR: can't register display device\n");
++	return err;
++}
++
++static int hx8369_spi_remove(struct spi_device *pdev)
++{
++	struct hx8369_display *hx8369_dev = pdev->dev.platform_data;
++
++	hx8369_dev->reset_on(1); /* let hx8369 in reset */
++	display_device_unregister(hx8369_dev->display_dev);
++
++	return 0;
++}
++
++#ifdef CONFIG_PM
++static int hx8369_spi_suspend(struct spi_device *dev, pm_message_t state)
++{
++	return 0;
++}
++
++static int hx8369_spi_resume(struct spi_device *dev)
++{
++	return 0;
++}
++#else
++#define hx8369_suspend	NULL
++#define hx8369_resume	NULL
++#endif
++
++static void hx8369_spi_shutdown(struct spi_device *spi)
++{
++
++}
++
++static struct spi_driver hx8369_driver = {
++	.probe		= hx8369_spi_probe,
++	.remove		= hx8369_spi_remove,
++	.shutdown	= hx8369_spi_shutdown,
++	.suspend	= hx8369_spi_suspend,
++	.resume		= hx8369_spi_resume,
++	.driver		= {
++		.name	= DRIVER_NAME,
++		.owner	= THIS_MODULE,
++	},
++};
++
++static int __init hx8369_init(void)
++{
++	return spi_register_driver(&hx8369_driver);
++}
++
++static void __exit hx8369_exit(void)
++{
++	spi_unregister_driver(&hx8369_driver);
++}
++
++module_init(hx8369_init);
++module_exit(hx8369_exit);
++
++MODULE_AUTHOR("Fabien Marteau <fabien.marteau@armadeus.com");
++MODULE_DESCRIPTION("HX8369 display Driver");
++MODULE_LICENSE("GPL");
++
+Index: linux-2.6.38.8/drivers/video/display/Kconfig
+===================================================================
+--- linux-2.6.38.8.orig/drivers/video/display/Kconfig	2011-12-08 09:39:26.000000000 +0100
++++ linux-2.6.38.8/drivers/video/display/Kconfig	2011-12-08 09:50:38.000000000 +0100
+@@ -5,6 +5,7 @@
+ menu "Display device support"
+ 
+ config DISPLAY_SUPPORT
++	default y
+ 	tristate "Display panel/monitor support"
+ 	---help---
+ 	  This framework adds support for low-level control of a display.
+@@ -21,4 +22,12 @@
+ comment "Display hardware drivers"
+ 	depends on DISPLAY_SUPPORT
+ 
++config HX8369_DISPLAY
++	tristate "HX8369 display driver"
++	default y
++	depends on DISPLAY_SUPPORT
++	---help---
++	  This driver allows you to control the contrast of
++	  HX5116 based AMOLED screen.
++
+ endmenu
+Index: linux-2.6.38.8/drivers/video/display/Makefile
+===================================================================
+--- linux-2.6.38.8.orig/drivers/video/display/Makefile	2011-12-08 09:41:18.000000000 +0100
++++ linux-2.6.38.8/drivers/video/display/Makefile	2011-12-08 09:41:54.000000000 +0100
+@@ -3,4 +3,5 @@
+ display-objs				:= display-sysfs.o
+ 
+ obj-$(CONFIG_DISPLAY_SUPPORT)		+= display.o
++obj-$(CONFIG_HX8369_DISPLAY)		+= hx8369.o
+ 
+Index: linux-2.6.38.8/include/video/hx8369.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.38.8/include/video/hx8369.h	2011-12-15 09:35:21.000000000 +0100
+@@ -0,0 +1,110 @@
++/*
++ *
++ * HX8369 Single Chip Driver
++ *
++ *  Copyright 2011-2012 Armadeus systems
++ *  Authors:
++ *  Fabien Marteau <fabien.marteau@armadeus.com>
++ *  Nicolas Colombain <nicolas.colombain@armadeus.com>
++ *
++ *  http://www.armadeus.com/
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ */
++
++#define HX8369_REG(x)	(x)
++
++/***********************/
++/* Standards registers */
++/***********************/
++#define HX8369_NOP		HX8369_REG(0x00)
++#define HX8369_SWRESET		HX8369_REG(0x01)
++#define HX8369_RDNUMPE		HX8369_REG(0x05)
++#define HX8369_RDRED		HX8369_REG(0x06)
++#define HX8369_RDGREEN		HX8369_REG(0x07)
++#define HX8369_RDBLUE		HX8369_REG(0x08)
++#define HX8369_RDDPM		HX8369_REG(0x0A)
++#define HX8369_RDDMADCTL	HX8369_REG(0x0B)
++#define HX8369_RDDCOLMOD	HX8369_REG(0x0C)
++#define HX8369_RDDIM		HX8369_REG(0x0D)
++#define HX8369_RDDSM		HX8369_REG(0x0E)
++#define HX8369_RDDSDR		HX8369_REG(0x0F)
++
++#define HX8369_SLPIN		HX8369_REG(0x10)
++#define HX8369_SLPOUT		HX8369_REG(0x11)
++#define HX8369_PTLON		HX8369_REG(0x12)
++#define HX8369_NORON		HX8369_REG(0x13)
++#define HX8369_INVOFF		HX8369_REG(0x20)
++#define HX8369_INVON		HX8369_REG(0x21)
++#define HX8369_GAMSET		HX8369_REG(0x26)
++#define HX8369_DISPOFF		HX8369_REG(0x28)
++#define HX8369_DISPON		HX8369_REG(0x29)
++#define HX8369_CASET		HX8369_REG(0x2A)
++#define HX8369_PASET		HX8369_REG(0x2B)
++#define	HX8369_RAMWR		HX8369_REG(0x2C)
++#define HX8369_RGBSET		HX8369_REG(0x2D)
++#define HX8369_RAMRD		HX8369_REG(0x2E)
++#define HX8369_PLTAR		HX8369_REG(0x30)
++
++#define HX8369_VSCRDEF		HX8369_REG(0x33)
++#define HX8369_TEOFF		HX8369_REG(0x34)
++#define HX8369_TEON		HX8369_REG(0x35)
++#define HX8369_MADCTL		HX8369_REG(0x36)
++#define HX8369_VSCRSADD		HX8369_REG(0x37)
++#define HX8369_IDMOFF		HX8369_REG(0x38)
++#define HX8369_IDMON		HX8369_REG(0x39)
++#define HX8369_COLMOD 		HX8369_REG(0x3A)
++#define HX8369_RAMWRCON		HX8369_REG(0x3C)
++#define HX8369_RAMRDCON		HX8369_REG(0x3E)
++#define HX8369_TESL		HX8369_REG(0x44)
++#define HX8369_GETSCAN		HX8369_REG(0x45)
++#define HX8369_WRDISBV		HX8369_REG(0x51)
++#define HX8369_RDDISBV		HX8369_REG(0x52)
++#define HX8369_WRCTRLD		HX8369_REG(0x53)
++#define HX8369_RDCTRLD		HX8369_REG(0x54)
++#define HX8369_WRCABC 		HX8369_REG(0x55)
++#define HX8369_RDCABC 		HX8369_REG(0x56)
++
++#define HX8369_WRCABCMB			HX8369_REG(0x5E)
++#define HX8369_RDCABCMB			HX8369_REG(0x5F)
++#define HX8369_RDABCSDR			HX8369_REG(0x68)
++#define HX8369_RDID1 			HX8369_REG(0xDA)
++#define HX8369_RDID2 			HX8369_REG(0xDB)
++#define HX8369_RDID3 			HX8369_REG(0xDC)
++#define HX8369_READ_DDB_START		HX8369_REG(0xA1)
++#define HX8369_READ_DDB_CONTINUE	HX8369_REG(0xA8)
++
++#define HX8369_SETOSC		HX8369_REG(0xB0)
++#define HX8369_SETPOWE		HX8369_REG(0xB1)
++#define HX8369_SETDISP		HX8369_REG(0xB2)
++#define HX8369_SETRGBIF		HX8369_REG(0xB3)
++#define HX8369_SETCYC		HX8369_REG(0xB4)
++#define HX8369_SETVCOM		HX8369_REG(0xB6)
++#define HX8369_SETEXTC		HX8369_REG(0xB9)
++#define HX8369_SETMIPI		HX8369_REG(0xBA)
++#define HX8369_SETOTP		HX8369_REG(0xBB)
++#define HX8369_SETDGCLUT	HX8369_REG(0xC1)
++#define HX8369_SETID		HX8369_REG(0xC3)
++#define HX8369_SETPANEL		HX8369_REG(0xCC)
++#define HX8369_SETGIP		HX8369_REG(0xD5)
++
++#define HX8369_SETTPSNR		HX8369_REX(0xD8)
++#define HX8369_SETGAMMA		HX8369_REX(0xE0)
++#define HX8369_SETOTPKEY	HX8369_REX(0xE9)
++#define HX8369_GETHXID		HX8369_REX(0xF4)
++#define HX8369_SETCNCD_GETCNCD	HX8369_REX(0xFD)
++#define HX8369_SET_READ_INDEX	HX8369_REX(0xFE)
++#define HX8369_GETSPIREAD  	HX8369_REX(0xFF)
++
++
++/* platform data to pass configuration from lcd */
++struct hx8369_display {
++	struct  display_device *display_dev;
++	struct  spi_device *spi;  /* spi bus */
++	void	(*reset_on)(int); /* function that let hx8369 on reset */
++	int	gcontrast_value;  /* current contrast value */
++};
++
++

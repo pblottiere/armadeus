@@ -1,0 +1,45 @@
+comment "straton requires as_devices to be installed"
+	depends on !(BR2_PACKAGE_AS_DEVICES)
+
+config BR2_PACKAGE_STRATON
+	bool "straton  IEC-61131-3 environment"
+	default n
+	depends on BR2_PACKAGE_AS_DEVICES
+
+if BR2_PACKAGE_AS_DEVICES
+choice
+	prompt "Straton version"
+	default BR2_PACKAGE_STRATON_DEMO
+	depends on BR2_PACKAGE_STRATON
+
+config BR2_PACKAGE_STRATON_DEV
+	bool "straton_dev"
+	help
+	  Developpement code for straton plc application.
+	  This code is not GPL then you have to ask
+	  ARMadeus Systems to obtain it.
+
+config BR2_PACKAGE_STRATON_BIN
+	bool "straton_bin"
+	help
+	  Straton runtime binary. This runtime is not free
+	  ask ARMadeus Systems to obtain it. If you have
+	  the tar.gz, copy it under your downloads/ directory
+
+config BR2_PACKAGE_STRATON_DEMO
+	bool "straton_demo"
+	help
+	  Straton demo runtime. This runtime will be stopped
+	  after 10 minutes running. It can be relaunched each
+	  10 minutes.
+
+endchoice
+
+config BR2_PACKAGE_STRATON_DEV_DIR
+	string "straton development directory"
+	default "/straton/runtime"
+	depends on BR2_PACKAGE_STRATON_DEV
+	help
+	  Straton runtime development code directory
+
+endif

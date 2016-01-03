@@ -1,0 +1,77 @@
+This patch adds support for IRQ_TYPE_EDGE_BOTH needed for some driver
+(gpio-keys).
+Inspired from gpio-mxc.c
+
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou at armadeus.com>
+---
+Index: linux-3.4.28/drivers/gpio/gpio-mxs.c
+===================================================================
+--- linux-3.4.28.orig/drivers/gpio/gpio-mxs.c	2013-02-08 17:00:23.000000000 +0100
++++ linux-3.4.28/drivers/gpio/gpio-mxs.c	2013-02-08 18:18:01.000000000 +0100
+@@ -58,20 +58,32 @@
+ 	int irq;
+ 	int virtual_irq_start;
+ 	struct bgpio_chip bgc;
++	u32 both_edges;
+ };
+ 
+ /* Note: This driver assumes 32 GPIOs are handled in one register */
+ 
+ static int mxs_gpio_set_irq_type(struct irq_data *d, unsigned int type)
+ {
++	u32 val;
+ 	u32 gpio = irq_to_gpio(d->irq);
++	u32 gpio_idx = d->hwirq;
+ 	u32 pin_mask = 1 << (gpio & 31);
+ 	struct irq_chip_generic *gc = irq_data_get_irq_chip_data(d);
+ 	struct mxs_gpio_port *port = gc->private;
+ 	void __iomem *pin_addr;
+ 	int edge;
+ 
++	port->both_edges &= ~(1 << gpio_idx);
+ 	switch (type) {
++	case IRQ_TYPE_EDGE_BOTH:
++		val = gpio_get_value(port->bgc.gc.base + gpio_idx);
++		if (val)
++			edge = GPIO_INT_FALL_EDGE;
++		else
++			edge = GPIO_INT_RISE_EDGE;
++		port->both_edges |= pin_mask;
++		break;
+ 	case IRQ_TYPE_EDGE_RISING:
+ 		edge = GPIO_INT_RISE_EDGE;
+ 		break;
+@@ -108,6 +120,23 @@
+ 	return 0;
+ }
+ 
++static void mxs_flip_edge(struct mxs_gpio_port *port, u32 gpio)
++{
++	u32 bit, val, edge;
++	void __iomem *pin_addr;
++
++	bit = 1 << gpio;
++
++	pin_addr = port->base + PINCTRL_IRQPOL(port->id);
++	val = readl(pin_addr);
++	edge = val & bit;
++
++	if (edge)
++		writel(bit, pin_addr + MXS_CLR);
++	else
++		writel(bit, pin_addr + MXS_SET);
++}
++
+ /* MXS has one interrupt *per* gpio port */
+ static void mxs_gpio_irq_handler(u32 irq, struct irq_desc *desc)
+ {
+@@ -122,6 +151,9 @@
+ 
+ 	while (irq_stat != 0) {
+ 		int irqoffset = fls(irq_stat) - 1;
++		if (port->both_edges & (1 << irqoffset))
++			mxs_flip_edge(port, irqoffset);
++
+ 		generic_handle_irq(gpio_irq_no_base + irqoffset);
+ 		irq_stat &= ~(1 << irqoffset);
+ 	}

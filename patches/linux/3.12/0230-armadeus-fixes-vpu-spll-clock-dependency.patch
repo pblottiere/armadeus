@@ -1,0 +1,18 @@
+Otherwise using VPU doesn't activate SPLL (if not already up with USB
+for example) and VPU firmware loading crashes at first coda_write().
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: linux-3.12.8/arch/arm/mach-imx/clk-imx27.c
+===================================================================
+--- linux-3.12.8.orig/arch/arm/mach-imx/clk-imx27.c	2014-01-23 14:10:09.348774899 +0100
++++ linux-3.12.8/arch/arm/mach-imx/clk-imx27.c	2014-01-23 14:10:48.072966935 +0100
+@@ -49,7 +49,7 @@
+ #define CCM_SPCTL1_LF           (1 << 15)
+ #define CCM_SPCTL1_BRMO         (1 << 6)
+ 
+-static const char *vpu_sel_clks[] = { "spll", "mpll_main2", };
++static const char *vpu_sel_clks[] = { "spll_gate", "mpll_main2", };
+ static const char *cpu_sel_clks[] = { "mpll_main2", "mpll", };
+ static const char *mpll_sel_clks[] = { "fpm", "mpll_osc_sel", };
+ static const char *mpll_osc_sel_clks[] = { "ckih", "ckih_div1p5", };

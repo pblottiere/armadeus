@@ -1,0 +1,48 @@
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in
++++ buildroot/package/Config.in
+@@ -30,6 +30,7 @@ menu "Audio and video applications"
+	source "package/on2-8170-libs/Config.in"
+	source "package/opus-tools/Config.in"
+	source "package/pulseaudio/Config.in"
++	source "package/pywebradio/Config.in"
+	source "package/sox/Config.in"
+	source "package/tidsp-binaries/Config.in"
+	source "package/tstools/Config.in"
+Index: buildroot/package/pywebradio/Config.in
+===================================================================
+--- /dev/null
++++ buildroot/package/pywebradio/Config.in
+@@ -0,0 +1,6 @@
++config BR2_PACKAGE_PYWEBRADIO
++	bool "pywebradio"
++	help
++	  Play web radios
++
++	  http://www.pystream.info/
+Index: buildroot/package/pywebradio/pywebradio.mk
+===================================================================
+--- /dev/null
++++ buildroot/package/pywebradio/pywebradio.mk
+@@ -0,0 +1,20 @@
++#############################################################
++#
++# pywebradio
++#
++#############################################################
++
++PYWEBRADIO_SITE = http://forge.doumenc.org/svn/pyqtradio/trunk
++PYWEBRADIO_SITE_METHOD = svn
++PYWEBRADIO_VERSION:=421
++
++define PYWEBRADIO_INSTALL_TARGET_CMDS
++	cd $(@D); \
++	python install.py -v -i pygame \
++		-s /usr/share/radio \
++		-c /etc/radio \
++		-e /usr/bin  \
++		-p $(TARGET_DIR)
++endef
++
++$(eval $(generic-package))

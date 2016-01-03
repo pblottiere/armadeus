@@ -1,0 +1,24 @@
+menu "Armadeus specific tools/utilities"
+
+source package/armadeus/anybus-tools/Config.in
+source package/armadeus/as_devices/Config.in
+source package/armadeus/demos/Config.in
+source package/armadeus/fpgaregs/Config.in
+source package/armadeus/fpga_firmware/Config.in
+source package/armadeus/imx28-usb-downloader/Config.in
+source package/armadeus/imxregs/Config.in
+source package/armadeus/imxssi/Config.in
+source package/armadeus/max5821ctrl/Config.in
+source package/armadeus/straton/Config.in
+source package/armadeus/straton_ios/Config.in
+source package/armadeus/testsuite/Config.in
+
+comment "APF27 specific:"
+source package/armadeus/ad9889ctrl/Config.in
+source package/armadeus/pps/Config.in
+comment "APF51 specific:"
+source package/armadeus/tfp410ctrl/Config.in
+comment "APF9328 specific:"
+source package/armadeus/ch7024ctrl/Config.in
+
+endmenu

@@ -1,0 +1,2 @@
+This example only works on APF9328 and APF27 with old GPIO driver.
+For new applications please use gpiolib directly or through as_devices.

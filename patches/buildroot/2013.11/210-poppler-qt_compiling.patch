@@ -1,0 +1,29 @@
+Adapt package Poppler for Qt4 wrapper compilation.
+
+Signed-off-by: Jérémie Scheer <jeremie.scheer@armadeus.com>
+---
+
+Index: buildroot/package/poppler/poppler.mk
+===================================================================
+--- buildroot.orig/package/poppler/poppler.mk	2013-11-30 14:16:03.000000000 +0100
++++ buildroot/package/poppler/poppler.mk	2014-03-26 11:53:49.000000000 +0100
+@@ -7,10 +7,18 @@
+ POPPLER_VERSION = 0.24.2
+ POPPLER_SOURCE = poppler-$(POPPLER_VERSION).tar.xz
+ POPPLER_SITE = http://poppler.freedesktop.org
+-POPPLER_DEPENDENCIES = fontconfig
+ POPPLER_LICENSE = GPLv2+
+ POPPLER_LICENSE_FILES = COPYING
+ POPPLER_CONF_OPT = --with-font-configuration=fontconfig
++POPPLER_INSTALL_STAGING = YES
++
++POPPLER_DEPENDENCIES = fontconfig
++
++ifeq ($(BR2_PACKAGE_QT),y)
++	POPPLER_DEPENDENCIES += qt
++else
++	POPPLER_CONF_OPT += --disable-poppler-qt4
++endif
+ 
+ ifeq ($(BR2_PACKAGE_LCMS2),y)
+ 	POPPLER_CONF_OPT += --enable-cms=lcms2

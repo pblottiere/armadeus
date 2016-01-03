@@ -1,0 +1,142 @@
+From cf16fe1b40e300f9c691b9182a40db0cc9472938 Mon Sep 17 00:00:00 2001
+From: Steve Longerbeam <steve_longerbeam@mentor.com>
+Date: Fri, 25 Jul 2014 16:27:15 -0700
+Subject: [PATCH 623/625] media: imx6 camera: Add deinterlace motion control
+
+Add a custom control to set a motion compensation setting for
+deinterlacing using the VDIC.
+
+Use of the VDIC is not compatible with preview because both
+require the IC viewfinder task.
+
+Signed-off-by: Steve Longerbeam <steve_longerbeam@mentor.com>
+---
+ drivers/staging/media/imx6/capture/mx6-camif.c | 48 +++++++++++++++++++++++++-
+ drivers/staging/media/imx6/capture/mx6-camif.h |  2 ++
+ include/media/imx6.h                           |  2 ++
+ 3 files changed, 51 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/staging/media/imx6/capture/mx6-camif.c b/drivers/staging/media/imx6/capture/mx6-camif.c
+index 05f0381..85c7757 100644
+--- a/drivers/staging/media/imx6/capture/mx6-camif.c
++++ b/drivers/staging/media/imx6/capture/mx6-camif.c
+@@ -668,10 +668,34 @@ static int mx6cam_set_rotation(struct mx6cam_dev *dev,
+	return 0;
+ }
+
++static int mx6cam_set_motion(struct mx6cam_dev *dev,
++			     enum ipu_motion_sel motion)
++{
++	if (motion != dev->motion) {
++		/* can't change motion setting mid-streaming */
++		if (vb2_is_streaming(&dev->buffer_queue)) {
++			v4l2_err(&dev->v4l2_dev,
++				 "%s: not allowed while streaming\n",
++				 __func__);
++			return -EBUSY;
++		}
++
++		if (motion != MOTION_NONE && dev->preview_on) {
++			v4l2_err(&dev->v4l2_dev,
++				 "Preview is on, cannot enable deinterlace\n");
++			return -EBUSY;
++		}
++	}
++
++	dev->motion = motion;
++	return 0;
++}
++
+ static int mx6cam_s_ctrl(struct v4l2_ctrl *ctrl)
+ {
+	struct mx6cam_dev *dev = container_of(ctrl->handler,
+					      struct mx6cam_dev, ctrl_hdlr);
++	enum ipu_motion_sel motion;
+	bool hflip, vflip;
+	int rotation;
+
+@@ -689,6 +713,9 @@ static int mx6cam_s_ctrl(struct v4l2_ctrl *ctrl)
+	case V4L2_CID_ROTATE:
+		rotation = ctrl->val;
+		break;
++	case V4L2_CID_IMX6_MOTION:
++		motion = ctrl->val;
++		return mx6cam_set_motion(dev, motion);
+	default:
+		v4l2_err(&dev->v4l2_dev, "Invalid control\n");
+		return -EINVAL;
+@@ -701,12 +728,23 @@ static const struct v4l2_ctrl_ops mx6cam_ctrl_ops = {
+	.s_ctrl = mx6cam_s_ctrl,
+ };
+
++static const struct v4l2_ctrl_config motion_cfg = {
++	.ops = &mx6cam_ctrl_ops,
++	.id = V4L2_CID_IMX6_MOTION,
++	.name = "Motion Compensation",
++	.type = V4L2_CTRL_TYPE_INTEGER,
++	.def = MOTION_NONE,
++	.min = MOTION_NONE,
++	.max = HIGH_MOTION,
++	.step = 1,
++};
++
+ static int mx6cam_init_controls(struct mx6cam_dev *dev)
+ {
+	struct v4l2_ctrl_handler *hdlr = &dev->ctrl_hdlr;
+	int ret;
+
+-	v4l2_ctrl_handler_init(hdlr, 3);
++	v4l2_ctrl_handler_init(hdlr, 4);
+
+	v4l2_ctrl_new_std(hdlr, &mx6cam_ctrl_ops, V4L2_CID_HFLIP,
+			  0, 1, 1, 0);
+@@ -714,6 +752,7 @@ static int mx6cam_init_controls(struct mx6cam_dev *dev)
+			  0, 1, 1, 0);
+	v4l2_ctrl_new_std(hdlr, &mx6cam_ctrl_ops, V4L2_CID_ROTATE,
+			  0, 270, 90, 0);
++	v4l2_ctrl_new_custom(hdlr, &motion_cfg, NULL);
+
+	if (hdlr->error) {
+		ret = hdlr->error;
+@@ -1409,6 +1448,13 @@ static int vidioc_overlay(struct file *file, void *priv,
+			return -EBUSY;
+		}
+
++		if (dev->motion != MOTION_NONE) {
++			v4l2_err(&dev->v4l2_dev,
++				 "%s: not allowed with deinterlacing\n",
++				 __func__);
++			return -EBUSY;
++		}
++
+		if (!can_use_ic(dev, &dev->sensor_fmt, &dev->user_fmt)) {
+			v4l2_err(&dev->v4l2_dev,
+				 "%s: current format does not allow preview\n",
+diff --git a/drivers/staging/media/imx6/capture/mx6-camif.h b/drivers/staging/media/imx6/capture/mx6-camif.h
+index b3d9828..051932c 100644
+--- a/drivers/staging/media/imx6/capture/mx6-camif.h
++++ b/drivers/staging/media/imx6/capture/mx6-camif.h
+@@ -118,6 +118,8 @@ struct mx6cam_dev {
+	int                      rotation; /* degrees */
+	bool                     hflip;
+	bool                     vflip;
++	enum ipu_motion_sel      motion;
++
+	/* derived from rotation, hflip, vflip controls */
+	enum ipu_rotate_mode     rot_mode;
+
+diff --git a/include/media/imx6.h b/include/media/imx6.h
+index 232378b..b286840 100644
+--- a/include/media/imx6.h
++++ b/include/media/imx6.h
+@@ -10,6 +10,8 @@
+ #ifndef __MEDIA_IMX6_H__
+ #define __MEDIA_IMX6_H__
+
++#define V4L2_CID_IMX6_MOTION   (V4L2_CID_USER_BASE + 0x1000)
++
+ /*
+  * Analog decoder status change notifications
+  */
+--
+1.8.5.5

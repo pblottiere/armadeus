@@ -1,0 +1,540 @@
+Index: linux-3.16/drivers/input/touchscreen/mc13xxx_ts.c
+===================================================================
+--- /dev/null
++++ linux-3.16/drivers/input/touchscreen/mc13xxx_ts.c
+@@ -0,0 +1,468 @@
++/*
++ * Driver for the Freescale Semiconductor MC13783 / MC13892 touchscreen.
++ *
++ * The code for MC13892 support and calibration comes from Oskar Schirmer
++ * from here: https://lkml.org/lkml/2012/2/14/98
++ *
++ * Copyright 2004-2007 Freescale Semiconductor, Inc. All Rights Reserved.
++ * Copyright (C) 2009 Sascha Hauer, Pengutronix
++ *
++ * Initial development of this code was funded by
++ * Phytec Messtechnik GmbH, http://www.phytec.de/
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License version 2 as published by
++ * the Free Software Foundation.
++ */
++#include <linux/platform_device.h>
++#include <linux/mfd/mc13xxx.h>
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/input.h>
++#include <linux/of.h>
++#include <linux/sched.h>
++#include <linux/slab.h>
++#include <linux/init.h>
++
++#define DRIVER_NAME	"mc13xxx-ts"
++
++#define MC13XXX_ID_MC13783 1
++#define MC13XXX_ID_MC13892 2
++
++#define DEFAULT_SAMPLE_TOLERANCE 300
++
++static unsigned int sample_tolerance = DEFAULT_SAMPLE_TOLERANCE;
++module_param(sample_tolerance, uint, S_IRUGO | S_IWUSR);
++MODULE_PARM_DESC(sample_tolerance,
++		"If the minimal and maximal value read out for one axis (out "
++		"of three) differ by this value (default: "
++		__stringify(DEFAULT_SAMPLE_TOLERANCE) ") or more, the reading "
++		"is supposed to be wrong and is discarded.  Set to 0 to "
++		"disable this check.");
++
++#define DEFAULT_PRESSURE_LIMIT 2048
++
++static unsigned int pressure_limit = DEFAULT_PRESSURE_LIMIT;
++module_param(pressure_limit, uint, S_IRUGO | S_IWUSR);
++MODULE_PARM_DESC(pressure_limit,
++		"Pressure values below this value (default: "
++		__stringify(DEFAULT_PRESSURE_LIMIT) ") are taken "
++		"as release event.");
++
++struct mc13xxx_ts_priv {
++	struct input_dev *idev;
++	struct mc13xxx *mc13xxx;
++	struct delayed_work work;
++	struct workqueue_struct *workq;
++	unsigned int sample[4];
++	struct mc13xxx_ts_platform_data *touch;
++	int calibration[7];
++};
++
++static irqreturn_t mc13xxx_ts_handler(int irq, void *data)
++{
++	struct mc13xxx_ts_priv *priv = data;
++
++	mc13xxx_irq_ack(priv->mc13xxx, irq);
++
++	/*
++	 * Kick off reading coordinates. Note that if work happens already
++	 * be queued for future execution (it rearms itself) it will not
++	 * be rescheduled for immediate execution here. However the rearm
++	 * delay is HZ / 50 which is acceptable.
++	 */
++	queue_delayed_work(priv->workq, &priv->work, 0);
++
++	return IRQ_HANDLED;
++}
++
++#define sort3(a0, a1, a2) ({						\
++		if (a0 > a1)						\
++			swap(a0, a1);					\
++		if (a1 > a2)						\
++			swap(a1, a2);					\
++		if (a0 > a1)						\
++			swap(a0, a1);					\
++		})
++
++static void mc13xxx_report_abs_calibrated(struct mc13xxx_ts_priv *priv,
++		struct input_dev *idev, int x, int y)
++{
++	int *calib = priv->calibration;
++	int xc, yc;
++	if (calib[6]) {
++		xc = (calib[0] * x + calib[1] * y + calib[2]) / calib[6];
++		if (xc < 0)
++			xc = 0;
++		yc = (calib[3] * x + calib[4] * y + calib[5]) / calib[6];
++		if (yc < 0)
++			yc = 0;
++	} else {
++		xc = x;
++		yc = y;
++	}
++	input_report_abs(idev, ABS_X, xc);
++	input_report_abs(idev, ABS_Y, yc);
++}
++
++static void mc13783_ts_report_sample(struct mc13xxx_ts_priv *priv)
++{
++	struct input_dev *idev = priv->idev;
++	int x0, x1, x2, y0, y1, y2;
++	int cr0, cr1;
++
++	/*
++	 * the values are 10-bit wide only, but the two least significant
++	 * bits are for future 12 bit use and reading yields 0
++	 */
++	x0 = priv->sample[0] & 0xfff;
++	x1 = priv->sample[1] & 0xfff;
++	x2 = priv->sample[2] & 0xfff;
++	y0 = priv->sample[3] & 0xfff;
++	y1 = (priv->sample[0] >> 12) & 0xfff;
++	y2 = (priv->sample[1] >> 12) & 0xfff;
++	cr0 = (priv->sample[2] >> 12) & 0xfff;
++	cr1 = (priv->sample[3] >> 12) & 0xfff;
++
++	dev_dbg(&idev->dev,
++		"x: (% 4d,% 4d,% 4d) y: (% 4d, % 4d,% 4d) cr: (% 4d, % 4d)\n",
++		x0, x1, x2, y0, y1, y2, cr0, cr1);
++
++	sort3(x0, x1, x2);
++	sort3(y0, y1, y2);
++
++	cr0 = (cr0 + cr1) / 2;
++
++	if (!cr0 || !sample_tolerance ||
++			(x2 - x0 < sample_tolerance &&
++			 y2 - y0 < sample_tolerance)) {
++		/* report the median coordinate and average pressure */
++		if (cr0) {
++			mc13xxx_report_abs_calibrated(priv, idev, x1, y1);
++			dev_dbg(&idev->dev, "report (%d, %d, %d)\n",
++					x1, y1, 0x1000 - cr0);
++			queue_delayed_work(priv->workq, &priv->work, HZ / 50);
++		} else
++			dev_dbg(&idev->dev, "report release\n");
++
++		input_report_abs(idev, ABS_PRESSURE,
++				cr0 ? 0x1000 - cr0 : cr0);
++		input_report_key(idev, BTN_TOUCH, cr0);
++		input_sync(idev);
++	} else
++		dev_dbg(&idev->dev, "discard event\n");
++}
++
++static void mc13892_ts_report_sample(struct mc13xxx_ts_priv *priv)
++{
++	struct input_dev *idev = priv->idev;
++	int x0, x1, y0, y1;
++	int cr0, cr1;
++
++	/*
++	 * the values are 10-bit wide only, but the two least significant
++	 * bits are for future 12 bit use and reading yields 0
++	 */
++	x0 = priv->sample[0] & 0xfff;
++	x1 = priv->sample[1] & 0xfff;
++	y0 = priv->sample[3] & 0xfff;
++	y1 = (priv->sample[0] >> 12) & 0xfff;
++	cr0 = (priv->sample[2] >> 12) & 0xfff;
++	cr1 = (priv->sample[3] >> 12) & 0xfff;
++
++	dev_dbg(&idev->dev,
++			"x: (% 4d,% 4d) y: (% 4d,% 4d) cr: (% 4d, % 4d)\n",
++			x0, x1, y0, y1, cr0, cr1);
++
++	if (x0 > x1)
++		swap(x0, x1);
++	if (y0 > y1)
++		swap(y0, y1);
++
++	cr0 = 0x1000 - ((cr0 + cr1) / 2);
++	if (cr0 < pressure_limit)
++		cr0 = 0;
++
++	if (!cr0 || !sample_tolerance ||
++			(x1 - x0 < sample_tolerance &&
++			 y1 - y0 < sample_tolerance)) {
++		/* report the average coordinate and pressure */
++		if (cr0) {
++			x0 = (x0 + x1) / 2;
++			y0 = (y0 + y1) / 2;
++			mc13xxx_report_abs_calibrated(priv, idev, x0, y0);
++			dev_dbg(&idev->dev, "report (%d, %d, %d)\n",
++					x0, y0, cr0);
++			queue_delayed_work(priv->workq, &priv->work, HZ / 50);
++		} else
++			dev_dbg(&idev->dev, "report release\n");
++
++		input_report_abs(idev, ABS_PRESSURE, cr0);
++		input_report_key(idev, BTN_TOUCH, cr0);
++		input_sync(idev);
++	} else
++		dev_dbg(&idev->dev, "discard event\n");
++}
++
++static void mc13783_ts_work(struct work_struct *work)
++{
++	struct mc13xxx_ts_priv *priv =
++		container_of(work, struct mc13xxx_ts_priv, work.work);
++	unsigned int mode = MC13XXX_ADC_MODE_TS;
++	unsigned int channel = 12;
++
++	if (mc13xxx_adc_do_conversion(priv->mc13xxx,
++				mode, channel,
++				priv->touch->ato, priv->touch->atox,
++				priv->sample) == 0)
++		mc13783_ts_report_sample(priv);
++}
++
++static void mc13892_ts_work(struct work_struct *work)
++{
++	struct mc13xxx_ts_priv *priv =
++		container_of(work, struct mc13xxx_ts_priv, work.work);
++	unsigned int mode = MC13XXX_ADC_MODE_TS;
++	unsigned int channel = 12;
++
++	if (mc13xxx_adc_do_conversion(priv->mc13xxx,
++				mode, channel,
++				priv->touch->ato, priv->touch->atox,
++				priv->sample) == 0)
++		mc13892_ts_report_sample(priv);
++}
++
++static int mc13xxx_ts_open(struct input_dev *dev)
++{
++	struct mc13xxx_ts_priv *priv = input_get_drvdata(dev);
++	int ret;
++
++	mc13xxx_lock(priv->mc13xxx);
++
++	mc13xxx_irq_ack(priv->mc13xxx, MC13XXX_IRQ_TS);
++
++	ret = mc13xxx_irq_request(priv->mc13xxx, MC13XXX_IRQ_TS,
++		mc13xxx_ts_handler, DRIVER_NAME, priv);
++	if (ret)
++		goto out;
++
++	ret = mc13xxx_reg_rmw(priv->mc13xxx, MC13XXX_ADC0,
++			MC13XXX_ADC0_TSMOD_MASK, MC13XXX_ADC0_TSMOD0);
++	if (ret)
++		mc13xxx_irq_free(priv->mc13xxx, MC13XXX_IRQ_TS, priv);
++out:
++	mc13xxx_unlock(priv->mc13xxx);
++	return ret;
++}
++
++static void mc13xxx_ts_close(struct input_dev *dev)
++{
++	struct mc13xxx_ts_priv *priv = input_get_drvdata(dev);
++
++	mc13xxx_lock(priv->mc13xxx);
++	mc13xxx_reg_rmw(priv->mc13xxx, MC13XXX_ADC0,
++			MC13XXX_ADC0_TSMOD_MASK, 0);
++	mc13xxx_irq_free(priv->mc13xxx, MC13XXX_IRQ_TS, priv);
++	mc13xxx_unlock(priv->mc13xxx);
++
++	cancel_delayed_work_sync(&priv->work);
++}
++
++static ssize_t mc13xxx_calibration_show(struct device *d,
++		struct device_attribute *attr, char *buf)
++{
++	struct mc13xxx_ts_priv *priv = dev_get_drvdata(d);
++	int i, p, r;
++
++	p = 0;
++	for (i = 0; i < 7; i++) {
++		r = sprintf(&buf[p], i == 6 ? "%d\n" : "%d ",
++				priv->calibration[i]);
++		if (r < 0)
++			return r;
++		p += r;
++	}
++	return p;
++}
++
++static ssize_t mc13xxx_calibration_store(struct device *d,
++		struct device_attribute *attr, const char *buf, size_t count)
++{
++	struct mc13xxx_ts_priv *priv = dev_get_drvdata(d);
++	int i, p, r;
++	int c[7];
++
++	p = 0;
++	for (i = 0; i < 7; i++) {
++		if (sscanf(&buf[p], "%d%n", &c[i], &r) != 1)
++			return -EINVAL;
++		p += r;
++	}
++	memcpy(priv->calibration, c, sizeof(priv->calibration));
++	return count;
++}
++
++static DEVICE_ATTR(calibration, S_IWUSR | S_IRUGO,
++		mc13xxx_calibration_show, mc13xxx_calibration_store);
++
++static int mc13xxx_init_sysfs(struct device *d)
++{
++	return device_create_file(d, &dev_attr_calibration);
++}
++
++static void mc13xxx_free_sysfs(struct device *d)
++{
++	device_remove_file(d, &dev_attr_calibration);
++}
++
++static struct mc13xxx_ts_platform_data __init *mc13xxx_ts_probe_dt(
++	struct platform_device *pdev)
++{
++	struct mc13xxx_ts_platform_data *pdata;
++	struct device_node *parent;
++	struct device *dev = &pdev->dev;
++	int ret = -ENODATA;
++
++	pdata = devm_kzalloc(dev, sizeof(*pdata), GFP_KERNEL);
++	if (!pdata)
++		return ERR_PTR(-ENOMEM);
++
++	of_node_get(dev->parent->of_node);
++
++	parent = of_find_node_by_name(dev->parent->of_node, "touchscreen");
++	if (!parent)
++		goto out_node_put;
++
++	ret = of_property_read_u8(parent, "ato", &pdata->ato);
++	if (ret)
++		goto out_node_put;
++
++	if (of_property_read_bool(parent, "atox"))
++		pdata->atox = 1;
++	else
++		pdata->atox = 0;
++
++out_node_put:
++	of_node_put(parent);
++
++	return ret ? ERR_PTR(ret) : pdata;
++}
++static int __init mc13xxx_ts_probe(struct platform_device *pdev)
++{
++	struct mc13xxx_ts_priv *priv;
++	struct input_dev *idev;
++	int ret = -ENOMEM;
++
++	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
++	idev = input_allocate_device();
++	if (!priv || !idev)
++		goto err_free_mem;
++
++	switch (platform_get_device_id(pdev)->driver_data) {
++	case MC13XXX_ID_MC13783:
++		INIT_DELAYED_WORK(&priv->work, mc13783_ts_work);
++		break;
++	case MC13XXX_ID_MC13892:
++		INIT_DELAYED_WORK(&priv->work, mc13892_ts_work);
++		break;
++	default:
++		goto err_free_mem;
++	}
++
++	priv->mc13xxx = dev_get_drvdata(pdev->dev.parent);
++	priv->idev = idev;
++	platform_set_drvdata(pdev, priv);
++	priv->touch = mc13xxx_ts_probe_dt(pdev);
++	if (IS_ERR(priv->touch)) {
++		priv->touch = dev_get_platdata(&pdev->dev);
++		if (!priv->touch) {
++			dev_err(&pdev->dev, "missing platform data\n");
++			ret = -ENODEV;
++			goto err_free_mem;
++		}
++	}
++
++	/*
++	 * We need separate workqueue because mc13xxx_adc_do_conversion
++	 * uses keventd and thus would deadlock.
++	 */
++	priv->workq = create_singlethread_workqueue("mc13xxx_ts");
++	if (!priv->workq)
++		goto err_free_mem;
++
++	idev->name = DRIVER_NAME;
++	idev->dev.parent = &pdev->dev;
++
++	idev->evbit[0] = BIT_MASK(EV_KEY) | BIT_MASK(EV_ABS);
++	idev->keybit[BIT_WORD(BTN_TOUCH)] = BIT_MASK(BTN_TOUCH);
++	input_set_abs_params(idev, ABS_X, 0, 0xfff, 0, 0);
++	input_set_abs_params(idev, ABS_Y, 0, 0xfff, 0, 0);
++	input_set_abs_params(idev, ABS_PRESSURE, 0, 0xfff, 0, 0);
++
++	idev->open = mc13xxx_ts_open;
++	idev->close = mc13xxx_ts_close;
++
++	input_set_drvdata(idev, priv);
++
++	ret = mc13xxx_init_sysfs(&pdev->dev);
++	if (ret) {
++		dev_err(&pdev->dev, "failed to init sysfs.\n");
++		goto err_destroy_wq;
++	}
++
++	ret = input_register_device(priv->idev);
++	if (ret) {
++		dev_err(&pdev->dev,
++			"register input device failed with %d\n", ret);
++		goto err_free_sysfs;
++	}
++
++	return 0;
++
++err_free_sysfs:
++	mc13xxx_free_sysfs(&pdev->dev);
++err_destroy_wq:
++	destroy_workqueue(priv->workq);
++err_free_mem:
++	input_free_device(idev);
++	kfree(priv);
++	return ret;
++}
++
++static int mc13xxx_ts_remove(struct platform_device *pdev)
++{
++	struct mc13xxx_ts_priv *priv = platform_get_drvdata(pdev);
++
++	destroy_workqueue(priv->workq);
++	input_unregister_device(priv->idev);
++	kfree(priv);
++
++	return 0;
++}
++
++const struct platform_device_id mc13xxx_ts_idtable[] = {
++	{
++		.name = "mc13783-ts",
++		.driver_data = MC13XXX_ID_MC13783,
++	}, {
++		.name = "mc13892-ts",
++		.driver_data = MC13XXX_ID_MC13892,
++	},
++	{ }
++};
++
++static struct platform_driver mc13xxx_ts_driver = {
++	.id_table	= mc13xxx_ts_idtable,
++	.remove		= mc13xxx_ts_remove,
++	.driver		= {
++		.owner	= THIS_MODULE,
++		.name	= DRIVER_NAME,
++	},
++};
++
++module_platform_driver_probe(mc13xxx_ts_driver, mc13xxx_ts_probe);
++
++MODULE_DESCRIPTION("MC13xxx input touchscreen driver");
++MODULE_AUTHOR("Sascha Hauer <s.hauer@pengutronix.de>");
++MODULE_LICENSE("GPL v2");
++MODULE_ALIAS("platform:" DRIVER_NAME);
+Index: linux-3.16/drivers/input/touchscreen/Makefile
+===================================================================
+--- linux-3.16.orig/drivers/input/touchscreen/Makefile
++++ linux-3.16/drivers/input/touchscreen/Makefile
+@@ -38,7 +38,7 @@ obj-$(CONFIG_TOUCHSCREEN_INEXIO)	+= inex
+ obj-$(CONFIG_TOUCHSCREEN_INTEL_MID)	+= intel-mid-touch.o
+ obj-$(CONFIG_TOUCHSCREEN_LPC32XX)	+= lpc32xx_ts.o
+ obj-$(CONFIG_TOUCHSCREEN_MAX11801)	+= max11801_ts.o
+-obj-$(CONFIG_TOUCHSCREEN_MC13783)	+= mc13783_ts.o
++obj-$(CONFIG_TOUCHSCREEN_MC13XXX)	+= mc13xxx_ts.o
+ obj-$(CONFIG_TOUCHSCREEN_MCS5000)	+= mcs5000_ts.o
+ obj-$(CONFIG_TOUCHSCREEN_MIGOR)		+= migor_ts.o
+ obj-$(CONFIG_TOUCHSCREEN_MMS114)	+= mms114.o
+Index: linux-3.16/drivers/input/touchscreen/Kconfig
+===================================================================
+--- linux-3.16.orig/drivers/input/touchscreen/Kconfig
++++ linux-3.16/drivers/input/touchscreen/Kconfig
+@@ -713,17 +713,18 @@ config TOUCHSCREEN_USB_COMPOSITE
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called usbtouchscreen.
+ 
+-config TOUCHSCREEN_MC13783
+-	tristate "Freescale MC13783 touchscreen input driver"
++config TOUCHSCREEN_MC13XXX
++	tristate "Freescale MC13XXX touchscreen input driver"
+ 	depends on MFD_MC13XXX
++	select SYSFS
+ 	help
+-	  Say Y here if you have an Freescale MC13783 PMIC on your
++	  Say Y here if you have an Freescale MC13XXX PMIC on your
+ 	  board and want to use its touchscreen
+ 
+ 	  If unsure, say N.
+ 
+ 	  To compile this driver as a module, choose M here: the
+-	  module will be called mc13783_ts.
++	  module will be called mc13xxx_ts.
+ 
+ config TOUCHSCREEN_USB_EGALAX
+ 	default y
+Index: linux-3.16/Documentation/devicetree/bindings/mfd/mc13xxx.txt
+===================================================================
+--- linux-3.16.orig/Documentation/devicetree/bindings/mfd/mc13xxx.txt
++++ linux-3.16/Documentation/devicetree/bindings/mfd/mc13xxx.txt
+@@ -24,6 +24,10 @@ Sub-nodes:
+   Documentation/devicetree/bindings/leds/common.txt.
+ - regulators : Contain the regulator nodes. The regulators are bound using
+   their names as listed below with their registers and bits for enabling.
++- touchscreen : Contain the touchscreen node.
++  - ato : Delay between Touchscreen polarization and ADC Conversion.
++  It goes from 1 to 256 times the 32 kHz equivalent time base.
++  - atox : If present, use the ATO delay for each conversion.
+ 
+ MC13783 LED IDs:
+     0  : Main display
+@@ -139,6 +143,11 @@ ecspi@70010000 { /* ECSPI1 */
+ 			};
+ 		};
+ 
++		touchscreen {
++			ato = <128>;
++			atox;
++		};
++
+ 		regulators {
+ 			sw1_reg: mc13892__sw1 {
+ 				regulator-min-microvolt = <600000>;

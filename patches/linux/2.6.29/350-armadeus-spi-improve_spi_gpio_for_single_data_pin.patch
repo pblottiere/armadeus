@@ -1,0 +1,195 @@
+spi_gpio: Modifying spi_gpio capabilities to permit single data pin (MISO or
+MOSI) spi. 
+
+Patch inspired from Marek Szyprowski <m.szyprowski@samsung.com> patch
+Signed-off-by: Fabien Marteau <fabien.marteau@armadeus.com>
+---
+
+---
+ drivers/spi/spi_bitbang.c    |   16 +++++++++++
+ drivers/spi/spi_gpio.c       |   62 +++++++++++++++++++++++++++++--------------
+ include/linux/spi/spi_gpio.h |    7 ++++
+ 3 files changed, 65 insertions(+), 20 deletions(-)
+
+Index: linux-2.6.29.6/drivers/spi/spi_bitbang.c
+===================================================================
+--- linux-2.6.29.6.orig/drivers/spi/spi_bitbang.c	2010-01-14 14:21:00.000000000 +0100
++++ linux-2.6.29.6/drivers/spi/spi_bitbang.c	2010-01-14 14:21:00.000000000 +0100
+@@ -396,6 +396,22 @@
+ 	unsigned long		flags;
+ 	int			status = 0;
+ 
++	if (spi->master->flags & SPI_MASTER_NO_RX) {
++		struct spi_transfer *xfer;
++		list_for_each_entry(xfer, &m->transfers, transfer_list) {
++			if (xfer->rx_buf)
++				return -EINVAL;
++		}
++	}
++
++	if (spi->master->flags & SPI_MASTER_NO_TX) {
++		struct spi_transfer *xfer;
++		list_for_each_entry(xfer, &m->transfers, transfer_list) {
++			if (xfer->tx_buf)
++				return -EINVAL;
++		}
++	}
++
+ 	m->actual_length = 0;
+ 	m->status = -EINPROGRESS;
+ 
+Index: linux-2.6.29.6/drivers/spi/spi_gpio.c
+===================================================================
+--- linux-2.6.29.6.orig/drivers/spi/spi_gpio.c	2010-01-14 14:21:00.000000000 +0100
++++ linux-2.6.29.6/drivers/spi/spi_gpio.c	2010-01-14 16:10:52.000000000 +0100
+@@ -109,12 +109,19 @@
+ 
+ static inline void setmosi(const struct spi_device *spi, int is_on)
+ {
+-	gpio_set_value(SPI_MOSI_GPIO, is_on);
++	if (SPI_MOSI_GPIO != SPI_GPIO_NO_MOSI)
++	{
++		gpio_set_value(SPI_MOSI_GPIO, is_on);
++	}
++
+ }
+ 
+ static inline int getmiso(const struct spi_device *spi)
+ {
+-	return !!gpio_get_value(SPI_MISO_GPIO);
++	if (SPI_MISO_GPIO != SPI_GPIO_NO_MISO)
++		return !!gpio_get_value(SPI_MISO_GPIO);
++	else
++		return 0;
+ }
+ 
+ #undef pdata
+@@ -233,19 +240,29 @@
+ }
+ 
+ static int __init
+-spi_gpio_request(struct spi_gpio_platform_data *pdata, const char *label)
++spi_gpio_request(struct spi_gpio_platform_data *pdata, const char *label,
++		 u16 *res_flags)
+ {
+ 	int value;
+ 
+ 	/* NOTE:  SPI_*_GPIO symbols may reference "pdata" */
++	if (SPI_MOSI_GPIO != SPI_GPIO_NO_MOSI) {
++		value = spi_gpio_alloc(SPI_MOSI_GPIO, label, false);
++		if (value)
++			goto done;
++	} else {
++		/* HW configuration without MOSI pin */
++		*res_flags |= SPI_MASTER_NO_TX;
++	}
+ 
+-	value = spi_gpio_alloc(SPI_MOSI_GPIO, label, false);
+-	if (value)
+-		goto done;
+-
+-	value = spi_gpio_alloc(SPI_MISO_GPIO, label, true);
+-	if (value)
+-		goto free_mosi;
++	if (SPI_MISO_GPIO != SPI_GPIO_NO_MISO) {
++		value = spi_gpio_alloc(SPI_MISO_GPIO, label, true);
++		if (value)
++			goto free_mosi;
++	} else {
++		/* HW configuration without MISO pin */
++		*res_flags |= SPI_MASTER_NO_RX;
++	}
+ 
+ 	value = spi_gpio_alloc(SPI_SCK_GPIO, label, false);
+ 	if (value)
+@@ -254,9 +271,11 @@
+ 	goto done;
+ 
+ free_miso:
+-	gpio_free(SPI_MISO_GPIO);
++	if (SPI_MISO_GPIO != SPI_GPIO_NO_MISO)
++		gpio_free(SPI_MISO_GPIO);
+ free_mosi:
+-	gpio_free(SPI_MOSI_GPIO);
++	if (SPI_MOSI_GPIO != SPI_GPIO_NO_MOSI)
++		gpio_free(SPI_MOSI_GPIO);
+ done:
+ 	return value;
+ }
+@@ -267,17 +286,15 @@
+ 	struct spi_master		*master;
+ 	struct spi_gpio			*spi_gpio;
+ 	struct spi_gpio_platform_data	*pdata;
+-
++	u16 master_flags = 0;
+ 	pdata = pdev->dev.platform_data;
+ #ifdef GENERIC_BITBANG
+ 	if (!pdata || !pdata->num_chipselect)
+ 		return -ENODEV;
+ #endif
+-
+-	status = spi_gpio_request(pdata, dev_name(&pdev->dev));
++	status = spi_gpio_request(pdata, dev_name(&pdev->dev),&master_flags);
+ 	if (status < 0)
+ 		return status;
+-
+ 	master = spi_alloc_master(&pdev->dev, sizeof *spi_gpio);
+ 	if (!master) {
+ 		status = -ENOMEM;
+@@ -290,6 +307,7 @@
+ 	if (pdata)
+ 		spi_gpio->pdata = *pdata;
+ 
++	master->flags = master_flags;
+ 	master->bus_num = pdev->id;
+ 	master->num_chipselect = SPI_N_CHIPSEL;
+ 	master->setup = spi_gpio_setup;
+@@ -308,8 +326,10 @@
+ 	if (status < 0) {
+ 		spi_master_put(spi_gpio->bitbang.master);
+ gpio_free:
+-		gpio_free(SPI_MISO_GPIO);
+-		gpio_free(SPI_MOSI_GPIO);
++		if (SPI_MISO_GPIO != SPI_GPIO_NO_MISO)
++			gpio_free(SPI_MISO_GPIO);
++		if (SPI_MOSI_GPIO != SPI_GPIO_NO_MOSI)
++			gpio_free(SPI_MOSI_GPIO);
+ 		gpio_free(SPI_SCK_GPIO);
+ 		spi_master_put(master);
+ 	}
+@@ -332,8 +352,10 @@
+ 
+ 	platform_set_drvdata(pdev, NULL);
+ 
+-	gpio_free(SPI_MISO_GPIO);
+-	gpio_free(SPI_MOSI_GPIO);
++	if (SPI_MISO_GPIO != SPI_GPIO_NO_MISO)
++		gpio_free(SPI_MISO_GPIO);
++	if (SPI_MOSI_GPIO != SPI_GPIO_NO_MOSI)
++		gpio_free(SPI_MOSI_GPIO);
+ 	gpio_free(SPI_SCK_GPIO);
+ 
+ 	return status;
+Index: linux-2.6.29.6/include/linux/spi/spi_gpio.h
+===================================================================
+--- linux-2.6.29.6.orig/include/linux/spi/spi_gpio.h	2010-01-14 14:21:00.000000000 +0100
++++ linux-2.6.29.6/include/linux/spi/spi_gpio.h	2010-01-14 14:21:00.000000000 +0100
+@@ -29,11 +29,18 @@
+  * SPI_GPIO_NO_CHIPSELECT to the controller_data:
+  *		.controller_data = (void *) SPI_GPIO_NO_CHIPSELECT;
+  *
++ * If the MISO or MOSI pin is not available then it should be set to
++ * SPI_GPIO_NO_MISO or SPI_GPIO_NO_MOSI.
++ *
++
+  * If the bitbanged bus is later switched to a "native" controller,
+  * that platform_device and controller_data should be removed.
+  */
+ 
+ #define SPI_GPIO_NO_CHIPSELECT		((unsigned long)-1l)
++#define SPI_GPIO_NO_MISO		((unsigned long)-1l)
++#define SPI_GPIO_NO_MOSI		((unsigned long)-1l)
++
+ 
+ /**
+  * struct spi_gpio_platform_data - parameter for bitbanged SPI master

@@ -1,0 +1,40 @@
+Add mcp79400 Linux driver for 3.11 kernel
+
+Signed-off-by: Fabien Marteau <fabien.marteau@armadeus.com>
+
+---
+
+Index: linux/drivers/rtc/Kconfig
+===================================================================
+--- linux.orig/drivers/rtc/Kconfig	2012-11-16 17:52:01.000000000 +0100
++++ linux/drivers/rtc/Kconfig	2012-11-16 17:54:51.000000000 +0100
+@@ -371,6 +371,17 @@
+ 	  If you say Y here you will get support for the
+ 	  watchdog timer in the ST M41T60 and M41T80 RTC chips series.
+ 
++config RTC_DRV_MCP7940X
++	tristate "Microchip MCP7940X"
++	depends on RTC_CLASS && I2C
++	help
++	  If you say yes here you get support for Microchip
++	  MCP7940x real-time clock chips.
++	  The alarm functionality is not supported.
++
++	  This driver can also be built as a module. If so, the module
++	  will be called rtc-mcp7940x.
++
+ config RTC_DRV_BQ32K
+ 	tristate "TI BQ32000"
+ 	help
+Index: linux/drivers/rtc/Makefile
+===================================================================
+--- linux.orig/drivers/rtc/Makefile	2012-11-16 17:51:56.000000000 +0100
++++ linux/drivers/rtc/Makefile	2012-11-16 17:52:28.000000000 +0100
+@@ -76,6 +76,7 @@
+ obj-$(CONFIG_RTC_DRV_MAX6902)	+= rtc-max6902.o
+ obj-$(CONFIG_RTC_DRV_MAX77686)	+= rtc-max77686.o
+ obj-$(CONFIG_RTC_DRV_MC13XXX)	+= rtc-mc13xxx.o
++obj-$(CONFIG_RTC_DRV_MCP7940X)  += rtc-mcp7940x.o
+ obj-$(CONFIG_RTC_DRV_MSM6242)	+= rtc-msm6242.o
+ obj-$(CONFIG_RTC_DRV_MPC5121)	+= rtc-mpc5121.o
+ obj-$(CONFIG_RTC_DRV_MV)	+= rtc-mv.o

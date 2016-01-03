@@ -1,0 +1,49 @@
+From cca74d7072687691598d0abee286ead8b5e1a639 Mon Sep 17 00:00:00 2001
+From: Steve Longerbeam <steve_longerbeam@mentor.com>
+Date: Thu, 23 Oct 2014 15:49:41 -0700
+Subject: [PATCH 608/625] gpu: ipu-v3: Add ipu_ic_set_src()
+
+Adds ipu_ic_set_src() which is just aa wrapper around
+ipu_set_ic_src_mux().
+
+Signed-off-by: Steve Longerbeam <steve_longerbeam@mentor.com>
+---
+ drivers/gpu/ipu-v3/ipu-ic.c | 10 ++++++++++
+ include/video/imx-ipu-v3.h  |  1 +
+ 2 files changed, 11 insertions(+)
+
+diff --git a/drivers/gpu/ipu-v3/ipu-ic.c b/drivers/gpu/ipu-v3/ipu-ic.c
+index ad75588..a2dba54 100644
+--- a/drivers/gpu/ipu-v3/ipu-ic.c
++++ b/drivers/gpu/ipu-v3/ipu-ic.c
+@@ -629,6 +629,16 @@ unlock:
+ }
+ EXPORT_SYMBOL_GPL(ipu_ic_task_idma_init);
+
++int ipu_ic_set_src(struct ipu_ic *ic, int csi_id, bool vdi)
++{
++	struct ipu_ic_priv *priv = ic->priv;
++
++	ipu_set_ic_src_mux(priv->ipu, csi_id, vdi);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(ipu_ic_set_src);
++
+ int ipu_ic_enable(struct ipu_ic *ic)
+ {
+	struct ipu_ic_priv *priv = ic->priv;
+diff --git a/include/video/imx-ipu-v3.h b/include/video/imx-ipu-v3.h
+index 2674ae5..ab9dec3 100644
+--- a/include/video/imx-ipu-v3.h
++++ b/include/video/imx-ipu-v3.h
+@@ -342,6 +342,7 @@ void ipu_ic_task_disable(struct ipu_ic *ic);
+ int ipu_ic_task_idma_init(struct ipu_ic *ic, struct ipuv3_channel *channel,
+			  u32 width, u32 height, int burst_size,
+			  enum ipu_rotate_mode rot);
++int ipu_ic_set_src(struct ipu_ic *ic, int csi_id, bool vdi);
+ int ipu_ic_enable(struct ipu_ic *ic);
+ int ipu_ic_disable(struct ipu_ic *ic);
+ struct ipu_ic *ipu_ic_get(struct ipu_soc *ipu, enum ipu_ic_task task);
+--
+1.8.5.5

@@ -1,0 +1,22 @@
+imx27: Dcache is not correctly flushed during the boot process
+This patch fix it and make it possible to run U-Boot from RAM.
+tested method: start U-Boot from RAM with a go a0000800
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+--- uboot-custom/arch/arm/cpu/arm926ejs/start.S
++++ uboot-custom/arch/arm/cpu/arm926ejs/start.S
+@@ -78,11 +78,12 @@ cpu_init_crit:
+ 	 */
+ 	mov	r0, #0
+ flush_dcache:
+-	mrc	p15, 0, r15, c7, c10, 3
++	mrc	p15, 0, r15, c7, c14, 3
+ 	bne	flush_dcache
+ 
+ 	mcr	p15, 0, r0, c8, c7, 0	/* invalidate TLB */
+ 	mcr	p15, 0, r0, c7, c5, 0	/* invalidate I Cache */
++	mcr	p15, 0, r0, c7, c10, 4	/* drain write buffer */
+ 
+ 	/*
+ 	 * disable MMU and D cache

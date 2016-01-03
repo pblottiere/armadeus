@@ -1,0 +1,168 @@
+make imx-wdt driver compatible with the ARCH_IMX configs
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+
+Index: linux-2.6.29.6/drivers/watchdog/imx-wdt.c
+===================================================================
+--- linux-2.6.29.6/drivers/watchdog/imx-wdt.c
++++ linux-2.6.29.6/drivers/watchdog/imx-wdt.c
+@@ -37,7 +37,7 @@
+ #include <mach/hardware.h>
+ #include <linux/clk.h>
+ 
+-#ifdef CONFIG_ARCH_MX1
++#if defined(CONFIG_ARCH_MX1) || defined(CONFIG_ARCH_IMX)
+ # define WDT_MAX_TIME		63		/* seconds */
+ 
+ # define IMX_WDT_WCR		0x00		/* Control reg */
+@@ -81,7 +81,7 @@ static unsigned int timeout = WDT_DEFAUL
+ static struct watchdog_info imx_wdt_info = {
+ 	.identity	= "imx watchdog",
+ 	.options	= WDIOF_KEEPALIVEPING
+-#ifdef CONFIG_ARCH_MX1
++#if defined(CONFIG_ARCH_MX1) || defined(CONFIG_ARCH_IMX)
+ 			| WDIOF_SETTIMEOUT
+ #endif
+ };
+@@ -91,7 +91,7 @@ static inline void imx_wdt_stop(struct i
+ {
+ 	dev_dbg(imx_wdt->dev, "<%s>\n", __func__);
+ 
+-#ifdef CONFIG_ARCH_MX1
++#if defined(CONFIG_ARCH_MX1) || defined(CONFIG_ARCH_IMX)
+ 	__raw_writew(0, imx_wdt->base + IMX_WDT_WCR);
+ #else
+ 	dev_info(imx_wdt->dev, "watchdog is unstoppable on i.MX2/3 !\n");
+@@ -105,11 +105,14 @@ static inline void imx_wdt_start(struct
+ 
+ 	dev_dbg(imx_wdt->dev, "<%s>\n", __func__);
+ 
++#if defined(CONFIG_ARCH_MX1) || defined(CONFIG_ARCH_IMX)
++	__raw_writew(0, imx_wdt->base + IMX_WDT_WCR);
++#endif
+ 	temp = __raw_readw(imx_wdt->base + IMX_WDT_WCR);
+-	temp |= imx_wdt->wdt_time << 8;
++	temp |= (imx_wdt->wdt_time << 8) & WCR_WT;
+ 	__raw_writew(temp, imx_wdt->base + IMX_WDT_WCR);
+ 
+-#ifdef CONFIG_ARCH_MX1
++#if defined(CONFIG_ARCH_MX1) || defined(CONFIG_ARCH_IMX)
+ # ifndef CONFIG_WATCHDOG_NOWAYOUT
+ 	temp |= WCR_WDEC;
+ 	__raw_writew(temp, imx_wdt->base + IMX_WDT_WCR);
+@@ -121,7 +124,7 @@ static inline void imx_wdt_start(struct
+ 	__raw_writew(temp, imx_wdt->base + IMX_WDT_WCR);
+ #endif
+ 
+-#ifdef CONFIG_ARCH_MX1
++#if defined(CONFIG_ARCH_MX1) || defined(CONFIG_ARCH_IMX)
+ 	__raw_writew(WDT_SEQ1, imx_wdt->base + IMX_WDT_WSR);
+ 	__raw_writew(WDT_SEQ2, imx_wdt->base + IMX_WDT_WSR);
+ #endif
+@@ -167,7 +170,7 @@ static int imx_wdt_close(struct inode *i
+ 	return 0;
+ }
+ 
+-#ifdef CONFIG_ARCH_MX1
++#if defined(CONFIG_ARCH_MX1) || defined(CONFIG_ARCH_IMX)
+ /* Change the watchdog time interval. */
+ static int imx_wdt_settimeout(struct imx_wdt_struct *imx_wdt, int new_time)
+ {
+@@ -189,7 +192,7 @@ static int imx_wdt_ioctl(struct inode *i
+ 
+ 	void __user *argp = (void __user *)arg;
+ 	int __user *p = argp;
+-#ifdef CONFIG_ARCH_MX1
++#if defined(CONFIG_ARCH_MX1) || defined(CONFIG_ARCH_IMX)
+ 	int new_value;
+ #endif
+ 
+@@ -203,7 +206,7 @@ static int imx_wdt_ioctl(struct inode *i
+ 	case WDIOC_GETSUPPORT:
+ 		return copy_to_user(argp, &imx_wdt_info,
+ 			sizeof(imx_wdt_info)) ? -EFAULT : 0;
+-#ifdef CONFIG_ARCH_MX1
++#if defined(CONFIG_ARCH_MX1) || defined(CONFIG_ARCH_IMX)
+ 	case WDIOC_SETTIMEOUT:
+ 		if (get_user(new_value, p))
+ 			return -EFAULT;
+@@ -296,6 +299,7 @@ static int __init imx_wdt_probe(struct p
+ 		goto fail1;
+ 	}
+ 
++#if !defined(CONFIG_ARCH_MX1) && !defined(CONFIG_ARCH_IMX)
+ 	imx_wdt->clk = clk_get(&pdev->dev, "wdog_clk");
+ 	if (IS_ERR(imx_wdt->clk)) {
+ 		dev_err(&pdev->dev, "can't get Watchdog clock\n");
+@@ -303,6 +307,7 @@ static int __init imx_wdt_probe(struct p
+ 		goto fail2;
+ 	}
+ 	clk_enable(imx_wdt->clk);
++#endif
+ 
+ 	/* Setup imx_wdt driver structure */
+ 	imx_wdt->dev			= &pdev->dev;
+@@ -333,9 +338,11 @@ static int __init imx_wdt_probe(struct p
+ 	return 0;
+ 
+ fail3:
++#if !defined(CONFIG_ARCH_MX1) && !defined(CONFIG_ARCH_IMX)
+ 	clk_disable(imx_wdt->clk);
+ 	clk_put(imx_wdt->clk);
+ fail2:
++#endif
+ 	platform_set_drvdata(pdev, NULL);
+ 	kfree(imx_wdt);
+ fail1:
+@@ -359,9 +366,10 @@ static int __exit imx_wdt_remove(struct
+ 	release_mem_region(imx_wdt->res->start,
+ 		imx_wdt->res->end - imx_wdt->res->start + 1);
+ 
++#if !defined(CONFIG_ARCH_MX1) && !defined(CONFIG_ARCH_IMX)
+ 	clk_disable(imx_wdt->clk);
+ 	clk_put(imx_wdt->clk);
+-
++#endif
+ 	kfree(imx_wdt);
+ 	return 0;
+ }
+@@ -370,7 +378,7 @@ static int __exit imx_wdt_remove(struct
+ 
+ static int imx_wdt_suspend(struct platform_device *pdev, pm_message_t message)
+ {
+-#ifdef CONFIG_ARCH_MX1
++#if defined(CONFIG_ARCH_MX1) || defined(CONFIG_ARCH_IMX)
+ 	struct imx_wdt_struct *imx_wdt = platform_get_drvdata(pdev);
+ 
+ 	u32 temp = __raw_readw(imx_wdt->base + IMX_WDT_WCR);
+@@ -381,7 +389,7 @@ static int imx_wdt_suspend(struct platfo
+ 
+ static int imx_wdt_resume(struct platform_device *pdev)
+ {
+-#ifdef CONFIG_ARCH_MX1
++#if defined(CONFIG_ARCH_MX1) || defined(CONFIG_ARCH_IMX)
+ 	struct imx_wdt_struct *imx_wdt = platform_get_drvdata(pdev);
+ 	u32 temp;
+ 
+@@ -405,7 +413,7 @@ static struct platform_driver imx_wdt_dr
+ 	.suspend	= imx_wdt_suspend,
+ 	.resume		= imx_wdt_resume,
+ 	.driver		= {
+-#ifdef CONFIG_MACH_MX1
++#if defined(CONFIG_ARCH_MX1) || defined(CONFIG_ARCH_IMX)
+ 		.name	= "imx-wdt",
+ #else
+ 		.name	= "mxc_wdt",
+Index: linux-2.6.29.6/drivers/watchdog/Kconfig
+===================================================================
+--- linux-2.6.29.6/drivers/watchdog/Kconfig
++++ linux-2.6.29.6/drivers/watchdog/Kconfig
+@@ -68,7 +68,7 @@ config WM8350_WATCHDOG
+ 
+ config IMX_WDT
+ 	tristate "IMX Watchdog"
+-	depends on ARCH_MXC
++	depends on ARCH_MXC || ARCH_IMX
+ 	help
+ 	  This is the driver for the hardware watchdog
+ 	  on the Freescale IMX processors.

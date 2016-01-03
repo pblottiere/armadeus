@@ -1,0 +1,25 @@
+This patch adds the possibility to have custom Armadeus drivers built in kernel or compiled as modules.
+
+Index: linux-3.8-rc1/drivers/Kconfig
+===================================================================
+--- linux-3.8-rc1.orig/drivers/Kconfig	2012-12-22 02:19:00.000000000 +0100
++++ linux-3.8-rc1/drivers/Kconfig	2013-01-02 20:28:02.000000000 +0100
+@@ -158,4 +158,6 @@
+ 
+ source "drivers/ipack/Kconfig"
+ 
++source "drivers/armadeus/Kconfig"
++
+ endmenu
+Index: linux-3.8-rc1/drivers/Makefile
+===================================================================
+--- linux-3.8-rc1.orig/drivers/Makefile	2012-12-22 02:19:00.000000000 +0100
++++ linux-3.8-rc1/drivers/Makefile	2013-01-02 20:28:02.000000000 +0100
+@@ -121,6 +121,7 @@
+ obj-$(CONFIG_HID)		+= hid/
+ obj-$(CONFIG_PPC_PS3)		+= ps3/
+ obj-$(CONFIG_OF)		+= of/
++obj-$(CONFIG_ARMADEUS_DRIVERS)	+= armadeus/
+ obj-$(CONFIG_SSB)		+= ssb/
+ obj-$(CONFIG_BCMA)		+= bcma/
+ obj-$(CONFIG_VHOST_NET)		+= vhost/

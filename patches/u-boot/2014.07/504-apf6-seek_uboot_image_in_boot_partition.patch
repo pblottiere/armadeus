@@ -1,0 +1,18 @@
+Index: uboot-2014.07/arch/arm/imx-common/spl.c
+===================================================================
+--- uboot-2014.07.orig/arch/arm/imx-common/spl.c
++++ uboot-2014.07/arch/arm/imx-common/spl.c
+@@ -64,9 +64,12 @@ u32 spl_boot_device(void)
+ u32 spl_boot_mode(void)
+ {
+	switch (spl_boot_device()) {
+-	/* for MMC return either RAW or FAT mode */
+	case BOOT_DEVICE_MMC1:
+	case BOOT_DEVICE_MMC2:
++#ifdef CONFIG_SUPPORT_EMMC_BOOT
++		return MMCSD_MODE_EMMCBOOT;
++#endif
++
+ #ifdef CONFIG_SPL_FAT_SUPPORT
+		return MMCSD_MODE_FAT;
+ #else

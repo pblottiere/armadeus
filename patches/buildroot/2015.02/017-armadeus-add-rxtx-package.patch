@@ -1,0 +1,186 @@
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in
++++ buildroot/package/Config.in
+@@ -369,6 +369,7 @@ endif
+ 	source "package/read-edid/Config.in"
+ 	source "package/rng-tools/Config.in"
+ 	source "package/rpi-userland/Config.in"
++	source "package/rxtx/Config.in"
+ 	source "package/sane-backends/Config.in"
+ 	source "package/sam7-pgm-ng/Config.in"
+ 	source "package/sdparm/Config.in"
+Index: buildroot/package/rxtx/Config.in
+===================================================================
+--- /dev/null
++++ buildroot/package/rxtx/Config.in
+@@ -0,0 +1,12 @@
++config BR2_PACKAGE_RXTX
++	bool "rxtx"
++	depends on BR2_PACKAGE_CLASSPATH
++	help
++	  RXTX is a Java library, using a native implementation (via JNI),
++	  providing serial and parallel communication for the Java Development
++	  Toolkit (JDK).
++
++	  http://rxtx.qbang.org
++
++comment "rxtx needs classpath"
++	depends on !BR2_PACKAGE_RXTX
+Index: buildroot/package/rxtx/rxtx-2.1-7r2-001-remove-warning.patch
+===================================================================
+--- /dev/null
++++ buildroot/package/rxtx/rxtx-2.1-7r2-001-remove-warning.patch
+@@ -0,0 +1,90 @@
++--- rxtx-2.1-7r2/src/I2CImp.c.orig	2004-10-17 16:23:02.000000000 +0200
+++++ rxtx-2.1-7r2/src/I2CImp.c	2006-10-26 21:25:32.000000000 +0200
++@@ -87,6 +87,7 @@
++ 	if( !handler.sa_handler ) signal( SIGIO, SIG_IGN );
++ #endif /* !__FreeBSD__ */
++ #if defined(__linux__) 
+++#if 0
++ 	/* Lets let people who upgraded kernels know they may have problems */
++ 	if (uname (&name) == -1)
++ 	{
++@@ -98,6 +99,7 @@
++ 		fprintf(stderr, "\n\n\nRXTX WARNING:  This library was compiled to run with OS release %s and you are currently running OS release %s.  In some cases this can be a problem.  Try recompiling RXTX if you notice strange behavior.  If you just compiled RXTX make sure /usr/include/linux is a symbolic link to the include files that came with the kernel source and not an older copy.\n\n\npress enter to continue\n",UTS_RELEASE,name.release);
++ 		getchar();
++ 	}
+++#endif
++ #endif /* __linux__ */
++ #endif /* WIN32 */
++ }
++--- rxtx-2.1-7r2/src/RawImp.c.orig	2004-10-16 18:20:35.000000000 +0200
+++++ rxtx-2.1-7r2/src/RawImp.c	2006-10-26 21:25:59.000000000 +0200
++@@ -231,6 +231,7 @@
++ 	if( !handler.sa_handler ) signal( SIGIO, SIG_IGN );
++ #endif /* !__FreeBSD__ */
++ #if defined(__linux__) 
+++#if 0
++ 	/* Lets let people who upgraded kernels know they may have problems */
++ 	if (uname (&name) == -1)
++ 	{
++@@ -242,6 +243,7 @@
++ 		fprintf(stderr, "\n\n\nRXTX WARNING:  This library was compiled to run with OS release %s and you are currently running OS release %s.  In some cases this can be a problem.  Try recompiling RXTX if you notice strange behavior.  If you just compiled RXTX make sure /usr/include/linux is a symbolic link to the include files that came with the kernel source and not an older copy.\n\n\npress enter to continue\n",UTS_RELEASE,name.release);
++ 		getchar();
++ 	}
+++#endif
++ #endif /* __linux__ */
++ #endif /* WIN32 */
++ }
++--- rxtx-2.1-7r2/src/RS485Imp.c.orig	2004-10-16 18:20:35.000000000 +0200
+++++ rxtx-2.1-7r2/src/RS485Imp.c	2006-10-26 21:26:23.000000000 +0200
++@@ -87,6 +87,7 @@
++ 	if( !handler.sa_handler ) signal( SIGIO, SIG_IGN );
++ #endif /* !__FreeBSD__ */
++ #if defined(__linux__) 
+++#if 0
++ 	/* Lets let people who upgraded kernels know they may have problems */
++ 	if (uname (&name) == -1)
++ 	{
++@@ -98,6 +99,7 @@
++ 		fprintf(stderr, "\n\n\nRXTX WARNING:  This library was compiled to run with OS release %s and you are currently running OS release %s.  In some cases this can be a problem.  Try recompiling RXTX if you notice strange behavior.  If you just compiled RXTX make sure /usr/include/linux is a symbolic link to the include files that came with the kernel source and not an older copy.\n\n\npress enter to continue\n",UTS_RELEASE,name.release);
++ 		getchar();
++ 	}
+++#endif
++ #endif /* __linux__ */
++ #endif /* WIN32 */
++ }
++--- rxtx-2.1-7r2/src/SerialImp.c.orig	2006-01-29 23:19:04.000000000 +0100
+++++ rxtx-2.1-7r2/src/SerialImp.c	2006-10-26 21:26:59.000000000 +0200
++@@ -280,6 +280,7 @@
++ 	gettimeofday(&seloop, NULL);
++ #endif /* DEBUG_TIMING */
++ #if defined(DEBUG) && defined(__linux__)
+++#if 0
++ 	/* Lets let people who upgraded kernels know they may have problems */
++ 	if (uname (&name) == -1)
++ 	{
++@@ -295,6 +296,7 @@
++ 		getchar();
++ 	}
++ 	LEAVE( "RXTXPort:Initialize" );
+++#endif
++ #endif /* DEBUG && __linux__ */
++ }
++ 
++--- rxtx-2.1-7r2/src/SerialImp.cpp.orig	2004-10-12 10:59:27.000000000 +0200
+++++ rxtx-2.1-7r2/src/SerialImp.cpp	2006-10-26 21:27:44.000000000 +0200
++@@ -102,6 +102,7 @@
++ 	if( !handler.sa_handler ) signal( SIGIO, SIG_IGN );
++ #endif /* !__FreeBSD__ */
++ #ifdef DEBUG
+++#if 0
++ 	/* Lets let people who upgraded kernels know they may have problems */
++ 	if (uname (&name) == -1)
++ 	{
++@@ -114,6 +115,7 @@
++ 			name.release);
++ 		getchar();
++ 	}
+++#endif
++ #endif /* DEBUG */
++ #endif /* __BEOS__ */
++ #endif /* WIN32 */
+Index: buildroot/package/rxtx/rxtx-2.1-7r2-fix-java-1.6.patch
+===================================================================
+--- /dev/null
++++ buildroot/package/rxtx/rxtx-2.1-7r2-fix-java-1.6.patch
+@@ -0,0 +1,38 @@
++--- rxtx-2.1-7r2/configure.ori	2006-01-30 05:37:40.000000000 +0100
+++++ rxtx-2.1-7r2/configure	2011-02-27 00:15:04.000000000 +0100
++@@ -21541,7 +21541,7 @@ Linux)
++ 	CFLAGS=$CFLAGS" -D__need_timespec"
++ 	case $JAVA_VERSION in
++ 
++-	1.2*|1.3*|1.4*|1.5*)
+++	1.2*|1.3*|1.4*|1.5*|1.6*)
++ 		#fix_parameters $JPATH/jre/lib/javax.comm.properties
++ 		CLASSPATH=".:\$(TOP):\$(TOP)/src:"`find $JPATH/ -name RXTXcomm.jar |head -n1`
++ 		JHOME=$JPATH"/jre/lib/ext"
++@@ -21611,7 +21611,7 @@ Linux)
++ 	TARGETLIB="\$(target_triplet)/librxtxSerial.la \
++ 			\$(target_triplet)/librxtxParallel.la"
++ 	case $JAVA_VERSION in
++-	1.2*|1.3*|1.4*|1.5*)
+++	1.2*|1.3*|1.4*|1.5*|1.6*)
++ 		#fix_parameters $JPATH/jre/lib/javax.comm.properties
++ 		CLASSPATH=".:\$(TOP):\$(TOP)/src:"`find $JPATH/ -name RXTXcomm.jar |head -n1`
++ 		RXTX_PATH="\$(JPATH)/jre/lib/\$(OS_ARCH)"
++@@ -21747,7 +21747,7 @@ BeOS)
++ 
++ WIN32)
++ 	case $JAVA_VERSION in
++-	1.2*|1.3*|1.4*|1.5*)
+++	1.2*|1.3*|1.4*|1.5*|1.6*)
++ 		CLASSPATH=".:\$(TOP):\$(TOP)/src:`find $JPATH/ -name RXTXcomm.jar |head -n1`:$CLASSPATH"
++ 		JHOME=$JPATH"/jre/lib/ext"
++ 	;;
++@@ -21799,7 +21799,7 @@ Solaris*)
++ 	CLASSPATH=".:\$(TOP):\$(TOP)/src:\$(JPATH)/lib/classes.zip:\$(JPATH)/lib/RXTXcomm.jar:$CLASSPATH"
++ 
++ 	case $JAVA_VERSION in
++-	1.2*|1.3*|1.4*|1.5*)
+++	1.2*|1.3*|1.4*|1.5*|1.6*)
++ 		RXTX_PATH="\$(JPATH)/jre/lib/\$(OS_ARCH)"
++ 	;;
++ 	1.1*)
+Index: buildroot/package/rxtx/rxtx.mk
+===================================================================
+--- /dev/null
++++ buildroot/package/rxtx/rxtx.mk
+@@ -0,0 +1,14 @@
++################################################################################
++#
++# rxtx
++#
++################################################################################
++
++RXTX_VERSION = 2.1-7r2
++RXTX_SITE = http://rxtx.qbang.org/pub/rxtx/
++RXTX_SOURCE = rxtx-$(RXTX_VERSION).tgz
++RXTX_DEPENDENCIES = classpath
++
++RXTX_INSTALL_TARGET_OPTS = RXTX_PATH=$(TARGET_DIR)/usr/lib/classpath JHOME=$(TARGET_DIR)/usr/lib install
++
++$(eval $(autotools-package))

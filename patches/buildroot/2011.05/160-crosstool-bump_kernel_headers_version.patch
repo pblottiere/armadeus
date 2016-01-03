@@ -1,0 +1,41 @@
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/toolchain/toolchain-crosstool-ng/crosstool-ng.config-eglibc
+===================================================================
+--- buildroot.orig/toolchain/toolchain-crosstool-ng/crosstool-ng.config-eglibc	2011-10-06 10:47:24.000000000 +0200
++++ buildroot/toolchain/toolchain-crosstool-ng/crosstool-ng.config-eglibc	2011-10-06 10:47:47.000000000 +0200
+@@ -194,7 +194,7 @@
+ # CT_MINGW32 is not set
+ CT_KERNEL_SUPPORTS_SHARED_LIBS=y
+ CT_KERNEL="linux"
+-CT_KERNEL_VERSION="2.6.38.4"
++CT_KERNEL_VERSION="2.6.38.8"
+ # CT_KERNEL_bare_metal is not set
+ CT_KERNEL_linux=y
+ # CT_KERNEL_mingw32 is not set
+Index: buildroot/toolchain/toolchain-crosstool-ng/crosstool-ng.config-glibc
+===================================================================
+--- buildroot.orig/toolchain/toolchain-crosstool-ng/crosstool-ng.config-glibc	2011-10-06 10:56:56.000000000 +0200
++++ buildroot/toolchain/toolchain-crosstool-ng/crosstool-ng.config-glibc	2011-10-06 10:57:10.000000000 +0200
+@@ -194,7 +194,7 @@
+ # CT_MINGW32 is not set
+ CT_KERNEL_SUPPORTS_SHARED_LIBS=y
+ CT_KERNEL="linux"
+-CT_KERNEL_VERSION="2.6.38.4"
++CT_KERNEL_VERSION="2.6.38.8"
+ # CT_KERNEL_bare_metal is not set
+ CT_KERNEL_linux=y
+ # CT_KERNEL_mingw32 is not set
+Index: buildroot/toolchain/toolchain-crosstool-ng/crosstool-ng.config-uClibc
+===================================================================
+--- buildroot.orig/toolchain/toolchain-crosstool-ng/crosstool-ng.config-uClibc	2011-10-06 10:56:22.000000000 +0200
++++ buildroot/toolchain/toolchain-crosstool-ng/crosstool-ng.config-uClibc	2011-10-06 10:56:39.000000000 +0200
+@@ -194,7 +194,7 @@
+ # CT_MINGW32 is not set
+ CT_KERNEL_SUPPORTS_SHARED_LIBS=y
+ CT_KERNEL="linux"
+-CT_KERNEL_VERSION="2.6.38.4"
++CT_KERNEL_VERSION="2.6.38.8"
+ # CT_KERNEL_bare_metal is not set
+ CT_KERNEL_linux=y
+ # CT_KERNEL_mingw32 is not set

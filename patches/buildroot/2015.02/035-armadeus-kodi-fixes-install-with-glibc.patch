@@ -1,0 +1,29 @@
+From 48a717343deabbf9aa8b09f0c2b6944bcb5a81d9 Mon Sep 17 00:00:00 2001
+From: Julien Boibessot <julien.boibessot@armadeus.com>
+Date: Mon, 09 Mar 2015 12:38:38 +0000
+Subject: package/kodi: enable gconv libraries on glibc configurations
+
+When a glibc toolchain is used, Kodi really requires the gconv
+libraries to be installed, otherwise no text is rendered in the GUI.
+
+[Thomas: slightly improve commit message.]
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+Reviewed-by: "Yann E. MORIN" <yann.morin.1998@free.fr>
+Tested-by: "Maxime Hadjinlian" <maxime.hadjinlian@gmail.com>
+Signed-off-by: Thomas Petazzoni <thomas.petazzoni@free-electrons.com>
+---
+diff --git a/package/kodi/Config.in b/package/kodi/Config.in
+index a0cbb18..88d1109 100644
+--- a/package/kodi/Config.in
++++ b/package/kodi/Config.in
+@@ -91,6 +91,7 @@ menuconfig BR2_PACKAGE_KODI
+ 	select BR2_PACKAGE_XLIB_XT if BR2_PACKAGE_KODI_GL # needed by rsxs screensaver
+ 	select BR2_PACKAGE_YAJL
+ 	select BR2_PACKAGE_ZLIB
++	select BR2_TOOLCHAIN_GLIBC_GCONV_LIBS_COPY if BR2_TOOLCHAIN_USES_GLIBC # runtime UTF conversion support
+ 	depends on BR2_INET_IPV6
+ 	depends on BR2_INSTALL_LIBSTDCPP
+ 	depends on BR2_TOOLCHAIN_HAS_THREADS
+--
+cgit v0.9.1

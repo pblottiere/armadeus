@@ -1,0 +1,40 @@
+Index: linux-3.0.10/drivers/Kconfig
+===================================================================
+--- linux-3.0.10.orig/drivers/Kconfig	2011-11-21 23:37:44.000000000 +0100
++++ linux-3.0.10/drivers/Kconfig	2011-11-30 18:42:53.000000000 +0100
+@@ -122,6 +122,9 @@
+ 
+ source "drivers/clk/Kconfig"
+ 
++source "drivers/mxc/Kconfig"
++
++
+ source "drivers/hwspinlock/Kconfig"
+ 
+ source "drivers/clocksource/Kconfig"
+Index: linux-3.0.10/drivers/Makefile
+===================================================================
+--- linux-3.0.10.orig/drivers/Makefile	2011-11-21 23:37:44.000000000 +0100
++++ linux-3.0.10/drivers/Makefile	2011-11-30 18:42:53.000000000 +0100
+@@ -95,6 +95,7 @@
+ obj-y				+= lguest/
+ obj-$(CONFIG_CPU_FREQ)		+= cpufreq/
+ obj-$(CONFIG_CPU_IDLE)		+= cpuidle/
++obj-$(CONFIG_ARCH_MXC)		+= mxc/
+ obj-$(CONFIG_MMC)		+= mmc/
+ obj-$(CONFIG_MEMSTICK)		+= memstick/
+ obj-y				+= leds/
+Index: linux-3.0.10/drivers/mxc/Kconfig
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-3.0.10/drivers/mxc/Kconfig	2011-11-30 18:52:44.000000000 +0100
+@@ -0,0 +1,9 @@
++# drivers/video/Kconfig
++
++if ARCH_MXC
++
++menu "MXC support drivers"
++
++endmenu
++
++endif

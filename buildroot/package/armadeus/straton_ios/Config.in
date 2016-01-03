@@ -1,0 +1,8 @@
+
+config BR2_PACKAGE_STRATON_IOS
+	bool "straton_ios"
+	depends on BR2_TARGET_ARMADEUS
+	depends on BR2_PACKAGE_STRATON
+	help
+	  Library for straton i/o
+

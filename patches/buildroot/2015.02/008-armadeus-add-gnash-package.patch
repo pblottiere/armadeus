@@ -1,0 +1,155 @@
+WIP.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/gnash/Config.in
+===================================================================
+--- /dev/null
++++ buildroot/package/gnash/Config.in
+@@ -0,0 +1,11 @@
++config BR2_PACKAGE_GNASH
++	bool "gnash"
++	select BR2_PACKAGE_BOOST
++	select BR2_PACKAGE_BOOST_IOSTREAMS
++	select BR2_PACKAGE_BOOST_PROGRAM_OPTIONS
++	select BR2_PACKAGE_BOOST_THREAD
++
++	help
++	  GNU Gnash is the GNU Flash movie player.
++
++	  http://www.gnu.org/software/gnash/
+Index: buildroot/package/gnash/gnash.mk
+===================================================================
+--- /dev/null
++++ buildroot/package/gnash/gnash.mk
+@@ -0,0 +1,118 @@
++###############################################################################
++#
++# gnash
++#
++###############################################################################
++
++# inspired from LFS
++
++GNASH_VERSION = 0.8.10
++GNASH_SOURCE = gnash-$(GNASH_VERSION).tar.bz2
++GNASH_SITE = http://ftp.gnu.org/pub/gnu/gnash/$(GNASH_VERSION)/
++GNASH_LICENSE = LGPLv2.1+
++GNASH_LICENSE_FILES = COPYING
++
++GNASH_CONF_OPTS = --without-gconf --disable-extensions --disable-jemalloc --disable-cygnal
++GNASH_CONF_OPTS += --disable-nls # To fix
++GNASH_DEPENDENCIES += gettext # even if NLS disabled...
++
++GNASH_CONF_OPTS += --with-ltdl-incl=$(STAGING_DIR)/usr/include/ --with-ltdl-lib=$(STAGING_DIR)/usr/lib
++GNASH_DEPENDENCIES += libtool
++
++define GNASH_FIXES_BOOST_LINK
++	$(SED) '/^LIBS/s/\(.*\)/\1 -lboost_system/' \
++		$(@D)/gui/Makefile.in $(@D)/utilities/Makefile.in
++endef
++GNASH_POST_CONFIGURE_HOOKS += GNASH_FIXES_BOOST_LINK
++
++ifeq ($(BR2_PACKAGE_GNASH_SHOW_PROPERTIES),y)
++# to check
++GNASH_DEPENDENCIES += pango
++GNASH_CONF_OPTS += --with-pango-incl=$(STAGING_DIR)/usr/include/pango --with-pango-lib=$(STAGING_DIR)/usr/lib \
++else
++GNASH_CONF_OPTS += --disable-swftree
++endif
++
++ifeq ($(BR2_PACKAGE_QT),)
++#(accept: gtk|kde3|qt4|fltk|sdl|aqua|fb|qtopia3|qtopia4|dump|aos4|haiku)
++#GNASH_CONF_OPT += --disable-gui ??
++GNASH_CONF_OPTS += --enable-gui=sdl
++GNASH_CONF_OPTS += --with-sdl-incl=$(STAGING_DIR)/usr/include/SDL --with-sdl-lib=$(STAGING_DIR)/usr/lib
++GNASH_DEPENDENCIES += sdl
++else
++GNASH_CONF_OPTS += --enable-gui=qt4
++GNASH_DEPENDENCIES += qt
++endif
++
++GNASH_CONF_OPTS += --enable-media=none
++
++GNASH_CONF_OPTS += --enable-sound=none
++
++GNASH_CONF_OPTS += --enable-renderer=agg
++GNASH_CONF_OPTS += --with-agg-incl=$(STAGING_DIR)/usr/include/agg2 --with-agg-lib=$(STAGING_DIR)/usr/lib
++GNASH_DEPENDENCIES += agg
++
++GNASH_CONF_OPTS += --with-curl-incl=$(STAGING_DIR)/usr/include
++GNASH_DEPENDENCIES += libcurl
++
++GNASH_CONF_OPTS += --with-boost-incl=$(STAGING_DIR)/usr/include/boost --with-boost-lib=$(STAGING_DIR)/usr/lib
++GNASH_DEPENDENCIES += boost
++
++# What for ?
++GNASH_CONF_OPTS += --with-jpeg-incl=$(STAGING_DIR)/usr/include --with-jpeg-lib=$(STAGING_DIR)/usr/lib
++GNASH_DEPENDENCIES += libjpeg
++
++# What for ?
++GNASH_CONF_OPTS += --with-ungif-incl=$(STAGING_DIR)/usr/include --with-ungif-lib=$(STAGING_DIR)/usr/lib
++GNASH_DEPENDENCIES += libungif
++
++# Needed otherwise utilities/ fails to build
++GNASH_CONF_OPTS += --with-png-incl=$(STAGING_DIR)/usr/include --with-png-lib=$(STAGING_DIR)/usr/lib
++GNASH_DEPENDENCIES += libpng
++
++# Otherwise build fails in FreetypeGlyphsProvider.cpp
++GNASH_DEPENDENCIES += freetype
++GNASH_CONF_OPTS += --with-freetype-incl=$(STAGING_DIR)/usr/include/freetype2 --with-freetype-lib=$(STAGING_DIR)/usr/lib
++
++#  --enable-sound=sdl|ahi|mkit
++#                          Use the specified sound handler (default=sdl)
++#  --enable-media=handler  Enable media handling support using the specified
++#                          handler: gst, ffmpeg or none (no sound) [gst]
++#  --enable-input          Enable support for the specified input devices for
++#                          the framebuffer GUI
++#                          (default=ps2mouse|ps2keyboard|events|touchscreen)
++#  --enable-renderer       Enable support for the specified renderers
++#                          (agg|cairo|opengl|openvg|all, default=all)
++
++
++$(eval $(autotools-package))
++
++#    RECOMMENDED: No PNG library development package installed!
++#                 Gnash will be built without support for dynamic loading of
++#                 PNG files.
++#                 Install it from http://www.libpng.org
++#                 or .deb users: apt-get install libpng12-dev
++#                 or .rpm users: yum install libpng-devel
++#    RECOMMENDED: If you install the CURL library, Gnash will be able to
++#                 display remote content (streaming from URLs) using CURL.
++#                 Install libcurl from http://curl.haxx.se/libcurl
++#                 or .deb users: apt-get install libcurl4-gnutls-dev
++#                or maybe     : apt-get install libcurl-dev
++#                or .rpm users: yum install curl-devel
++#    RECOMMENDED: If you install the Speex library, Gnash will be able to
++#                 decoded Speex encoded audio in FLV files.
++#                 Install libspeex from http://speex.org
++#                 or .deb users: apt-get install libspeex-dev
++#                 or .rpm users: yum install speex-devel
++#    RECOMMENDED: If you install the Speex DSP library, Gnash will be able to
++#                 resample Speex encoded audio in FLV files.
++#                 Install libspeexdsp from http://speex.org
++#                 or .deb users: apt-get install libspeexdsp-dev
++#                 or .rpm users: yum install speex-devel
++#    RECOMMENDED: You need to have the fontconfig development packages
++#                 installed to use device fonts.
++#                 Install it from http://fontconfig.org
++#                 or .deb users: apt-get install libfontconfig1-dev
++#                 or .rpm users: yum install fontconfig-devel
++#                 It may still be possible to configure without fontconfig.
++
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in
++++ buildroot/package/Config.in
+@@ -14,6 +14,7 @@ menu "Audio and video applications"
+	source "package/ffmpeg/Config.in"
+	source "package/flac/Config.in"
+	source "package/flite/Config.in"
++	source "package/gnash/Config.in"
+	source "package/gstreamer/Config.in"
+	source "package/gstreamer1/Config.in"
+	source "package/jack2/Config.in"

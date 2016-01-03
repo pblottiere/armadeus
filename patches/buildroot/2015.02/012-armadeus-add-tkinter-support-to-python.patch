@@ -1,0 +1,50 @@
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/python/Config.in
+===================================================================
+--- buildroot.orig/package/python/Config.in
++++ buildroot/package/python/Config.in
+@@ -79,6 +79,18 @@ config BR2_PACKAGE_PYTHON_SSL
+	help
+	  _ssl module for Python (required for https in urllib etc).
+
++config BR2_PACKAGE_PYTHON_TKINTER
++	depends on BR2_PACKAGE_XORG7
++	depends on BR2_PACKAGE_TCL
++	select BR2_PACKAGE_TK
++	bool "tkinter"
++	help
++	  Tkinter module for Python.
++
++comment "tkinter needs a X server and tcl"
++	depends on !BR2_PACKAGE_XORG7
++	depends on !BR2_PACKAGE_TCL
++
+ config BR2_PACKAGE_PYTHON_UNICODEDATA
+	bool "unicodedata module"
+	default y
+Index: buildroot/package/python/python.mk
+===================================================================
+--- buildroot.orig/package/python/python.mk
++++ buildroot/package/python/python.mk
+@@ -118,6 +118,12 @@ ifeq ($(BR2_PACKAGE_PYTHON_HASHLIB),y)
+ PYTHON_DEPENDENCIES += openssl
+ endif
+
++ifeq ($(BR2_PACKAGE_PYTHON_TKINTER),y)
++PYTHON_DEPENDENCIES += tk
++else
++PYTHON_CONF_OPTS += --disable-tk
++endif
++
+ PYTHON_CONF_ENV += \
+	ac_cv_have_long_long_format=yes \
+	ac_cv_file__dev_ptmx=yes \
+@@ -132,7 +138,6 @@ PYTHON_CONF_OPTS += \
+	--disable-test-modules	\
+	--disable-lib2to3	\
+	--disable-gdbm		\
+-	--disable-tk		\
+	--disable-nis		\
+	--disable-dbm		\
+	--disable-pyo-build

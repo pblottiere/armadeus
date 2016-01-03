@@ -1,0 +1,112 @@
+Index: linux-3.3.5/arch/arm/mach-imx/clock-imx1.c
+===================================================================
+--- linux-3.3.5.orig/arch/arm/mach-imx/clock-imx1.c
++++ linux-3.3.5/arch/arm/mach-imx/clock-imx1.c
+@@ -535,6 +535,12 @@ static struct clk uart_clk = {
+ 	.set_rate = _clk_parent_set_rate,
+ };
+ 
++static struct clk pwm_clk = {
++	.parent = &perclk[0],
++	.round_rate = _clk_parent_round_rate,
++	.set_rate = _clk_parent_set_rate,
++};
++
+ static struct clk i2c_clk = {
+ 	.parent = &hclk,
+ 	.round_rate = _clk_parent_round_rate,
+@@ -590,6 +596,7 @@ static struct clk_lookup lookups[] __ini
+ 	_REGISTER_CLOCK("imx1-uart.0", NULL, uart_clk)
+ 	_REGISTER_CLOCK("imx1-uart.1", NULL, uart_clk)
+ 	_REGISTER_CLOCK("imx1-uart.2", NULL, uart_clk)
++	_REGISTER_CLOCK(NULL, "pwm", pwm_clk)
+ 	_REGISTER_CLOCK("imx-i2c.0", NULL, i2c_clk)
+ 	_REGISTER_CLOCK("imx1-cspi.0", NULL, spi_clk)
+ 	_REGISTER_CLOCK("imx1-cspi.1", NULL, spi_clk)
+Index: linux-3.3.5/arch/arm/plat-mxc/devices/platform-mxc_pwm.c
+===================================================================
+--- linux-3.3.5.orig/arch/arm/plat-mxc/devices/platform-mxc_pwm.c
++++ linux-3.3.5/arch/arm/plat-mxc/devices/platform-mxc_pwm.c
+@@ -19,6 +19,11 @@
+ #define imx_mxc_pwm_data_entry(soc, _id, _hwid, _size)			\
+ 	[_id] = imx_mxc_pwm_data_entry_single(soc, _id, _hwid, _size)
+ 
++#ifdef CONFIG_SOC_IMX1
++const struct imx_mxc_pwm_data imx1_mxc_pwm_data __initconst =
++	imx_mxc_pwm_data_entry_single(MX1, 0, , SZ_4K);
++#endif /* ifdef CONFIG_SOC_IMX1 */
++
+ #ifdef CONFIG_SOC_IMX21
+ const struct imx_mxc_pwm_data imx21_mxc_pwm_data __initconst =
+ 	imx_mxc_pwm_data_entry_single(MX21, 0, , SZ_4K);
+Index: linux-3.3.5/arch/arm/plat-mxc/pwm.c
+===================================================================
+--- linux-3.3.5.orig/arch/arm/plat-mxc/pwm.c
++++ linux-3.3.5/arch/arm/plat-mxc/pwm.c
+@@ -116,9 +116,35 @@ int pwm_config(struct pwm_device *pwm, i
+ 		 * both the prescaler (/1 .. /128) and then by CLKSEL
+ 		 * (/2 .. /16).
+ 		 */
+-		u32 max = readl(pwm->mmio_base + MX1_PWMP);
+-		u32 p = max * duty_ns / period_ns;
+-		writel(max - p, pwm->mmio_base + MX1_PWMS);
++		unsigned long long c;
++		unsigned long period_cycles, duty_cycles, prescale;
++		u32 cr;
++		c = clk_get_rate(pwm->clk);
++		/* CLKSRC divided by 2 : CLKSEL 0x00 */
++		c /=2;
++		c = c * period_ns;
++		do_div(c, 1000000000);
++		period_cycles = c;
++
++		prescale = period_cycles / 0x10000 + 1;
++
++		period_cycles /= prescale;
++		c = (unsigned long long)period_cycles * duty_ns;
++		do_div(c, period_ns);
++		duty_cycles = c;
++
++		if (period_cycles > 2)
++			period_cycles -= 2;
++		else
++			period_cycles = 0;
++
++		writel(duty_cycles, pwm->mmio_base + MX1_PWMS);
++		writel(period_cycles, pwm->mmio_base + MX1_PWMP);
++
++		cr = readl(pwm->mmio_base+MX1_PWMC);
++		cr |= (((prescale-1)&0xef)<<8)|1<<4;
++		writel(cr, pwm->mmio_base+MX1_PWMC);
++
+ 	} else {
+ 		BUG();
+ 	}
+Index: linux-3.3.5/arch/arm/plat-mxc/include/mach/mx1.h
+===================================================================
+--- linux-3.3.5.orig/arch/arm/plat-mxc/include/mach/mx1.h
++++ linux-3.3.5/arch/arm/plat-mxc/include/mach/mx1.h
+@@ -107,7 +107,7 @@
+ #define MX1_VOICE_DAC_INT	31
+ #define MX1_VOICE_ADC_INT	32
+ #define MX1_PEN_DATA_INT	33
+-#define MX1_PWM_INT		34
++#define MX1_INT_PWM		34
+ #define MX1_SDHC_INT		35
+ #define MX1_INT_I2C		39
+ #define MX1_INT_CSPI2		40
+Index: linux-3.3.5/arch/arm/mach-imx/devices-imx1.h
+===================================================================
+--- linux-3.3.5.orig/arch/arm/mach-imx/devices-imx1.h
++++ linux-3.3.5/arch/arm/mach-imx/devices-imx1.h
+@@ -30,6 +30,10 @@ extern const struct imx_spi_imx_data imx
+ #define imx1_add_spi_imx0(pdata) imx1_add_cspi(0, pdata)
+ #define imx1_add_spi_imx1(pdata) imx1_add_cspi(1, pdata)
+ 
++extern struct imx_mxc_pwm_data imx1_mxc_pwm_data[];
++#define imx1_add_mxc_pwm()	\
++	imx_add_mxc_pwm(&imx1_mxc_pwm_data[0])
++
+ extern const struct imx_imx_udc_data imx1_imx_udc_data;
+ #define imx1_add_udc(pdata)	\
+ 	imx_add_imx_udc(&imx1_imx_udc_data, pdata)

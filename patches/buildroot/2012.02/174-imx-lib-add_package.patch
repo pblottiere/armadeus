@@ -1,0 +1,142 @@
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/imx-lib/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/imx-lib/Config.in	2013-05-27 21:35:12.000000000 +0200
+@@ -0,0 +1,4 @@
++config BR2_PACKAGE_IMX_LIB
++	bool "imx-lib"
++	help
++	  Freescale specific libraries for i.MX processors family.
+Index: buildroot/package/imx-lib/imx-lib.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/imx-lib/imx-lib.mk	2013-05-28 15:59:43.000000000 +0200
+@@ -0,0 +1,58 @@
++#############################################################
++#
++# imx-lib (helpers librairies from Freescale BSP)
++#
++#############################################################
++IMX_LIB_VERSION = 11.09.01
++IMX_LIB_SITE = ftp://ftp2.armadeus.com/armadeusw/download/
++IMX_LIB_INSTALL_STAGING = YES
++
++IMX_LIB_SUBDIRS = vpu
++
++ifeq ($(call qstrip,$(BR2_CPU_NAME)),imx27)
++# Not tested yet !
++IMX_LIB_BUILD_PLATFORM = IMX27ADS
++else
++IMX_LIB_BUILD_PLATFORM = IMX51
++IMX_LIB_SUBDIRS += ipu sahara2
++endif
++
++IMX_LIB_INCLUDE = \
++	-I$(LINUX_DIR)/drivers/mxc/security/rng/include \
++	-I$(LINUX_DIR)/drivers/mxc/security/sahara2/include \
++	-idirafter $(LINUX_DIR)/include
++
++IMX_LIB_MAKE_ENV = \
++	$(TARGET_MAKE_ENV) \
++	$(TARGET_CONFIGURE_OPTS) \
++	CROSS_COMPILE="$(CCACHE) $(TARGET_CROSS)" \
++	PLATFORM="$(IMX_LIB_BUILD_PLATFORM)" \
++	INCLUDE="$(IMX_LIB_INCLUDE)"
++
++define IMX_LIB_BUILD_CMDS
++	$(IMX_LIB_MAKE_ENV) $(MAKE1) \
++		DIRS="$(IMX_LIB_SUBDIRS)" \
++		-C $(@D)
++endef
++
++define IMX_LIB_INSTALL_STAGING_CMDS
++	$(IMX_LIB_MAKE_ENV) $(MAKE1) -C $(@D) DIRS="$(IMX_LIB_SUBDIRS)" \
++		DEST_DIR=$(STAGING_DIR) install
++endef
++
++define IMX_LIB_INSTALL_TARGET_CMDS
++	$(IMX_LIB_MAKE_ENV) $(MAKE1) -C $(@D) DIRS="$(IMX_LIB_SUBDIRS)" \
++		DEST_DIR=$(TARGET_DIR) install
++endef
++
++define IMX_LIB_UNINSTALL_TARGET_CMDS
++	rm -f $(TARGET_DIR)/usr/lib/libvpu.so
++	rm -f $(TARGET_DIR)/usr/lib/libsahara.so
++	rm -f $(TARGET_DIR)/usr/lib/libipu.so
++endef
++
++define IMX_LIB_CLEAN_CMDS
++	-$(MAKE) -C $(@D) clean
++endef
++
++$(eval $(call GENTARGETS))
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2013-05-27 21:35:12.000000000 +0200
++++ buildroot/package/Config.in	2013-05-28 16:03:11.000000000 +0200
+@@ -348,6 +348,7 @@
+ endmenu
+ 
+ menu "Hardware handling"
++source "package/imx-lib/Config.in"
+ source "package/libaio/Config.in"
+ source "package/libraw1394/Config.in"
+ source "package/tslib/Config.in"
+Index: buildroot/package/imx-lib/imx-lib-mxc_ipu_hl_li_v4l2_fixes.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/imx-lib/imx-lib-mxc_ipu_hl_li_v4l2_fixes.patch	2013-05-27 21:35:12.000000000 +0200
+@@ -0,0 +1,16 @@
++linux/videodev.h include doesn't exist anymore on V4L2 only (=recent kernels).
++
++Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
++
++diff -urN -X linux-2.6.38.8/Documentation/dontdiff imx-lib-11.09.01/ipu/mxc_ipu_hl_lib.c imx-lib-11.09.01.mod/ipu/mxc_ipu_hl_lib.c
++--- imx-lib-11.09.01/ipu/mxc_ipu_hl_lib.c	2012-04-05 12:24:55.000000000 +0200
+++++ imx-lib-11.09.01.mod/ipu/mxc_ipu_hl_lib.c	2011-09-09 16:10:11.000000000 +0200
++@@ -41,7 +41,7 @@
++ #include <sys/mman.h>
++ #include <sys/types.h>
++ #include <sys/stat.h>
++-#include <linux/videodev.h>
+++#include <linux/videodev2.h>
++ #include "mxc_ipu_hl_lib.h"
++ 
++ #define DBG_DEBUG		3
+Index: buildroot/package/imx-lib/imx-lib-fixes_build_on_imx27.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/imx-lib/imx-lib-fixes_build_on_imx27.patch	2013-05-28 16:02:42.000000000 +0200
+@@ -0,0 +1,30 @@
++To build but I'm not sure it will work...
++
++Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
++
++diff -urN -X linux-3.8.6/Documentation/dontdiff imx-lib-11.09.01/vpu/vpu_reg.h imx-lib-11.09.01.mod2/vpu/vpu_reg.h
++--- imx-lib-11.09.01/vpu/vpu_reg.h	2011-09-09 16:10:11.000000000 +0200
+++++ imx-lib-11.09.01.mod2/vpu/vpu_reg.h	2013-05-28 15:55:45.000000000 +0200
++@@ -369,7 +369,7 @@
++ #if defined(IMX27ADS)
++ 	#define CODE_BUF_SIZE			(64 * 1024)
++ 	#define FMO_SLICE_SAVE_BUF_SIZE		(32)
++-	#define WORK_BUF_SIZE			(288 * 1024) + (FMO_SLICE_SAVE_BUF_SIZE * 1024 * 8)
+++	#define TEMP_BUF_SIZE			(288 * 1024) + (FMO_SLICE_SAVE_BUF_SIZE * 1024 * 8)
++ 	#define PARA_BUF2_SIZE			(1728)
++ 	#define PARA_BUF_SIZE			(10 * 1024)
++ #elif defined(IMX51) || defined(IMX53)
++diff -urN -X linux-3.8.6/Documentation/dontdiff imx-lib-11.09.01/vpu/vpu_util.h imx-lib-11.09.01.mod2/vpu/vpu_util.h
++--- imx-lib-11.09.01/vpu/vpu_util.h	2011-09-09 16:10:11.000000000 +0200
+++++ imx-lib-11.09.01.mod2/vpu/vpu_util.h	2013-05-28 15:56:38.000000000 +0200
++@@ -97,7 +97,9 @@
++ 	/* dummy */
++ 	RV_DEC = 0x81,
++ 	MJPG_DEC = 0x82,
++-	MJPG_ENC = 0x83
+++	MJPG_ENC = 0x83,
+++	AVS_DEC = 0x84,
+++	VPX_DEC = 0x85
++ };
++ #endif
++ 

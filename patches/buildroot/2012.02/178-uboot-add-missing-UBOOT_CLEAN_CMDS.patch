@@ -1,0 +1,29 @@
+uboot: add missing UBOOT_CLEAN_CMDS
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+ boot/uboot/uboot.mk |    8 ++++++++
+ 1 files changed, 8 insertions(+), 0 deletions(-)
+
+diff --git a/boot/uboot/uboot.mk b/boot/uboot/uboot.mk
+index db9de8d..0a0f762 100644
+--- a/boot/uboot/uboot.mk
++++ b/boot/uboot/uboot.mk
+@@ -90,6 +90,14 @@ define UBOOT_INSTALL_IMAGES_CMDS
+ 	cp -dpf $(@D)/$(UBOOT_BIN) $(BINARIES_DIR)/
+ endef
+ 
++define UBOOT_CLEAN_CMDS
++	$(TARGET_CONFIGURE_OPTS) $(UBOOT_CONFIGURE_OPTS) 	\
++		$(MAKE) -C $(@D) $(UBOOT_MAKE_OPTS) 		\
++		clean
++	rm -f $(@D)/$(UBOOT_BIN)
++
++endef
++
+ $(eval $(call GENTARGETS))
+ 
+ ifeq ($(BR2_TARGET_UBOOT),y)
+-- 
+1.7.0.4
+

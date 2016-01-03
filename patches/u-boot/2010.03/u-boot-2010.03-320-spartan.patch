@@ -1,0 +1,35 @@
+Index: u-boot-2010.03/drivers/fpga/spartan3.c
+===================================================================
+--- u-boot-2010.03.orig/drivers/fpga/spartan3.c	2011-01-05 18:05:12.000000000 +0100
++++ u-boot-2010.03/drivers/fpga/spartan3.c	2011-01-05 18:10:22.000000000 +0100
+@@ -189,7 +189,7 @@
+ 		(*fn->clk) (TRUE, TRUE, cookie);	/* Assert the clock pin */
+ 
+ 		/* Load the data */
+-		while (bytecount < bsize) {
++		while ( (*fn->done) (cookie) == FPGA_FAIL){
+ 			/* XXX - do we check for an Ctrl-C press in here ??? */
+ 			/* XXX - Check the error bit? */
+ 
+@@ -199,8 +199,8 @@
+ 			CONFIG_FPGA_DELAY ();
+ 			(*fn->clk) (TRUE, TRUE, cookie);	/* Assert the clock pin */
+ 
+-#ifdef CONFIG_SYS_FPGA_CHECK_BUSY
+ 			ts = get_timer (0);	/* get current time */
++#ifdef CONFIG_SYS_FPGA_CHECK_BUSY
+ 			while ((*fn->busy) (cookie)) {
+ 				/* XXX - we should have a check in here somewhere to
+ 				 * make sure we aren't busy forever... */
+@@ -217,6 +217,11 @@
+ 				}
+ 			}
+ #endif
++			if (get_timer (ts) > CONFIG_SYS_FPGA_WAIT) {	/* check the time */
++				puts ("** Timeout waiting for BUSY to clear.\n");
++				(*fn->abort) (cookie);	/* abort the burn */
++				return FPGA_FAIL;
++			}
+ 
+ #ifdef CONFIG_SYS_FPGA_PROG_FEEDBACK
+ 			if (bytecount % (bsize / 40) == 0)

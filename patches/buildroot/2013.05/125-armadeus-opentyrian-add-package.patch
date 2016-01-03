@@ -1,0 +1,90 @@
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2013-09-01 22:12:12.080804929 +0200
++++ buildroot/package/Config.in	2013-09-02 17:46:24.214361708 +0200
+@@ -104,6 +104,7 @@
+ menu "Games"
+ source "package/e-uae/Config.in"
+ source "package/gnuchess/Config.in"
++source "package/opentyrian/Config.in"
+ source "package/prboom/Config.in"
+ source "package/quake-pak/Config.in"
+ source "package/doom-wad/Config.in"
+Index: buildroot/package/opentyrian/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/opentyrian/Config.in	2013-09-01 22:12:12.100805024 +0200
+@@ -0,0 +1,11 @@
++config BR2_PACKAGE_OPENTYRIAN
++	bool "OpenTyrian"
++	select BR2_PACKAGE_SDL
++	select BR2_PACKAGE_SDL_NET
++	help
++	  OpenTyrian is a port of the DOS shoot-em-up Tyrian. Jason Emery
++	  generously gave the OpenTyrian developers a copy of the Tyrian 2.1
++	  source code, which has since been ported from Turbo Pascal to C.
++	  The port uses SDL, making it easily cross-platform.
++
++	  http://code.google.com/p/opentyrian/
+Index: buildroot/package/opentyrian/opentyrian.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/opentyrian/opentyrian.mk	2013-09-02 17:46:46.842473913 +0200
+@@ -0,0 +1,57 @@
++#############################################################
++#
++# OpenTyrian
++#
++#############################################################
++
++OPENTYRIAN_SITE = https://code.google.com/p/opentyrian/
++OPENTYRIAN_SITE_METHOD = hg
++OPENTYRIAN_VERSION = 41a46e19b054
++#OPENTYRIAN_VERSION = 2a8a946b62bd (old one)
++OPENTYRIAN_LICENSE = GPLv2
++GPM_LICENSE_FILES = COPYING
++
++OPENTYRIAN_DEPENDENCIES = sdl sdl_net
++
++OPENTYRIAN_DATA = tyrian21.zip
++OPENTYRIAN_DATA_SITE = http://sites.google.com/a/camanis.net/opentyrian/tyrian/
++
++define OPENTYRIAN_DOWNLOAD_DATA
++	@$(call MESSAGE,Downloading data)
++#	$(call DOWNLOAD,$(OPENTYRIAN_DATA_SITE),$(OPENTYRIAN_DATA))
++# conflict with OPENTYRIAN_SITE_METHOD ^^^
++	cd $(DL_DIR); wget -c $(OPENTYRIAN_DATA_SITE)/$(OPENTYRIAN_DATA)
++endef
++
++OPENTYRIAN_POST_DOWNLOAD_HOOKS += OPENTYRIAN_DOWNLOAD_DATA
++
++define OPENTYRIAN_EXTRACT_DATA
++	unzip $(DL_DIR)/$(OPENTYRIAN_DATA) -d $(@D)
++endef
++
++OPENTYRIAN_POST_EXTRACT_HOOKS += OPENTYRIAN_EXTRACT_DATA
++
++define OPENTYRIAN_BUILD_CMDS
++        $(MAKE) PLATFORM=UNIX \
++		CC="$(TARGET_CC)" \
++		STRIP="$(STRIPCMD) $(STRIP_STRIP_UNNEEDED)" \
++		SDL_CONFIG="$(STAGING_DIR)/usr/bin/sdl-config" \
++		LDFLAGS="-lm" \
++		-C $(@D) release
++endef
++
++define OPENTYRIAN_INSTALL_TARGET_CMDS
++	mkdir -p $(TARGET_DIR)/usr/games
++	cp $(@D)/opentyrian $(TARGET_DIR)/usr/games/
++	mkdir -p $(TARGET_DIR)/usr/share/opentyrian/data/
++	cp $(@D)/tyrian21/* $(TARGET_DIR)/usr/share/opentyrian/data/
++	rm -f $(TARGET_DIR)/usr/share/opentyrian/data/*.doc
++	rm -f $(TARGET_DIR)/usr/share/opentyrian/data/*.exe
++endef
++
++define OPENTYRIAN_UNINSTALL_TARGET_CMDS
++	rm -rf $(TARGET_DIR)/usr/share/opentyrian
++	rm -f $(TARGET_DIR)/usr/games/opentyrian
++endef
++
++$(eval $(generic-package))

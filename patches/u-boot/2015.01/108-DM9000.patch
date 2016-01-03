@@ -1,0 +1,48 @@
+DM9000: change some printf to use debug instead
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+Cc: Ben Warren <biggerbadderben@gmail.com>
+---
+ drivers/net/dm9000x.c |    8 ++++----
+ 1 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/net/dm9000x.c b/drivers/net/dm9000x.c
+index f0c4499..738e6ef 100644
+--- a/drivers/net/dm9000x.c
++++ b/drivers/net/dm9000x.c
+@@ -232,7 +232,7 @@ dm9000_probe(void)
+ 	id_val |= DM9000_ior(DM9000_PIDL) << 16;
+ 	id_val |= DM9000_ior(DM9000_PIDH) << 24;
+ 	if (id_val == DM9000_ID) {
+-		printf("dm9000 i/o: 0x%x, id: 0x%x \n", CONFIG_DM9000_BASE,
++		DM9000_DBG("dm9000 i/o: 0x%x, id: 0x%x\n", CONFIG_DM9000_BASE,
+ 		       id_val);
+ 		return 0;
+ 	} else {
+@@ -298,19 +298,19 @@ static int dm9000_init(struct eth_device *dev, bd_t *bd)
+ 
+ 	switch (io_mode) {
+ 	case 0x0:  /* 16-bit mode */
+-		printf("DM9000: running in 16 bit mode\n");
++		DM9000_DBG("DM9000: running in 16 bit mode\n");
+ 		db->outblk    = dm9000_outblk_16bit;
+ 		db->inblk     = dm9000_inblk_16bit;
+ 		db->rx_status = dm9000_rx_status_16bit;
+ 		break;
+ 	case 0x01:  /* 32-bit mode */
+-		printf("DM9000: running in 32 bit mode\n");
++		DM9000_DBG("DM9000: running in 32 bit mode\n");
+ 		db->outblk    = dm9000_outblk_32bit;
+ 		db->inblk     = dm9000_inblk_32bit;
+ 		db->rx_status = dm9000_rx_status_32bit;
+ 		break;
+ 	case 0x02: /* 8 bit mode */
+-		printf("DM9000: running in 8 bit mode\n");
++		DM9000_DBG("DM9000: running in 8 bit mode\n");
+ 		db->outblk    = dm9000_outblk_8bit;
+ 		db->inblk     = dm9000_inblk_8bit;
+ 		db->rx_status = dm9000_rx_status_8bit;
+-- 
+1.7.2.5
+

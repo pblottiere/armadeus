@@ -1,0 +1,12 @@
+Simple Blinking Leds examples.
+------------------------------
+
+All sources can be found in directory src/. Already synthesized bitstream are
+available in bin/
+
+src/
+----
+
+For APF9328, APF27 and APF51 use sources available in spartan/ directory. For
+APF6x_SP use cycloneV directory sources.
+

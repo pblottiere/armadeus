@@ -1,0 +1,48 @@
+Index: buildroot/package/nss-pam-ldapd/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/nss-pam-ldapd/Config.in	2015-03-09 18:19:20.740104384 +0100
+@@ -0,0 +1,7 @@
++config BR2_PACKAGE_NSS_PAM_LDAPD
++	bool "nss-pam-ldapd"
++	help
++	  ldap pam nss
++
++	  http://arthurdejong.org/nss-pam-ldapd/
++
+Index: buildroot/package/nss-pam-ldapd/nss-pam-ldapd.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/nss-pam-ldapd/nss-pam-ldapd.mk	2015-03-09 18:19:20.740104384 +0100
+@@ -0,0 +1,12 @@
++################################################################################
++#
++# nss-pam-ldapd
++#
++################################################################################
++
++NSS_PAM_LDAPD_VERSION = 0.9.4
++NSS_PAM_LDAPD_SITE = http://arthurdejong.org/nss-pam-ldapd
++NSS_PAM_LDAPD_DEPENDENCIES += openldap
++
++
++$(eval $(autotools-package))
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2015-03-09 18:19:20.744104384 +0100
++++ buildroot/package/Config.in	2015-03-09 18:19:20.740104384 +0100
+@@ -928,6 +928,7 @@
+ 	source "package/libwebsockets/Config.in"
+ 	source "package/neon/Config.in"
+ 	source "package/nss-mdns/Config.in"
++	source "package/nss-pam-ldapd/Config.in"
+ 	source "package/omniorb/Config.in"
+ 	source "package/openldap/Config.in"
+ 	source "package/openpgm/Config.in"
+Index: buildroot/package/nss-pam-ldapd/nss-pam-ldapd.hash
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/nss-pam-ldapd/nss-pam-ldapd.hash	2015-03-09 18:19:20.740104384 +0100
+@@ -0,0 +1,2 @@
++md5	0d74202700efdde3b6e551bfff49c132  nss-pam-ldapd-0.9.4.tar.gz
++sha256	fd2e3e0935acfd3d2b13682962f51d28d5855472e690d787e36a476fa40c88e6  nss-pam-ldapd-0.9.4.tar.gz

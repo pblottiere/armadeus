@@ -1,0 +1,84 @@
+Remaining Armadeus tweaks for APF28Dev device tree.
+
+---
+Index: linux-3.18.2/arch/arm/boot/dts/imx28-apf28dev.dts
+===================================================================
+--- linux-3.18.2.orig/arch/arm/boot/dts/imx28-apf28dev.dts
++++ linux-3.18.2/arch/arm/boot/dts/imx28-apf28dev.dts
+@@ -77,6 +77,15 @@
+ 					fsl,voltage = <MXS_VOLTAGE_HIGH>;
+ 					fsl,pull-up = <MXS_PULL_DISABLE>;
+ 				};
++
++				apf28dev_usb0_id_pins: apf28dev-usb0-id-pins@0 {
++					reg = <0>;
++					fsl,pinmux-ids = <
++						MX28_PAD_PWM2__USB0_ID
++					>;
++					fsl,voltage = <MXS_VOLTAGE_HIGH>;
++					fsl,pull-up = <MXS_PULL_ENABLE>;
++				};
+ 			};
+ 
+ 			lcdif@80030000 {
+@@ -110,6 +119,13 @@
+ 					};
+ 				};
+ 			};
++
++			can0: can@80032000 {
++				pinctrl-names = "default";
++				pinctrl-0 = <&can0_pins_a>;
++				xceiver-supply = <&reg_can0_vcc>;
++				status = "okay";
++			};
+ 		};
+ 
+ 		apbx@80040000 {
+@@ -130,6 +146,13 @@
+ 				status = "okay";
+ 			};
+ 
++			auart0: serial@8006a000 {
++				pinctrl-names = "default";
++				pinctrl-0 = <&auart0_pins_a>;
++				fsl,uart-has-rtscts;
++				status = "okay";
++			};
++
+ 			usbphy0: usbphy@8007c000 {
+ 				status = "okay";
+ 			};
+@@ -143,7 +166,8 @@
+ 	ahb@80080000 {
+ 		usb0: usb@80080000 {
+ 			pinctrl-names = "default";
+-			pinctrl-0 = <&usb0_otg_apf28dev>;
++			pinctrl-0 = <&usb0_otg_apf28dev
++					&apf28dev_usb0_id_pins>;
+ 			vbus-supply = <&reg_usb0_vbus>;
+ 			status = "okay";
+ 		};
+@@ -175,6 +199,14 @@
+ 			gpio = <&gpio1 23 1>;
+ 			enable-active-high;
+ 		};
++
++		reg_can0_vcc: regulator@1 {
++			compatible = "regulator-fixed";
++			reg = <1>;
++			regulator-name = "can0_vcc";
++			regulator-min-microvolt = <5000000>;
++			regulator-max-microvolt = <5000000>;
++		};
+ 	};
+ 
+ 	leds {
+@@ -202,6 +234,7 @@
+ 			label = "User button";
+ 			gpios = <&gpio0 17 0>;
+ 			linux,code = <0x100>;
++			gpio-key,wakeup;
+ 		};
+ 	};
+ };

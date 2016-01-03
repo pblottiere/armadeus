@@ -1,0 +1,45 @@
+Sent to BR guys on 19th October 2011.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2011-10-18 09:33:47.000000000 +0200
++++ buildroot/package/Config.in	2011-10-19 19:54:51.000000000 +0200
+@@ -344,6 +344,7 @@
+ source "package/libeXosip2/Config.in"
+ source "package/libidn/Config.in"
+ source "package/libmicrohttpd/Config.in"
++source "package/libmodbus/Config.in"
+ source "package/neon/Config.in"
+ source "package/libnl/Config.in"
+ source "package/libpcap/Config.in"
+Index: buildroot/package/libmodbus/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/libmodbus/Config.in	2011-10-18 09:40:11.000000000 +0200
+@@ -0,0 +1,8 @@
++config BR2_PACKAGE_LIBMODBUS
++	bool "libmodbus"
++	help
++	  libmodbus is a free software library to send/receive data according
++	  to the Modbus protocol. This library is written in C and supports
++	  RTU (serial) and TCP (Ethernet) communications.
++
++	  http://libmodbus.org
+Index: buildroot/package/libmodbus/libmodbus.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/libmodbus/libmodbus.mk	2011-10-19 19:52:20.000000000 +0200
+@@ -0,0 +1,11 @@
++#############################################################
++#
++# libmodbus
++#
++#############################################################
++LIBMODBUS_VERSION = 3.0.1
++LIBMODBUS_SITE = http://github.com/downloads/stephane/libmodbus
++LIBMODBUS_SOURCE = libmodbus-$(LIBMODBUS_VERSION).tar.gz
++LIBMODBUS_INSTALL_STAGING = YES
++
++$(eval $(call AUTOTARGETS,package,libmodbus))

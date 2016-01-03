@@ -1,0 +1,17 @@
+AMD/
+ARM/
+ARMLTD/
+Atmel/
+/Config.*
+Hitachi/
+jp/
+KwikByte/
+Makefile.in.linux
+/Makefile.in
+mips/
+Sharp/
+Soekris/
+valka/
+Via/
+x86/
+xtensa/

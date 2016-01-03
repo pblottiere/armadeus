@@ -1,0 +1,17 @@
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/toolchain/toolchain-external/toolchain-external.mk
+===================================================================
+--- buildroot.orig/toolchain/toolchain-external/toolchain-external.mk	2015-03-01 22:26:12.000000000 +0100
++++ buildroot/toolchain/toolchain-external/toolchain-external.mk	2015-07-28 16:31:31.446392834 +0200
+@@ -578,6 +578,10 @@
+ 			echo "Could not find gdbserver in external toolchain" ; \
+ 			exit 1 ; \
+ 		fi ; \
++	fi ; \
++	if test -f $${ARCH_SYSROOT_DIR}/usr/bin/ldd ; then \
++		install -m 0755 -D $${ARCH_SYSROOT_DIR}/usr/bin/ldd $(TARGET_DIR)/usr/bin/ldd ; \
++		$(SED) 's:/bin/bash:/bin/sh:' $(TARGET_DIR)/usr/bin/ldd ; \
+ 	fi
+ endef
+ 

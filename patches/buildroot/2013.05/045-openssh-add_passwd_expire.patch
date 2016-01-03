@@ -1,0 +1,18 @@
+Index: buildroot/package/openssh/openssh.passwdexpire.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/openssh/openssh.passwdexpire.patch	2012-03-16 17:29:59.000000000 +0100
+@@ -0,0 +1,13 @@
++--- openssh-4.6p1/configure.ac.org	2012-03-16 17:23:11.000000000 +0100
+++++ openssh-4.6p1/configure.ac	2012-03-16 17:23:40.000000000 +0100
++@@ -3714,8 +3714,8 @@ if test -z "$disable_shadow" ; then
++
++ 	if test "x$sp_expire_available" = "xyes" ; then
++ 		AC_MSG_RESULT([yes])
++-		AC_DEFINE([HAS_SHADOW_EXPIRE], [1],
++-		    [Define if you want to use shadow password expire field])
+++//		AC_DEFINE([HAS_SHADOW_EXPIRE], [1],
+++//		    [Define if you want to use shadow password expire field])
++ 	else
++ 		AC_MSG_RESULT([no])
++ 	fi

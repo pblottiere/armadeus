@@ -1,0 +1,30 @@
+From cce6002ffcfb82729e9b0fbc88a148222fa024b3 Mon Sep 17 00:00:00 2001
+From: Steve Longerbeam <steve_longerbeam@mentor.com>
+Date: Wed, 27 Aug 2014 10:28:22 -0700
+Subject: [PATCH 606/625] gpu: ipu-v3: Add VDI input IDMAC channels
+
+Adds the VDIC field input IDMAC channels. These channels
+transfer fields F(n-1), F(n), and F(N+1) from memory to
+the VDIC (channels 8, 9, 10 respectively).
+
+Signed-off-by: Steve Longerbeam <steve_longerbeam@mentor.com>
+---
+ include/video/imx-ipu-v3.h | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/include/video/imx-ipu-v3.h b/include/video/imx-ipu-v3.h
+index 1575168..3fa4834 100644
+--- a/include/video/imx-ipu-v3.h
++++ b/include/video/imx-ipu-v3.h
+@@ -118,6 +118,9 @@ enum ipu_channel_irq {
+ #define IPUV3_CHANNEL_CSI2			 2
+ #define IPUV3_CHANNEL_CSI3			 3
+ #define IPUV3_CHANNEL_VDI_MEM_IC_VF		 5
++#define IPUV3_CHANNEL_MEM_VDI_P			 8
++#define IPUV3_CHANNEL_MEM_VDI			 9
++#define IPUV3_CHANNEL_MEM_VDI_N			10
+ #define IPUV3_CHANNEL_MEM_IC_PP			11
+ #define IPUV3_CHANNEL_MEM_IC_PRP_VF		12
+ #define IPUV3_CHANNEL_G_MEM_IC_PRP_VF		14
+--
+1.8.5.5

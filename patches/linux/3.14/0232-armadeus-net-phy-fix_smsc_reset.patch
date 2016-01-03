@@ -1,0 +1,116 @@
+LAN87xx needs to be wake up before reset. By default, smsc driver does not
+provides soft_reset function and it's the default reset function is used. Due 
+to that, the phy initialization fails.
+
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+---
+Index: linux-3.14.17/drivers/net/phy/phy_device.c
+===================================================================
+--- linux-3.14.17.orig/drivers/net/phy/phy_device.c
++++ linux-3.14.17/drivers/net/phy/phy_device.c
+@@ -539,17 +539,20 @@ int phy_init_hw(struct phy_device *phyde
+ 	if (!phydev->drv || !phydev->drv->config_init)
+ 		return 0;
+ 
+-	ret = phy_write(phydev, MII_BMCR, BMCR_RESET);
+-	if (ret < 0)
+-		return ret;
++	if (!phydev->drv->soft_reset) {
++		ret = phy_write(phydev, MII_BMCR, BMCR_RESET);
++		if (ret < 0)
++			return ret;
+ 
+-	ret = phy_poll_reset(phydev);
+-	if (ret < 0)
+-		return ret;
++		ret = phy_poll_reset(phydev);
++		if (ret < 0)
++			return ret;
+ 
+-	ret = phy_scan_fixups(phydev);
+-	if (ret < 0)
+-		return ret;
++		ret = phy_scan_fixups(phydev);
++		if (ret < 0)
++			return ret;
++	} else
++		phydev->drv->soft_reset(phydev);
+ 
+ 	return phydev->drv->config_init(phydev);
+ }
+Index: linux-3.14.17/drivers/net/phy/smsc.c
+===================================================================
+--- linux-3.14.17.orig/drivers/net/phy/smsc.c
++++ linux-3.14.17/drivers/net/phy/smsc.c
+@@ -41,7 +41,8 @@ static int smsc_phy_ack_interrupt(struct
+ 	return rc < 0 ? rc : 0;
+ }
+ 
+-static int smsc_phy_config_init(struct phy_device *phydev)
++
++static int smsc_phy_reset(struct phy_device *phydev)
+ {
+ 	int rc = phy_read(phydev, MII_LAN83C185_SPECIAL_MODES);
+ 	if (rc < 0)
+@@ -67,7 +68,13 @@ static int smsc_phy_config_init(struct p
+ 		} while (rc & BMCR_RESET);
+ 	}
+ 
+-	rc = phy_read(phydev, MII_LAN83C185_CTRL_STATUS);
++	return 0;
++}
++
++static int smsc_phy_config_init(struct phy_device *phydev)
++{
++
++	int rc = phy_read(phydev, MII_LAN83C185_CTRL_STATUS);
+ 	if (rc < 0)
+ 		return rc;
+ 
+@@ -142,6 +149,7 @@ static struct phy_driver smsc_phy_driver
+ 	.config_aneg	= genphy_config_aneg,
+ 	.read_status	= genphy_read_status,
+ 	.config_init	= smsc_phy_config_init,
++	.soft_reset		= smsc_phy_reset,
+ 
+ 	/* IRQ related */
+ 	.ack_interrupt	= smsc_phy_ack_interrupt,
+@@ -164,6 +172,7 @@ static struct phy_driver smsc_phy_driver
+ 	.config_aneg	= genphy_config_aneg,
+ 	.read_status	= genphy_read_status,
+ 	.config_init	= smsc_phy_config_init,
++	.soft_reset		= smsc_phy_reset,
+ 
+ 	/* IRQ related */
+ 	.ack_interrupt	= smsc_phy_ack_interrupt,
+@@ -186,6 +195,7 @@ static struct phy_driver smsc_phy_driver
+ 	.config_aneg	= genphy_config_aneg,
+ 	.read_status	= genphy_read_status,
+ 	.config_init	= smsc_phy_config_init,
++	.soft_reset		= smsc_phy_reset,
+ 
+ 	/* IRQ related */
+ 	.ack_interrupt	= smsc_phy_ack_interrupt,
+@@ -230,6 +240,7 @@ static struct phy_driver smsc_phy_driver
+ 	.config_aneg	= genphy_config_aneg,
+ 	.read_status	= lan87xx_read_status,
+ 	.config_init	= smsc_phy_config_init,
++	.soft_reset		= smsc_phy_reset,
+ 
+ 	/* IRQ related */
+ 	.ack_interrupt	= smsc_phy_ack_interrupt,
+Index: linux-3.14.17/include/linux/phy.h
+===================================================================
+--- linux-3.14.17.orig/include/linux/phy.h
++++ linux-3.14.17/include/linux/phy.h
+@@ -399,6 +399,10 @@ struct phy_driver {
+ 	 */
+ 	int (*config_init)(struct phy_device *phydev);
+ 
++	/* specific reset */
++	int (*soft_reset)(struct phy_device *dev);
++
++
+ 	/*
+ 	 * Called during discovery.  Used to set
+ 	 * up device-specific structures, if any

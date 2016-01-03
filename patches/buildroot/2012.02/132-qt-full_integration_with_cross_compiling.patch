@@ -1,0 +1,75 @@
+Add the possibility to build & install the Qt's demos and examples separately.
+
+Signed-off-by: Jérémie Scheer <jeremie.scheer@armadeus.com>
+
+Index: buildroot/package/qt/Config.in
+===================================================================
+--- buildroot.orig/package/qt/Config.in	2012-02-29 23:19:47.000000000 +0100
++++ buildroot/package/qt/Config.in	2013-02-11 17:36:11.000000000 +0100
+@@ -17,7 +17,12 @@
+ 	  If unsure, say N.
+ 
+ config BR2_PACKAGE_QT_DEMOS
+-	bool "Compile and install demos and examples (with code)"
++	bool "Compile and install Qt demos (with code)"
++	help
++	  If unsure, say N.
++
++config BR2_PACKAGE_QT_EXAMPLES
++	bool "Compile and install Qt examples (with code)"
+ 	help
+ 	  If unsure, say N.
+ 
+Index: buildroot/package/qt/qt.mk
+===================================================================
+--- buildroot.orig/package/qt/qt.mk	2012-02-29 23:19:47.000000000 +0100
++++ buildroot/package/qt/qt.mk	2013-02-11 17:36:11.000000000 +0100
+@@ -14,7 +14,7 @@
+ 
+ QT_VERSION = 4.7.4
+ QT_SOURCE  = qt-everywhere-opensource-src-$(QT_VERSION).tar.gz
+-QT_SITE    = http://get.qt.nokia.com/qt/source
++QT_SITE    = ftp://ftp.qt-project.org/qt/source/
+ QT_DEPENDENCIES = host-pkg-config
+ QT_INSTALL_STAGING = YES
+ 
+@@ -52,9 +52,14 @@
+ endif
+ 
+ ifeq ($(BR2_PACKAGE_QT_DEMOS),y)
+-QT_CONFIGURE_OPTS += -examplesdir $(TARGET_DIR)/usr/share/qt/examples -demosdir $(TARGET_DIR)/usr/share/qt/demos
++QT_CONFIGURE_OPTS += -demosdir $(TARGET_DIR)/usr/share/qt/demos
+ else
+-QT_CONFIGURE_OPTS += -nomake examples -nomake demos
++QT_CONFIGURE_OPTS += -nomake demos
++endif
++ifeq ($(BR2_PACKAGE_QT_EXAMPLES),y)
++QT_CONFIGURE_OPTS += -examplesdir $(TARGET_DIR)/usr/share/qt/examples
++else
++QT_CONFIGURE_OPTS += -nomake examples
+ endif
+ 
+ # ensure glib is built first if enabled for Qt's glib support
+Index: buildroot/package/qt/qt-4.7.4-map_keyboard_keys_metas_and_menu.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/qt/qt-4.7.4-map_keyboard_keys_metas_and_menu.patch	2013-02-11 18:18:46.000000000 +0100
+@@ -0,0 +1,18 @@
++Add keys Meta (left and right) and Menu to QWS keyboard maps.
++
++Signed-off-by: Jeremie Scheer <jeremie.scheer@armadeus.com>
++
++Index: qt-4.7.4/src/gui/embedded/qkbd_defaultmap_qws_p.h
++===================================================================
++--- qt-4.7.4.orig/src/gui/embedded/qkbd_defaultmap_qws_p.h	2011-03-31 22:28:16.530647168 +0200
+++++ qt-4.7.4/src/gui/embedded/qkbd_defaultmap_qws_p.h	2011-03-31 22:29:38.908081695 +0200
++@@ -643,6 +643,9 @@
++     { 111, 0xffff, 0x01000000, 0x06, 0x08, 0x0200 },
++     { 111, 0xffff, 0x01000000, 0x0c, 0x08, 0x0200 },
++     { 119, 0xffff, 0x01000008, 0x00, 0x00, 0x0000 },
+++    { 125, 0xffff, 0x01000022, 0x00, 0x00, 0x0000 }, // Key_Meta (left)
+++    { 126, 0xffff, 0x01000022, 0x00, 0x00, 0x0000 }, // Key_Meta (right)
+++    { 127, 0xffff, 0x01000055, 0x00, 0x00, 0x0000 }, // Key_Menu
++ };
++
++ const QWSKeyboard::Composing QWSKbPrivate::s_keycompose_default[] = {

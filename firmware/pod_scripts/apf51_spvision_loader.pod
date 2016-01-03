@@ -1,0 +1,14 @@
+create spvision_loader 
+selectplatform standard.apf51
+delinstance irq_mngr00
+addinstance components.sp_vision_configure.wb16
+autoconnectbus
+generateintercon imx51_wb16_wrapper00.mwb16
+generateintercon rstgen_syscon00.candroutput
+generatetop
+driver.selecttoolchain armadeus
+driver.generateproject
+synthesis.selecttoolchain ise
+synthesis.generateproject
+#synthesis.generatebitstream
+exit

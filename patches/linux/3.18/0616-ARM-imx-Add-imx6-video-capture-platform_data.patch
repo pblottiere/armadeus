@@ -1,0 +1,128 @@
+From 22cb7bfe4dac4391bbae8b797ae814e6291cd04c Mon Sep 17 00:00:00 2001
+From: Steve Longerbeam <steve_longerbeam@mentor.com>
+Date: Fri, 29 Aug 2014 11:17:58 -0700
+Subject: [PATCH 616/625] ARM: imx: Add imx6 video capture platform_data
+
+Adds platform_data for imx6 v4l2 video capture device. Implements
+set_video_mux(), which sets the video capture mux in IOMUXC, which
+selects between MIPI CSI-2 gasket and Parallel camera sensor
+interface.
+
+Signed-off-by: Steve Longerbeam <steve_longerbeam@mentor.com>
+---
+ arch/arm/mach-imx/mach-imx6q.c           | 55 +++++++++++++++++++++++++++++++-
+ include/linux/platform_data/camera-mx6.h | 23 +++++++++++++
+ 2 files changed, 77 insertions(+), 1 deletion(-)
+ create mode 100644 include/linux/platform_data/camera-mx6.h
+
+diff --git a/arch/arm/mach-imx/mach-imx6q.c b/arch/arm/mach-imx/mach-imx6q.c
+index d51c6e9..03cca3e 100644
+--- a/arch/arm/mach-imx/mach-imx6q.c
++++ b/arch/arm/mach-imx/mach-imx6q.c
+@@ -31,6 +31,7 @@
+ #include <linux/micrel_phy.h>
+ #include <linux/mfd/syscon.h>
+ #include <linux/mfd/syscon/imx6q-iomuxc-gpr.h>
++#include <linux/platform_data/camera-mx6.h>
+ #include <asm/mach/arch.h>
+ #include <asm/mach/map.h>
+ #include <asm/system_misc.h>
+@@ -261,6 +262,57 @@ static void __init imx6q_axi_init(void)
+	}
+ }
+
++/*
++ * Set the muxes that choose between mipi-csi2 and parallel inputs
++ * to the IPU CSI's.
++ */
++static void imx6q_set_video_mux(int ipu, int csi, bool csi2, u32 vc)
++{
++	struct regmap *gpr;
++	u32 val, shift, mask;
++
++	gpr = syscon_regmap_lookup_by_compatible("fsl,imx6q-iomuxc-gpr");
++	if (IS_ERR(gpr)) {
++		pr_err("failed to find fsl,imx6q-iomux-gpr regmap\n");
++		return;
++	}
++
++	if (cpu_is_imx6dl()) {
++		/*
++		 * On D/L, the mux is in GPR13. The TRM is unclear,
++		 * but it appears the mux allows selecting the MIPI
++		 * CSI-2 virtual channel number to route to the CSIs.
++		 */
++		mask = csi == 0 ? IMX6DL_GPR13_MIPI_IPU_CSI0_MUX_MASK :
++			IMX6DL_GPR13_MIPI_IPU_CSI1_MUX_MASK;
++		shift = csi == 0 ? IMX6DL_GPR13_MIPI_IPU_CSI0_MUX_SHIFT :
++			IMX6DL_GPR13_MIPI_IPU_CSI1_MUX_SHIFT;
++		val = csi2 ? vc << shift : 4 << shift;
++		regmap_update_bits(gpr, IOMUXC_GPR13, mask, val);
++	} else {
++		/*
++		 * For Q/D, the mux only exists on IPU0-CSI0 and IPU1-CSI1,
++		 * and the routed virtual channel numbers are fixed at 0 and
++		 * 3 respectively.
++		 */
++		if (!((ipu == 0 && csi == 0) || (ipu == 1 && csi == 1)))
++			return;
++
++		mask = ipu == 0 ? IMX6Q_GPR1_MIPI_IPU1_MUX_MASK :
++			IMX6Q_GPR1_MIPI_IPU2_MUX_IOMUX;
++		val = csi2 ? 0 : mask;
++		regmap_update_bits(gpr, IOMUXC_GPR1, mask, val);
++	}
++}
++
++static struct mx6_camera_pdata imx6_v4l2cap_pdata = {
++	.set_video_mux = imx6q_set_video_mux,
++};
++
++static struct of_dev_auxdata imx6q_auxdata_lookup[] __initdata = {
++	OF_DEV_AUXDATA("fsl,imx6-v4l2-capture", 0, NULL, &imx6_v4l2cap_pdata),
++};
++
+ static void __init imx6q_init_machine(void)
+ {
+	struct device *parent;
+@@ -276,7 +328,8 @@ static void __init imx6q_init_machine(void)
+
+	imx6q_enet_phy_init();
+
+-	of_platform_populate(NULL, of_default_bus_match_table, NULL, parent);
++	of_platform_populate(NULL, of_default_bus_match_table,
++			     imx6q_auxdata_lookup, parent);
+
+	imx_anatop_init();
+	cpu_is_imx6q() ?  imx6q_pm_init() : imx6dl_pm_init();
+diff --git a/include/linux/platform_data/camera-mx6.h b/include/linux/platform_data/camera-mx6.h
+new file mode 100644
+index 0000000..34c51ec
+--- /dev/null
++++ b/include/linux/platform_data/camera-mx6.h
+@@ -0,0 +1,23 @@
++/*
++ * Platform data for i.MX6 Video Capture driver
++ *
++ * Copyright (c) 2014 Mentor Graphics Inc.
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ */
++
++#ifndef _MX6_CAMERA_H_
++#define _MX6_CAMERA_H_
++
++/**
++ * struct mx6_camera_pdata - i.MX6 camera platform data
++ * @set_video_mux: Set video iomux
++ */
++struct mx6_camera_pdata {
++	void (*set_video_mux)(int ipu, int csi, bool csi2, u32 vc);
++};
++
++#endif
+--
+1.8.5.5

@@ -1,0 +1,31 @@
+ARM926: Fix jump to the relocated board_init_r
+
+Jump to the relocated board_init_r according to the initial computation
+and remove computation against current PC addr as relocated address is
+already known and fixed.
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+Cc: Stefano Babic <sbabic@denx.de>
+---
+ arch/arm/cpu/arm926ejs/start.S |    4 +---
+ 1 files changed, 1 insertions(+), 3 deletions(-)
+
+diff --git a/arch/arm/cpu/arm926ejs/start.S b/arch/arm/cpu/arm926ejs/start.S
+index 6f05f1a..3186f68 100644
+--- a/arch/arm/cpu/arm926ejs/start.S
++++ b/arch/arm/cpu/arm926ejs/start.S
+@@ -325,9 +325,7 @@ _nand_boot_ofs:
+ 	.word nand_boot
+ #else
+ 	ldr	r0, _board_init_r_ofs
+-	ldr	r1, _TEXT_BASE
+-	add	lr, r0, r1
+-	add	lr, lr, r9
++	add	lr, r0, r6
+ 	/* setup parameters for board_init_r */
+ 	mov	r0, r5		/* gd_t */
+ 	mov	r1, r6		/* dest_addr */
+-- 
+1.7.4.4
+

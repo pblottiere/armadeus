@@ -1,0 +1,21 @@
+U-Boot: Remove u-boot patch prefix from filename
+
+Remove expected u-boot prefix from U-Boot patches in order to manage patches
+with patch mangement tools such as quilt or stgit
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+
+Index: buildroot/boot/u-boot/u-boot.mk
+===================================================================
+--- buildroot.orig/boot/u-boot/u-boot.mk	2011-08-08 12:14:25.000000000 +0200
++++ buildroot/boot/u-boot/u-boot.mk	2011-08-08 12:17:04.000000000 +0200
+@@ -91,7 +91,7 @@
+ 		u-boot-$(U_BOOT_VERSION)-\*.patch \
+ 		u-boot-$(U_BOOT_VERSION)-\*.patch.$(ARCH)
+ ifneq ($(call qstrip,$(BR2_TARGET_UBOOT_CUSTOM_PATCH_DIR)),)
+-	toolchain/patch-kernel.sh $(U_BOOT_DIR) $(BR2_TARGET_UBOOT_CUSTOM_PATCH_DIR) u-boot-$(U_BOOT_VERSION)-\*.patch
++	toolchain/patch-kernel.sh $(U_BOOT_DIR) $(BR2_TARGET_UBOOT_CUSTOM_PATCH_DIR) *.patch
+ endif
+ 	touch $@
+ 

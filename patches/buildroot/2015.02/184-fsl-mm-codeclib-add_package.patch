@@ -1,0 +1,30 @@
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/multimedia/fsl-mm-codeclib/fsl-mm-codeclib.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/multimedia/fsl-mm-codeclib/fsl-mm-codeclib.mk	2012-04-03 17:41:31.000000000 +0200
+@@ -0,0 +1,23 @@
++#############################################################
++#
++# fsl-mm-codeclib (Freescale's multimedia binary (glibc based) codecs)
++#   currently some are needed to build gst-fsl-plugins
++#
++#############################################################
++FSL_MM_CODECLIB_VERSION = 2.0.3
++FSL_MM_CODECLIB_SITE = ftp://ftp2.armadeus.com/_downloads
++FSL_MM_CODECLIB_INSTALL_STAGING = YES
++
++define FSL_MM_CODECLIB_INSTALL_STAGING_CMDS
++	cp $(@D)/pkgconfig/*.pc $(STAGING_DIR)/usr/lib/pkgconfig/
++	cp -rf $(@D)/ghdr $(STAGING_DIR)/usr/include/mm_ghdr
++
++	# Needed by software audio PP gstreamer plugin
++	cp $(@D)/release/lib/lib_peq_arm11_elinux.so $(STAGING_DIR)/usr/lib/
++	cd $(STAGING_DIR)/usr/lib/; ln -sf lib_peq_arm11_elinux.so lib_peq_arm11_elinux.so.1.8.0
++
++	# Needed by software deinterlace gstreamer plugin
++	cp $(@D)/release/lib/lib_deinterlace_arm11_elinux.so $(STAGING_DIR)/usr/lib/
++endef
++
++$(eval $(generic-package))

@@ -1,0 +1,24 @@
+Enable Java stuffs (no more supported in BUILDROOT since 2010.10)
+
+Signed-off-by : Eric Jarrige <eric.jarrige@armadeus.org>
+---
+
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2011-08-08 12:16:21.000000000 +0200
++++ buildroot/package/Config.in	2011-08-08 12:16:50.000000000 +0200
+@@ -329,12 +329,12 @@
+ source "package/python-serial/Config.in"
+ endmenu
+ 
+-if BROKEN
++#if BROKEN
+ menu "Java"
+ source "package/java/classpath/Config.in"
+ source "package/java/concierge/Config.in"
+ endmenu
+-endif
++#endif
+ 
+ menu "Networking"
+ source "package/libcgi/Config.in"

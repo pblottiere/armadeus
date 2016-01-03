@@ -1,0 +1,17 @@
+Fix GPIO port names.
+
+Signed-off-by: Jeremie Scheer <jeremie.scheer@armadeus.com>
+
+Index: linux-3.0.10/arch/arm/plat-mxc/include/mach/iomux-mx2x.h
+===================================================================
+--- linux-3.0.10.orig/arch/arm/plat-mxc/include/mach/iomux-mx2x.h	2011-11-21 23:37:44.000000000 +0100
++++ linux-3.0.10/arch/arm/plat-mxc/include/mach/iomux-mx2x.h	2011-11-30 17:51:41.000000000 +0100
+@@ -105,7 +105,7 @@
+ #define PD31_PF_CSPI1_MOSI	(GPIO_PORTD | GPIO_PF | GPIO_OUT | 31)
+ #define PE3_PF_UART2_CTS	(GPIO_PORTE | GPIO_PF | GPIO_OUT | 3)
+ #define PE4_PF_UART2_RTS	(GPIO_PORTE | GPIO_PF | GPIO_IN | 4)
+-#define PE5_PF_PWMO		(GPIO_PORTE | GPIO_PF | 5)
++#define PE5_PF_PWM0		(GPIO_PORTE | GPIO_PF | GPIO_OUT | 5)
+ #define PE6_PF_UART2_TXD	(GPIO_PORTE | GPIO_PF | GPIO_OUT | 6)
+ #define PE7_PF_UART2_RXD	(GPIO_PORTE | GPIO_PF | GPIO_IN | 7)
+ #define PE8_PF_UART3_TXD	(GPIO_PORTE | GPIO_PF | GPIO_OUT | 8)

@@ -1,0 +1,1873 @@
+Add support for the armadeus APF27 board
+
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+Signed-off-by: Nicolas Colombain <nicolas.colombain@armadeus.com>
+---
+ MAINTAINERS                    |    5 +
+ board/armadeus/apf27/Makefile  |   51 ++++
+ board/armadeus/apf27/apf27.c   |  362 +++++++++++++++++++++++++++++
+ board/armadeus/apf27/apf27.h   |  450 ++++++++++++++++++++++++++++++++++++
+ board/armadeus/apf27/splboot.S |  500 ++++++++++++++++++++++++++++++++++++++++
+ boards.cfg                     |    1 +
+ include/configs/apf27.h        |  448 +++++++++++++++++++++++++++++++++++
+ 7 files changed, 1817 insertions(+), 0 deletions(-)
+ create mode 100644 board/armadeus/apf27/Makefile
+ create mode 100644 board/armadeus/apf27/apf27.c
+ create mode 100644 board/armadeus/apf27/apf27.h
+ create mode 100644 board/armadeus/apf27/splboot.S
+ create mode 100644 include/configs/apf27.h
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 7c12d95..445527d 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -712,6 +712,11 @@ Ilko Iliev <iliev@ronetix.at>
+ 	PM9263		AT91SAM9263
+ 	PM9G45		ARM926EJS (AT91SAM9G45 SoC)
+ 
++Eric Jarrige <eric.jarrige@armadeus.org>
++Philippe Reynes <tremyfr@yahoo.fr>
++
++	apf27		ARM926EJS (i.MX27 SoC)
++
+ Michael Jones <michael.jones@matrix-vision.de>
+ 
+ 	omap3_mvblx	ARM ARMV7 (OMAP3xx SoC)
+diff --git a/board/armadeus/apf27/Makefile b/board/armadeus/apf27/Makefile
+new file mode 100644
+index 0000000..08d5d8d
+--- /dev/null
++++ b/board/armadeus/apf27/Makefile
+@@ -0,0 +1,51 @@
++#
++# (C) Copyright 2000-2004
++# Wolfgang Denk, DENX Software Engineering, wd@denx.de.
++# (C) Copyright 2012
++# Eric Jarrige <eric.jarrige@armadeus.org>
++#
++# See file CREDITS for list of people who contributed to this
++# project.
++#
++# This program is free software; you can redistribute it and/or
++# modify it under the terms of the GNU General Public License as
++# published by the Free Software Foundation; either version 2 of
++# the License, or (at your option) any later version.
++#
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++# GNU General Public License for more details.
++#
++# You should have received a copy of the GNU General Public License
++# along with this program; if not, write to the Free Software
++# Foundation, Inc., 59 Temple Place, Suite 330, Boston,
++# MA 02111-1307 USA
++#
++
++include $(TOPDIR)/config.mk
++
++LIB	= $(obj)lib$(BOARD).o
++
++ifndef CONFIG_SPL_BUILD
++COBJS	:= apf27.o
++endif
++
++ifdef CONFIG_SPL_BUILD
++SOBJS  := splboot.o
++endif
++
++SRCS	:= $(COBJS:.o=.c) $(SOBJS:.o=.S)
++OBJS	:= $(addprefix $(obj),$(COBJS))
++SOBJS	:= $(addprefix $(obj),$(SOBJS))
++
++$(LIB):	$(obj).depend $(OBJS) $(SOBJS)
++	$(call cmd_link_o_target, $(OBJS) $(SOBJS))
++
++#########################################################################
++
++include $(SRCTREE)/rules.mk
++
++sinclude $(obj).depend
++
++#########################################################################
+diff --git a/board/armadeus/apf27/apf27.c b/board/armadeus/apf27/apf27.c
+new file mode 100644
+index 0000000..fce3325
+--- /dev/null
++++ b/board/armadeus/apf27/apf27.c
+@@ -0,0 +1,315 @@
++/*
++ * Copyright (C) 2007 Sascha Hauer, Pengutronix
++ * Copyright (C) 2008-2012 Eric Jarrige <eric.jarrige@armadeus.org>
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of
++ * the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
++ * MA 02111-1307 USA
++ *
++ */
++
++#include <common.h>
++#include <environment.h>
++#include <jffs2/jffs2.h>
++#include <nand.h>
++#include <netdev.h>
++#include <asm/io.h>
++#include <asm/arch/imx-regs.h>
++#include <asm/arch/gpio.h>
++#include <asm/errno.h>
++#include "apf27.h"
++#include "crc.h"
++
++DECLARE_GLOBAL_DATA_PTR;
++
++static inline void wait(void)
++{
++	int i;
++
++	for (i = 0; i < 0x10000; i++)
++		asm volatile ("nop");
++}
++
++/*
++ * Fuse bank 1 row 8 is "reserved for future use" and therefore available for
++ * customer use. The APF27 board uses this fuse to store the board revision:
++ * 0: initial board revision
++ * 1: first revision - Presence of the second RAM chip on the board is blown in
++ *     fuse bank 1 row 9  bit 0 - No hardware change
++ * N: to be defined
++ */
++static u32 get_board_rev(void)
++{
++	struct iim_regs *iim = (struct iim_regs *)IMX_IIM_BASE;
++
++	return readl(&iim->bank[1].fuse_regs[8]);
++}
++
++/*
++ * Fuse bank 1 row 9 is "reserved for future use" and therefore available for
++ * customer use. The APF27 board revision 1 uses the bit 0 to permanently store
++ * the presence of the second RAM chip
++ * 0: AFP27 with 1 RAM of 64 MiB
++ * 1: AFP27 with 2 RAM chips of 64 MiB each (128MB)
++ */
++static int get_num_ram_bank(void)
++{
++	struct iim_regs *iim = (struct iim_regs *)IMX_IIM_BASE;
++	int nr_dram_banks = 1;
++
++	if ((get_board_rev() > 0) && (CONFIG_NR_DRAM_BANKS > 1))
++		nr_dram_banks += readl(&iim->bank[1].fuse_regs[9]) & 0x01;
++	else
++		nr_dram_banks = CONFIG_NR_DRAM_POPULATED;
++
++	return nr_dram_banks;
++}
++
++static void apf27_port_init(int port, u32 gpio_dr, u32 ocr1, u32 ocr2,
++			    u32 iconfa1, u32 iconfa2, u32 iconfb1, u32 iconfb2,
++			    u32 icr1, u32 icr2, u32 imr, u32 gpio_dir, u32 gpr,
++			    u32 puen, u32 gius)
++{
++	struct gpio_port_regs *regs = (struct gpio_port_regs *)IMX_GPIO_BASE;
++
++	writel(gpio_dr,   &regs->port[port].gpio_dr);
++	writel(ocr1,      &regs->port[port].ocr1);
++	writel(ocr2,      &regs->port[port].ocr2);
++	writel(iconfa1,   &regs->port[port].iconfa1);
++	writel(iconfa2,   &regs->port[port].iconfa2);
++	writel(iconfb1,   &regs->port[port].iconfb1);
++	writel(iconfb2,   &regs->port[port].iconfb2);
++	writel(icr1,      &regs->port[port].icr1);
++	writel(icr2,      &regs->port[port].icr2);
++	writel(imr,       &regs->port[port].imr);
++	writel(gpio_dir,  &regs->port[port].gpio_dir);
++	writel(gpr,       &regs->port[port].gpr);
++	writel(puen,      &regs->port[port].puen);
++	writel(gius,      &regs->port[port].gius);
++}
++
++#define APF27_PORT_INIT(n) apf27_port_init(PORT##n, ACFG_DR_##n##_VAL,	  \
++	ACFG_OCR1_##n##_VAL, ACFG_OCR2_##n##_VAL, ACFG_ICFA1_##n##_VAL,	  \
++	ACFG_ICFA2_##n##_VAL, ACFG_ICFB1_##n##_VAL, ACFG_ICFB2_##n##_VAL, \
++	ACFG_ICR1_##n##_VAL, ACFG_ICR2_##n##_VAL, ACFG_IMR_##n##_VAL,	  \
++	ACFG_DDIR_##n##_VAL, ACFG_GPR_##n##_VAL, ACFG_PUEN_##n##_VAL,	  \
++	ACFG_GIUS_##n##_VAL)
++
++void apf27_gpio_init(void)
++{
++	APF27_PORT_INIT(A);
++	APF27_PORT_INIT(B);
++	APF27_PORT_INIT(C);
++	APF27_PORT_INIT(D);
++	APF27_PORT_INIT(E);
++	APF27_PORT_INIT(F);
++}
++
++static int apf27_devices_init(void)
++{
++	struct gpio_port_regs *regs = (struct gpio_port_regs *)IMX_GPIO_BASE;
++	int i;
++	unsigned int mode[] = {
++		PD0_AIN_FEC_TXD0,
++		PD1_AIN_FEC_TXD1,
++		PD2_AIN_FEC_TXD2,
++		PD3_AIN_FEC_TXD3,
++		PD4_AOUT_FEC_RX_ER,
++		PD5_AOUT_FEC_RXD1,
++		PD6_AOUT_FEC_RXD2,
++		PD7_AOUT_FEC_RXD3,
++		PD8_AF_FEC_MDIO,
++		PD9_AIN_FEC_MDC | GPIO_PUEN,
++		PD10_AOUT_FEC_CRS,
++		PD11_AOUT_FEC_TX_CLK,
++		PD12_AOUT_FEC_RXD0,
++		PD13_AOUT_FEC_RX_DV,
++		PD14_AOUT_FEC_CLR,
++		PD15_AOUT_FEC_COL,
++		PD16_AIN_FEC_TX_ER,
++		PF23_AIN_FEC_TX_EN,
++		PE12_PF_UART1_TXD,
++		PE13_PF_UART1_RXD,
++		PC5_PF_I2C2_DATA,
++		PC6_PF_I2C2_CLK,
++		PD17_PF_I2C_DATA,
++		PD18_PF_I2C_CLK,
++	};
++
++	for (i = 0; i < ARRAY_SIZE(mode); i++)
++		imx_gpio_mode(mode[i]);
++
++#ifdef CONFIG_MXC_MMC
++	mx27_sd2_init_pins();
++	imx_gpio_mode((GPIO_PORTF | GPIO_OUT | GPIO_PUEN | GPIO_GPIO | 16));
++	writel(readl(&regs->port[PORTF].gpio_dr) | (1 << 16),
++	       &regs->port[PORTF].gpio_dr);
++#endif
++#if defined(CONFIG_I2C_MXC) && defined(CONFIG_I2C_MULTI_BUS)
++	bus_i2c_init(IMX_I2C1_BASE, CONFIG_SYS_I2C_SPEED, CONFIG_SYS_I2C_SLAVE,
++		     NULL, NULL);
++	bus_i2c_init(IMX_I2C2_BASE, CONFIG_SYS_I2C_SPEED, CONFIG_SYS_I2C_SLAVE,
++		     NULL, NULL);
++#endif
++	return 0;
++}
++
++static void board_setup_aipi(void)
++{
++	struct aipi_regs *aipi1 = (struct aipi_regs *)IMX_AIPI1_BASE;
++	struct aipi_regs *aipi2 = (struct aipi_regs *)IMX_AIPI2_BASE;
++	struct system_control_regs *system =
++		(struct system_control_regs *)IMX_SYSTEM_CTL_BASE;
++	u32 gpcr;
++
++	/* setup AIPI1 and AIPI2 */
++	writel(ACFG_AIPI1_PSR0_VAL, &aipi1->psr0);
++	writel(ACFG_AIPI1_PSR1_VAL, &aipi1->psr1);
++	writel(ACFG_AIPI2_PSR0_VAL, &aipi2->psr0);
++	writel(ACFG_AIPI2_PSR1_VAL, &aipi2->psr1);
++
++	/* Change SDRAM signal strengh */
++	gpcr = readl(&system->gpcr);
++	gpcr |= ACFG_GPCR_VAL;
++	writel(gpcr, &system->gpcr);
++}
++
++static void board_setup_csx(void)
++{
++	struct weim_regs *weim = (struct weim_regs *)IMX_WEIM_BASE;
++
++	writel(ACFG_CS0U_VAL, &weim->cs0u);
++	writel(ACFG_CS0L_VAL, &weim->cs0l);
++	writel(ACFG_CS0A_VAL, &weim->cs0a);
++
++	writel(ACFG_CS1U_VAL, &weim->cs1u);
++	writel(ACFG_CS1L_VAL, &weim->cs1l);
++	writel(ACFG_CS1A_VAL, &weim->cs1a);
++
++	writel(ACFG_CS2U_VAL, &weim->cs2u);
++	writel(ACFG_CS2L_VAL, &weim->cs2l);
++	writel(ACFG_CS2A_VAL, &weim->cs2a);
++
++	writel(ACFG_CS3U_VAL, &weim->cs3u);
++	writel(ACFG_CS3L_VAL, &weim->cs3l);
++	writel(ACFG_CS3A_VAL, &weim->cs3a);
++
++	writel(ACFG_CS4U_VAL, &weim->cs4u);
++	writel(ACFG_CS4L_VAL, &weim->cs4l);
++	writel(ACFG_CS4A_VAL, &weim->cs4a);
++
++	writel(ACFG_CS5U_VAL, &weim->cs5u);
++	writel(ACFG_CS5L_VAL, &weim->cs5l);
++	writel(ACFG_CS5A_VAL, &weim->cs5a);
++
++	writel(ACFG_EIM_VAL, &weim->eim);
++}
++
++static void board_setup_port(void)
++{
++	struct system_control_regs *system =
++		(struct system_control_regs *)IMX_SYSTEM_CTL_BASE;
++
++	writel(ACFG_FMCR_VAL, &system->fmcr);
++}
++
++static void board_setup_clock(void)
++{
++	struct pll_regs *pll = (struct pll_regs *)IMX_PLL_BASE;
++	u32 cscr;
++
++	/* disable MPLL/SPLL first */
++	cscr = readl(&pll->cscr);
++	cscr &= ~(CSCR_MPEN | CSCR_SPEN);
++	writel(cscr, &pll->cscr);
++
++	/* pll clock initialization */
++	writel(ACFG_MPCTL0_VAL, &pll->mpctl0);
++	writel(ACFG_SPCTL0_VAL, &pll->spctl0);
++
++	cscr = ACFG_CSCR_VAL | CSCR_MPLL_RESTART | CSCR_SPLL_RESTART;
++	writel(cscr, &pll->cscr);
++
++	/* add some delay here */
++	wait();
++
++	/* peripheral clock divider */
++	writel(ACFG_PCDR0_VAL, &pll->pcdr0);
++	writel(ACFG_PCDR1_VAL, &pll->pcdr1);
++
++	/* Configure PCCR0 and PCCR1 */
++	writel(ACFG_PCCR0_VAL, &pll->pccr0);
++	writel(ACFG_PCCR1_VAL, &pll->pccr1);
++}
++
++int board_early_init_f(void)
++{
++	board_setup_aipi();
++	board_setup_csx();
++	board_setup_port();
++	board_setup_clock();
++
++	return 0;
++}
++
++int board_init(void)
++{
++	gd->bd->bi_boot_params = PHYS_SDRAM_1 + 0x100;
++
++	apf27_gpio_init();
++	apf27_devices_init();
++
++	return 0;
++}
++
++int dram_init(void)
++{
++	/* dram_init must store complete ramsize in gd->ram_size */
++	if (get_num_ram_bank() > 1) {
++		gd->ram_size = PHYS_SDRAM_2 - CONFIG_SYS_SDRAM_BASE
++			+ get_ram_size((void *)PHYS_SDRAM_2, PHYS_SDRAM_2_SIZE);
++	} else {
++		gd->ram_size = get_ram_size((void *)PHYS_SDRAM_1,
++			PHYS_SDRAM_1_SIZE);
++	}
++
++	return 0;
++}
++
++void dram_init_banksize(void)
++{
++	phys_size_t ramsize = gd->ram_size;
++
++	if (get_num_ram_bank() > 1)
++		ramsize -= PHYS_SDRAM_2 - CONFIG_SYS_SDRAM_BASE;
++
++	gd->bd->bi_dram[0].start = PHYS_SDRAM_1;
++	gd->bd->bi_dram[0].size = ramsize;
++	gd->bd->bi_dram[1].start = PHYS_SDRAM_2;
++	if (get_num_ram_bank() > 1)
++		gd->bd->bi_dram[1].size = ramsize;
++	else
++		gd->bd->bi_dram[1].size = 0;
++	gd->ram_size = gd->bd->bi_dram[0].size + gd->bd->bi_dram[1].size;
++}
++
++int checkboard(void)
++{
++	printf("Board: Armadeus APF27 revision %d\n", get_board_rev());
++	return 0;
++}
++
++void lowlevel_init(void)
++{
++}
+diff --git a/board/armadeus/apf27/apf27.h b/board/armadeus/apf27/apf27.h
+new file mode 100644
+index 0000000..b0a4473
+--- /dev/null
++++ b/board/armadeus/apf27/apf27.h
+@@ -0,0 +1,450 @@
++#ifndef __APF27_H
++#define __APF27_H
++
++/* FPGA program pin configuration */
++#define ACFG_FPGA_PWR	(GPIO_PORTF | 19)	/* FPGA prog pin  */
++#define ACFG_FPGA_PRG	(GPIO_PORTF | 11)	/* FPGA prog pin  */
++#define ACFG_FPGA_CLK	(GPIO_PORTF | 15)	/* FPGA clk pin   */
++#define ACFG_FPGA_RDATA	0xD6000000		/* FPGA data addr  */
++#define ACFG_FPGA_WDATA	0xD6000000		/* FPGA data addr  */
++#define ACFG_FPGA_INIT	(GPIO_PORTF | 12)	/* FPGA init pin  */
++#define ACFG_FPGA_DONE	(GPIO_PORTF | 9)	/* FPGA done pin  */
++#define ACFG_FPGA_RW	(GPIO_PORTF | 21)	/* FPGA done pin  */
++#define ACFG_FPGA_CS	(GPIO_PORTF | 22)	/* FPGA done pin  */
++#define ACFG_FPGA_SUSPEND (GPIO_PORTF | 10)	/* FPGA done pin  */
++#define ACFG_FPGA_RESET	(GPIO_PORTF | 7)	/* FPGA done pin  */
++
++/*
++ * MPU CLOCK source before PLL
++ * ACFG_CLK_FREQ (2/3 MPLL clock or ext 266 MHZ)
++ */
++#define ACFG_MPCTL0_VAL		0x01EF15D5	/* 399.000 MHz */
++#define ACFG_MPCTL1_VAL		0
++#define CONFIG_MPLL_FREQ	399
++
++#define ACFG_CLK_FREQ	(CONFIG_MPLL_FREQ*2/3) /* 266 MHz */
++
++/* Serial clock source before PLL (should be named ACFG_SYSPLL_CLK_FREQ)*/
++#define ACFG_SPCTL0_VAL		0x0475206F	/* 299.99937 MHz */
++#define ACFG_SPCTL1_VAL		0
++#define CONFIG_SPLL_FREQ	300		/* MHz */
++
++/* ARM bus frequency (have to be a CONFIG_MPLL_FREQ ratio) */
++#define CONFIG_ARM_FREQ		399	/* up to 400 MHz */
++
++/* external bus frequency (have to be a ACFG_CLK_FREQ ratio) */
++#define CONFIG_HCLK_FREQ	133	/* (ACFG_CLK_FREQ/2) */
++
++#define CONFIG_PERIF1_FREQ	16	/* 16.625 MHz UART, GPT, PWM*/
++#define CONFIG_PERIF2_FREQ	33	/* 33.25 MHz CSPI and SDHC */
++#define CONFIG_PERIF3_FREQ	33	/* 33.25 MHz LCD*/
++#define CONFIG_PERIF4_FREQ	33	/* 33.25 MHz CSI*/
++#define CONFIG_SSI1_FREQ	66	/* 66.50 MHz SSI1*/
++#define CONFIG_SSI2_FREQ	66	/* 66.50 MHz SSI2*/
++#define CONFIG_MSHC_FREQ	66	/* 66.50 MHz MSHC*/
++#define CONFIG_H264_FREQ	66	/* 66.50 MHz H264*/
++#define CONFIG_CLK0_DIV      3  /* Divide CLK0 by 4 */
++#define CONFIG_CLK0_EN       1  /* CLK0 enabled */
++
++/* external bus frequency (have to be a CONFIG_HCLK_FREQ ratio) */
++#define CONFIG_NFC_FREQ		44	/* NFC Clock up to 44 MHz wh 133MHz*/
++
++/* external serial bus frequency (have to be a CONFIG_SPLL_FREQ ratio) */
++#define CONFIG_USB_FREQ		60	/* 60 MHz */
++
++/*
++ * SDRAM
++ */
++#if (ACFG_SDRAM_MBYTE_SYZE == 64) /* micron MT46H16M32LF -6 */
++/* micron 64MB */
++#define ACFG_SDRAM_NUM_COL		9  /* 8, 9, 10 or 11
++						      column address bits */
++#define ACFG_SDRAM_NUM_ROW		13 /* 11, 12 or 13
++						      row address bits */
++#define ACFG_SDRAM_REFRESH		3  /* 0=OFF 1=2048
++						      2=4096 3=8192 refresh */
++#define ACFG_SDRAM_EXIT_PWD		25 /* ns exit power
++						      down delay */
++#define ACFG_SDRAM_W2R_DELAY		1  /* write to read
++						      cycle delay > 0 */
++#define ACFG_SDRAM_ROW_PRECHARGE_DELAY	18 /* ns */
++#define ACFG_SDRAM_TMRD_DELAY		2  /* Load mode register
++						      cycle delay 1..4 */
++#define ACFG_SDRAM_TWR_DELAY		1  /* LPDDR: 0=2ck 1=3ck;
++						      SDRAM: 0=1ck 1=2ck*/
++#define ACFG_SDRAM_RAS_DELAY		42 /* ns ACTIVE-to-PRECHARGE
++						      delay */
++#define ACFG_SDRAM_RRD_DELAY		12 /* ns ACTIVE-to-ACTIVE
++						      delay */
++#define ACFG_SDRAM_RCD_DELAY		18 /* ns Row to Column delay */
++#define ACFG_SDRAM_RC_DELAY		70 /* ns Row cycle delay (tRFC
++						      refresh to command) */
++#define ACFG_SDRAM_CLOCK_CYCLE_CL_1	0 /* ns clock cycle time
++						     estimated fo CL=1
++						     0=force 3 for lpddr */
++#define ACFG_SDRAM_PARTIAL_ARRAY_SR	0  /* 0=full 1=half 2=quater
++						      3=Eighth 4=Sixteenth */
++#define ACFG_SDRAM_DRIVE_STRENGH		0  /* 0=Full-strength 1=half
++						      2=quater 3=Eighth */
++#define ACFG_SDRAM_BURST_LENGTH		3  /* 2^N BYTES (N=0..3) */
++#define ACFG_SDRAM_SINGLE_ACCESS		0  /* 1= single access;
++						      0 = Burst mode */
++#endif
++
++#if (ACFG_SDRAM_MBYTE_SYZE == 128)
++/* micron 128MB */
++#define ACFG_SDRAM_NUM_COL		9  /* 8, 9, 10 or 11
++						      column address bits */
++#define ACFG_SDRAM_NUM_ROW		14 /* 11, 12 or 13
++						      row address bits */
++#define ACFG_SDRAM_REFRESH		3  /* 0=OFF 1=2048
++						      2=4096 3=8192 refresh */
++#define ACFG_SDRAM_EXIT_PWD		25 /* ns exit power
++						      down delay */
++#define ACFG_SDRAM_W2R_DELAY		1  /* write to read
++						      cycle delay > 0 */
++#define ACFG_SDRAM_ROW_PRECHARGE_DELAY	18 /* ns */
++#define ACFG_SDRAM_TMRD_DELAY		2  /* Load mode register
++						      cycle delay 1..4 */
++#define ACFG_SDRAM_TWR_DELAY		1  /* LPDDR: 0=2ck 1=3ck;
++						      SDRAM: 0=1ck 1=2ck*/
++#define ACFG_SDRAM_RAS_DELAY		42 /* ns ACTIVE-to-PRECHARGE
++						      delay */
++#define ACFG_SDRAM_RRD_DELAY		12 /* ns ACTIVE-to-ACTIVE
++						      delay */
++#define ACFG_SDRAM_RCD_DELAY		18 /* ns Row to Column delay */
++#define ACFG_SDRAM_RC_DELAY		70 /* ns Row cycle delay (tRFC
++						      refresh to command)*/
++#define ACFG_SDRAM_CLOCK_CYCLE_CL_1	0 /* ns clock cycle time
++						     estimated fo CL=1
++						     0=force 3 for lpddr*/
++#define ACFG_SDRAM_PARTIAL_ARRAY_SR	0  /* 0=full 1=half 2=quater
++						      3=Eighth 4=Sixteenth */
++#define ACFG_SDRAM_DRIVE_STRENGH		0  /* 0=Full-strength 1=half
++						      2=quater 3=Eighth */
++#define ACFG_SDRAM_BURST_LENGTH		3  /* 2^N BYTES (N=0..3) */
++#define ACFG_SDRAM_SINGLE_ACCESS		0  /* 1= single access;
++						      0 = Burst mode */
++#endif
++
++#if (ACFG_SDRAM_MBYTE_SYZE == 256)
++/* micron 256MB */
++#define ACFG_SDRAM_NUM_COL		10  /* 8, 9, 10 or 11
++						       column address bits */
++#define ACFG_SDRAM_NUM_ROW		14 /* 11, 12 or 13
++						      row address bits */
++#define ACFG_SDRAM_REFRESH		3  /* 0=OFF 1=2048
++						      2=4096 3=8192 refresh */
++#define ACFG_SDRAM_EXIT_PWD		25 /* ns exit power
++						      down delay */
++#define ACFG_SDRAM_W2R_DELAY		1  /* write to read cycle
++						      delay > 0 */
++#define ACFG_SDRAM_ROW_PRECHARGE_DELAY	18 /* ns */
++#define ACFG_SDRAM_TMRD_DELAY		2  /* Load mode register
++						      cycle delay 1..4 */
++#define ACFG_SDRAM_TWR_DELAY		1  /* LPDDR: 0=2ck 1=3ck;
++						      SDRAM: 0=1ck 1=2ck */
++#define ACFG_SDRAM_RAS_DELAY		42 /* ns ACTIVE-to-PRECHARGE
++						      delay */
++#define ACFG_SDRAM_RRD_DELAY		12 /* ns ACTIVE-to-ACTIVE
++						      delay */
++#define ACFG_SDRAM_RCD_DELAY		18 /* ns Row to Column delay */
++#define ACFG_SDRAM_RC_DELAY		70 /* ns Row cycle delay (tRFC
++						      refresh to command) */
++#define ACFG_SDRAM_CLOCK_CYCLE_CL_1	0 /* ns clock cycle time
++						     estimated fo CL=1
++						     0=force 3 for lpddr */
++#define ACFG_SDRAM_PARTIAL_ARRAY_SR	0  /* 0=full 1=half 2=quater
++						      3=Eighth 4=Sixteenth */
++#define ACFG_SDRAM_DRIVE_STRENGH		0  /* 0=Full-strength
++						      1=half
++						      2=quater
++						      3=Eighth */
++#define ACFG_SDRAM_BURST_LENGTH		3  /* 2^N BYTES (N=0..3) */
++#define ACFG_SDRAM_SINGLE_ACCESS		0  /* 1= single access;
++						      0 = Burst mode */
++#endif
++
++/*
++ * External interface
++ */
++/*
++ * CSCRxU_VAL:
++ * 31| x | x | x x |x x x x| x x | x | x  |x x x x|16
++ *   |SP |WP | BCD |  BCS  | PSZ |PME|SYNC|  DOL  |
++ *
++ * 15| x x  | x x x x x x | x | x x x x | x x x x |0
++ *   | CNC  |     WSC     |EW |   WWS   |   EDC   |
++ *
++ * CSCRxL_VAL:
++ * 31|  x x x x  | x x x x  | x x x x  | x x x x  |16
++ *   |    OEA    |   OEN    |   EBWA   |   EBWN   |
++ * 15|x x x x| x |x x x |x x x x| x | x | x  | x  | 0
++ *   |  CSA  |EBC| DSZ  |  CSN  |PSR|CRE|WRAP|CSEN|
++ *
++ * CSCRxA_VAL:
++ * 31|  x x x x  | x x x x  | x x x x  | x x x x  |16
++ *   |   EBRA    |   EBRN   |   RWA    |   RWN    |
++ * 15| x | x x |x x x|x x|x x|x x| x | x | x  | x | 0
++ *   |MUM| LAH | LBN |LBA|DWW|DCT|WWU|AGE|CNC2|FCE|
++ */
++
++/* CS0 configuration for 16 bit nor flash */
++#define ACFG_CS0U_VAL	0x0000CC03
++#define ACFG_CS0L_VAL	0xa0330D01
++#define ACFG_CS0A_VAL	0x00220800
++
++#define ACFG_CS1U_VAL	0x00000f00
++#define ACFG_CS1L_VAL	0x00000D01
++#define ACFG_CS1A_VAL	0
++
++#define ACFG_CS2U_VAL	0
++#define ACFG_CS2L_VAL	0
++#define ACFG_CS2A_VAL	0
++
++#define ACFG_CS3U_VAL	0
++#define ACFG_CS3L_VAL	0
++#define ACFG_CS3A_VAL	0
++
++#define ACFG_CS4U_VAL	0
++#define ACFG_CS4L_VAL	0
++#define ACFG_CS4A_VAL	0
++
++/* FPGA 16 bit data bus */
++#define ACFG_CS5U_VAL	0x00000600
++#define ACFG_CS5L_VAL	0x00000D01
++#define ACFG_CS5A_VAL	0
++
++#define ACFG_EIM_VAL	0x00002200
++
++
++/*
++ * FPGA specific settings
++ */
++
++/* CLKO */
++#define ACFG_CCSR_VAL 0x00000305
++/* drive strength CLKO set to 2*/
++#define ACFG_DSCR10_VAL 0x00020000
++/* drive strength A1..A12 set to 2*/
++#define ACFG_DSCR3_VAL 0x02AAAAA8
++/* drive strength ctrl*/
++#define ACFG_DSCR7_VAL 0x00020880
++/* drive strength data*/
++#define ACFG_DSCR2_VAL 0xAAAAAAAA
++
++
++/*
++ * Default configuration for GPIOs and peripherals
++ */
++#define ACFG_DDIR_A_VAL		0x00000000
++#define ACFG_OCR1_A_VAL		0x00000000
++#define ACFG_OCR2_A_VAL		0x00000000
++#define ACFG_ICFA1_A_VAL		0xFFFFFFFF
++#define ACFG_ICFA2_A_VAL		0xFFFFFFFF
++#define ACFG_ICFB1_A_VAL		0xFFFFFFFF
++#define ACFG_ICFB2_A_VAL		0xFFFFFFFF
++#define ACFG_DR_A_VAL		0x00000000
++#define ACFG_GIUS_A_VAL		0xFFFFFFFF
++#define ACFG_ICR1_A_VAL		0x00000000
++#define ACFG_ICR2_A_VAL		0x00000000
++#define ACFG_IMR_A_VAL		0x00000000
++#define ACFG_GPR_A_VAL		0x00000000
++#define ACFG_PUEN_A_VAL		0xFFFFFFFF
++
++#define ACFG_DDIR_B_VAL		0x00000000
++#define ACFG_OCR1_B_VAL		0x00000000
++#define ACFG_OCR2_B_VAL		0x00000000
++#define ACFG_ICFA1_B_VAL		0xFFFFFFFF
++#define ACFG_ICFA2_B_VAL		0xFFFFFFFF
++#define ACFG_ICFB1_B_VAL		0xFFFFFFFF
++#define ACFG_ICFB2_B_VAL		0xFFFFFFFF
++#define ACFG_DR_B_VAL		0x00000000
++#define ACFG_GIUS_B_VAL		0xFF3FFFF0
++#define ACFG_ICR1_B_VAL		0x00000000
++#define ACFG_ICR2_B_VAL		0x00000000
++#define ACFG_IMR_B_VAL		0x00000000
++#define ACFG_GPR_B_VAL		0x00000000
++#define ACFG_PUEN_B_VAL		0xFFFFFFFF
++
++#define ACFG_DDIR_C_VAL		0x00000000
++#define ACFG_OCR1_C_VAL		0x00000000
++#define ACFG_OCR2_C_VAL		0x00000000
++#define ACFG_ICFA1_C_VAL		0xFFFFFFFF
++#define ACFG_ICFA2_C_VAL		0xFFFFFFFF
++#define ACFG_ICFB1_C_VAL		0xFFFFFFFF
++#define ACFG_ICFB2_C_VAL		0xFFFFFFFF
++#define ACFG_DR_C_VAL		0x00000000
++#define ACFG_GIUS_C_VAL		0xFFFFC07F
++#define ACFG_ICR1_C_VAL		0x00000000
++#define ACFG_ICR2_C_VAL		0x00000000
++#define ACFG_IMR_C_VAL		0x00000000
++#define ACFG_GPR_C_VAL		0x00000000
++#define ACFG_PUEN_C_VAL		0xFFFFFF87
++
++#define ACFG_DDIR_D_VAL		0x00000000
++#define ACFG_OCR1_D_VAL		0x00000000
++#define ACFG_OCR2_D_VAL		0x00000000
++#define ACFG_ICFA1_D_VAL		0xFFFFFFFF
++#define ACFG_ICFA2_D_VAL		0xFFFFFFFF
++#define ACFG_ICFB1_D_VAL		0xFFFFFFFF
++#define ACFG_ICFB2_D_VAL		0xFFFFFFFF
++#define ACFG_DR_D_VAL		0x00000000
++#define ACFG_GIUS_D_VAL		0xFFFFFFFF
++#define ACFG_ICR1_D_VAL		0x00000000
++#define ACFG_ICR2_D_VAL		0x00000000
++#define ACFG_IMR_D_VAL		0x00000000
++#define ACFG_GPR_D_VAL		0x00000000
++#define ACFG_PUEN_D_VAL		0xFFFFFFFF
++
++#define ACFG_DDIR_E_VAL		0x00000000
++#define ACFG_OCR1_E_VAL		0x00000000
++#define ACFG_OCR2_E_VAL		0x00000000
++#define ACFG_ICFA1_E_VAL		0xFFFFFFFF
++#define ACFG_ICFA2_E_VAL		0xFFFFFFFF
++#define ACFG_ICFB1_E_VAL		0xFFFFFFFF
++#define ACFG_ICFB2_E_VAL		0xFFFFFFFF
++#define ACFG_DR_E_VAL		0x00000000
++#define ACFG_GIUS_E_VAL		0xFCFFCCF8
++#define ACFG_ICR1_E_VAL		0x00000000
++#define ACFG_ICR2_E_VAL		0x00000000
++#define ACFG_IMR_E_VAL		0x00000000
++#define ACFG_GPR_E_VAL		0x00000000
++#define ACFG_PUEN_E_VAL		0xFFFFFFFF
++
++#define ACFG_DDIR_F_VAL		0x00000000
++#define ACFG_OCR1_F_VAL		0x00000000
++#define ACFG_OCR2_F_VAL		0x00000000
++#define ACFG_ICFA1_F_VAL		0xFFFFFFFF
++#define ACFG_ICFA2_F_VAL		0xFFFFFFFF
++#define ACFG_ICFB1_F_VAL		0xFFFFFFFF
++#define ACFG_ICFB2_F_VAL		0xFFFFFFFF
++#define ACFG_DR_F_VAL		0x00000000
++#define ACFG_GIUS_F_VAL		0xFF7F8000
++#define ACFG_ICR1_F_VAL		0x00000000
++#define ACFG_ICR2_F_VAL		0x00000000
++#define ACFG_IMR_F_VAL		0x00000000
++#define ACFG_GPR_F_VAL		0x00000000
++#define ACFG_PUEN_F_VAL		0xFFFFFFFF
++
++/* Enforce DDR signal strengh & enable USB/PP/DMA burst override bits */
++#define ACFG_GPCR_VAL		0x0003000F
++
++#define ACFG_ESDMISC_VAL	ESDMISC_LHD+ESDMISC_MDDREN
++
++/* FMCR select num LPDDR RAMs and nand 16bits, 2KB pages */
++#if (CONFIG_NR_DRAM_BANKS == 1)
++#define ACFG_FMCR_VAL 0xFFFFFFF9
++#elif (CONFIG_NR_DRAM_BANKS == 2)
++#define ACFG_FMCR_VAL 0xFFFFFFFB
++#endif
++
++#define ACFG_AIPI1_PSR0_VAL	0x20040304
++#define ACFG_AIPI1_PSR1_VAL	0xDFFBFCFB
++#define ACFG_AIPI2_PSR0_VAL	0x00000000
++#define ACFG_AIPI2_PSR1_VAL	0xFFFFFFFF
++
++/* PCCR enable DMA FEC I2C1 IIM SDHC1 */
++#define ACFG_PCCR0_VAL		0x05070410
++#define ACFG_PCCR1_VAL		0xA14A0608
++
++/*
++ * From here, there should not be any user configuration.
++ * All Equations are automatic
++ */
++
++/* fixme none integer value (7.5ns) => 2*hclock = 15ns */
++#define ACFG_2XHCLK_LGTH	(2000/CONFIG_HCLK_FREQ)	/* ns */
++
++/* USB 60 MHz ; ARM up to 400; HClK up to 133MHz*/
++#define CSCR_MASK 0x0300800D
++
++#define ACFG_CSCR_VAL						\
++	(CSCR_MASK						\
++	|((((CONFIG_SPLL_FREQ/CONFIG_USB_FREQ)-1)&0x07) << 28)	\
++	|((((CONFIG_MPLL_FREQ/CONFIG_ARM_FREQ)-1)&0x03) << 12)	\
++	|((((ACFG_CLK_FREQ/CONFIG_HCLK_FREQ)-1)&0x03) << 8))
++
++/* SSIx CLKO NFC H264 MSHC */
++#define ACFG_PCDR0_VAL\
++	(((((ACFG_CLK_FREQ/CONFIG_MSHC_FREQ)-1)&0x3F)<<0)	\
++	|((((CONFIG_HCLK_FREQ/CONFIG_NFC_FREQ)-1)&0x0F)<<6)	\
++	|(((((ACFG_CLK_FREQ/CONFIG_H264_FREQ)-2)*2)&0x3F)<<10)\
++	|(((((ACFG_CLK_FREQ/CONFIG_SSI1_FREQ)-2)*2)&0x3F)<<16)\
++	|(((CONFIG_CLK0_DIV)&0x07)<<22)\
++	|(((CONFIG_CLK0_EN)&0x01)<<25)\
++	|(((((ACFG_CLK_FREQ/CONFIG_SSI2_FREQ)-2)*2)&0x3F)<<26))
++
++/* PERCLKx  */
++#define ACFG_PCDR1_VAL\
++	(((((ACFG_CLK_FREQ/CONFIG_PERIF1_FREQ)-1)&0x3F)<<0)	\
++	|((((ACFG_CLK_FREQ/CONFIG_PERIF2_FREQ)-1)&0x3F)<<8)	\
++	|((((ACFG_CLK_FREQ/CONFIG_PERIF3_FREQ)-1)&0x3F)<<16)	\
++	|((((ACFG_CLK_FREQ/CONFIG_PERIF4_FREQ)-1)&0x3F)<<24))
++
++/* SDRAM controller programming Values */
++#if (((2*ACFG_SDRAM_CLOCK_CYCLE_CL_1) > (3*ACFG_2XHCLK_LGTH)) || \
++	(ACFG_SDRAM_CLOCK_CYCLE_CL_1 < 1))
++#define REG_FIELD_SCL_VAL 3
++#define REG_FIELD_SCLIMX_VAL 0
++#else
++#define REG_FIELD_SCL_VAL\
++	((2*ACFG_SDRAM_CLOCK_CYCLE_CL_1+ACFG_2XHCLK_LGTH-1)/ \
++		ACFG_2XHCLK_LGTH)
++#define REG_FIELD_SCLIMX_VAL REG_FIELD_SCL_VAL
++#endif
++
++#if ((2*ACFG_SDRAM_RC_DELAY) > (16*ACFG_2XHCLK_LGTH))
++#define REG_FIELD_SRC_VAL 0
++#else
++#define REG_FIELD_SRC_VAL\
++	((2*ACFG_SDRAM_RC_DELAY+ACFG_2XHCLK_LGTH-1)/ \
++		ACFG_2XHCLK_LGTH)
++#endif
++
++/* TBD Power down timer ; PRCT Bit Field Encoding; burst length 8 ; FP = 0*/
++#define REG_ESDCTL_BASE_CONFIG (0x80020485\
++				| (((ACFG_SDRAM_NUM_ROW-11)&0x7)<<24)\
++				| (((ACFG_SDRAM_NUM_COL-8)&0x3)<<20)\
++				| (((ACFG_SDRAM_REFRESH)&0x7)<<13))
++
++#define ACFG_NORMAL_RW_CMD	((0x0<<28)+REG_ESDCTL_BASE_CONFIG)
++#define ACFG_PRECHARGE_CMD	((0x1<<28)+REG_ESDCTL_BASE_CONFIG)
++#define ACFG_AUTOREFRESH_CMD	((0x2<<28)+REG_ESDCTL_BASE_CONFIG)
++#define ACFG_SET_MODE_REG_CMD	((0x3<<28)+REG_ESDCTL_BASE_CONFIG)
++
++/* ESDRAMC Configuration Registers : force CL=3 to lpddr */
++#define ACFG_SDRAM_ESDCFG_REGISTER_VAL (0x0\
++	| (((((2*ACFG_SDRAM_EXIT_PWD+ACFG_2XHCLK_LGTH-1)/ \
++		ACFG_2XHCLK_LGTH)-1)&0x3)<<21)\
++	| (((ACFG_SDRAM_W2R_DELAY-1)&0x1)<<20)\
++	| (((((2*ACFG_SDRAM_ROW_PRECHARGE_DELAY+ \
++		ACFG_2XHCLK_LGTH-1)/ACFG_2XHCLK_LGTH)-1)&0x3)<<18) \
++	| (((ACFG_SDRAM_TMRD_DELAY-1)&0x3)<<16)\
++	| (((ACFG_SDRAM_TWR_DELAY)&0x1)<<15)\
++	| (((((2*ACFG_SDRAM_RAS_DELAY+ACFG_2XHCLK_LGTH-1)/ \
++		ACFG_2XHCLK_LGTH)-1)&0x7)<<12) \
++	| (((((2*ACFG_SDRAM_RRD_DELAY+ACFG_2XHCLK_LGTH-1)/ \
++		ACFG_2XHCLK_LGTH)-1)&0x3)<<10) \
++	| (((REG_FIELD_SCLIMX_VAL)&0x3)<<8)\
++	| (((((2*ACFG_SDRAM_RCD_DELAY+ACFG_2XHCLK_LGTH-1)/ \
++		ACFG_2XHCLK_LGTH)-1)&0x7)<<4) \
++	| (((REG_FIELD_SRC_VAL)&0x0F)<<0))
++
++/* Issue Mode register Command to SDRAM*/
++#define ACFG_SDRAM_MODE_REGISTER_VAL\
++	((((ACFG_SDRAM_BURST_LENGTH)&0x7)<<(0))\
++	| (((REG_FIELD_SCL_VAL)&0x7)<<(4))\
++	| ((0)<<(3)) /* sequentiql access */ \
++	/*| (((ACFG_SDRAM_SINGLE_ACCESS)&0x1)<<(1))*/)
++
++/* Issue Extended Mode register Command to SDRAM*/
++#define ACFG_SDRAM_EXT_MODE_REGISTER_VAL\
++	((ACFG_SDRAM_PARTIAL_ARRAY_SR<<0)\
++	| (ACFG_SDRAM_DRIVE_STRENGH<<(5))\
++	| (1<<(ACFG_SDRAM_NUM_COL+ACFG_SDRAM_NUM_ROW+1+2)))
++
++/* Issue Precharge all Command to SDRAM*/
++#define ACFG_SDRAM_PRECHARGE_ALL_VAL (1<<10)
++
++#endif /* __APF27_H */
+diff --git a/board/armadeus/apf27/splboot.S b/board/armadeus/apf27/splboot.S
+new file mode 100644
+index 0000000..bc30acc
+--- /dev/null
++++ b/board/armadeus/apf27/splboot.S
+@@ -0,0 +1,528 @@
++/*
++ *  IMX27 NAND Flash SPL (Secondary Program Loader)
++ *
++ *  Copyright (c) 2008  Armadeus Project / eja
++ *
++ *  Based on Freescale NAND SPL
++ *
++ *  Copyright (C) 1998, 1999, 2000, 2001, 2002 Red Hat, Inc.
++ *  Copyright (c) 2008-2012 Eric Jarrige <eric.jarrige@armadeus.org>
++ *
++ * See file CREDITS for list of people who contributed to this
++ * project.
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of
++ * the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
++ * MA 02111-1307 USA
++ */
++
++#include <config.h>
++#include <generated/asm-offsets.h>
++#include <version.h>
++#include <asm/macro.h>
++#include <asm/arch/imx-regs.h>
++/* #include <linux/linkage.h> */
++#include "apf27.h"
++
++/*
++ * Standard NAND flash commands
++ */
++#define NAND_CMD_READ0		0
++
++/* Extended commands for large page devices */
++#define NAND_CMD_READSTART	0x30
++#define NAND_CMD_CACHEDPROG	0x15
++
++/* Status bits */
++#define NAND_STATUS_FAIL	0x01
++#define NAND_STATUS_FAIL_N1	0x02
++#define NAND_STATUS_TRUE_READY	0x20
++#define NAND_STATUS_READY	0x40
++#define NAND_STATUS_WP		0x80
++
++#define IMX_NFC_MAIN_AREA0      (0xD8000000)
++#define IMX_NFC_MAIN_AREA1      (0xD8000200)
++#define IMX_NFC_SPARE_AREA0     (0xD8000800)
++#define IMX_NFC_REGS            (0xD8000E00)
++
++/*
++ * NFC registers address offset
++ */
++#define NFC_OFFSET_BUF_ADDR            (0x04) /* Buffer Number for Page Data
++                                                 Transfer To/From Flash Mem */
++#define NFC_OFFSET_FLASH_ADDR          (0x06) /* NAND Flash Address */
++#define NFC_OFFSET_FLASH_CMD           (0x08) /* NAND Flash Command */
++#define NFC_OFFSET_CONFIG              (0x0A) /* NFC Internal Buffer Lock
++                                                 Control */
++#define NFC_OFFSET_ECC_STATUS_RESULT   (0x0C) /* Controller Status/Result of
++                                                 Flash Operation */
++#define NFC_OFFSET_CONFIG1             (0x1A) /* Nand Flash Operation
++                                                 Configuration 1 */
++#define NFC_OFFSET_CONFIG2             (0x1C) /* Nand Flash Operation
++                                                 Configuration 2 */
++
++/* NFC_ECC_STATUS_RESULT Status Register Bit Fields */
++#define NFC_ECC_STAT_ERM_SHFT   (2)      /* ERM shift */
++#define NFC_ECC_STAT_ERROR2     (1<<1)   /* non correctable error */
++
++/* NFC_CONFIG Control Register Bit Fields */
++#define NFC_CONFIG_UNLOCKED     (1<<1)   /* unlocked */
++
++/* NFC_CONFIG1 Control Register Bit Fields */
++#define NFC_CONFIG1_ECC_EN	(1<<3)
++#define NFC_CONFIG1_INT_MSK	(1<<4)
++
++/* NFC_CONFIG2 Control Register Bit Fields */
++#define NFC_CONFIG2_INT         (1<<15)  /* Interrupt */
++#define NFC_CONFIG2_FDO_PAGE    (1<<3)   /* Flash data output */
++#define NFC_CONFIG2_FDI         (1<<2)   /* Flash data input */
++#define NFC_CONFIG2_FADD        (1<<1)   /* Flash address input */
++#define NFC_CONFIG2_FCMD        (1<<0)   /* Flash command input */
++
++	.macro nand_boot
++
++#ifdef CONFIG_BOOT_TRACE_REG
++/*
++ * If CONFIG_BOOT_TRACE_REG is a SDRAM address then be sure to use the following
++ * 2 command after SDRAM init
++ */
++
++/* Backup state of previous boot to CONFIG_BOOT_TRACE_REG+4*/
++#define BACKUP_TRACE()			\
++	ldr r4, =CONFIG_BOOT_TRACE_REG;	\
++	ldr r3, [r4];			\
++	str r3, [r4, #0x04];
++
++/* Save a state of boot at CONFIG_BOOT_TRACE_REG */
++#define BOOT_TRACE(val)		\
++	ldr r4, =CONFIG_BOOT_TRACE_REG;	\
++	ldr r3, =val;			\
++	str r3, [r4];
++#else
++#define BACKUP_TRACE()
++#define BOOT_TRACE(val)
++#endif
++
++nand_boot_setup:
++
++	/* Copy SPL image from flash to SDRAM first */
++	BOOT_TRACE(1)
++	ldr r0, =IMX_NFC_MAIN_AREA0
++	add r2, r0, #(IMX_NFC_SPARE_AREA0-IMX_NFC_MAIN_AREA0) //2KB NFC Buff
++	ldr r1, =CONFIG_SYS_NAND_U_BOOT_DST
++
++	BOOT_TRACE(2)
++1:	ldmia r0!, {r3-r10}
++	stmia r1!, {r3-r10}
++	cmp r0, r2
++	blo 1b
++
++
++
++	/* Jump to SDRAM */
++	BOOT_TRACE(3)
++	ldr r1, =0x7FF
++	and r0, pc, r1	 /* offset of pc */
++	ldr r1, =CONFIG_SYS_NAND_U_BOOT_DST
++	add r1, r1, #0x10
++	add pc, r0, r1
++	nop
++	nop
++	nop
++	nop
++
++nand_copy_main:
++	BOOT_TRACE(4)
++	/* r0: nfc base. Reloaded after each page copying		*/
++	ldr r0, =IMX_NFC_MAIN_AREA0
++
++	/* r1: starting flash addr to be copied. Updated constantly	*/
++	/* bypass the first preloaded pages				*/
++	ldr r1, =(IMX_NFC_SPARE_AREA0-IMX_NFC_MAIN_AREA0)
++
++	/* r2: end of 1st RAM buf. Doesn't change			*/
++	ldr r2, =IMX_NFC_MAIN_AREA1
++
++	/* r12: NFC register base. Doesn't change			*/
++	ldr r12, =IMX_NFC_REGS
++
++	ldr r11, =CONFIG_SYS_NAND_U_BOOT_DST
++
++	/* r13: end of SDRAM address for copying. Doesn't change	*/
++	add r13, r11, #CONFIG_SYS_NAND_U_BOOT_SIZE
++
++	/* r11: starting SDRAM address for copying. Updated constantly	*/
++	add r11, r11, r1
++
++	/* unlock internal buffer					*/
++	ldr r3, =NFC_CONFIG_UNLOCKED
++	strh r3, [r12, #NFC_OFFSET_CONFIG]
++
++	/* enable ECC and mask interrupts				*/
++	ldr r3, =(NFC_CONFIG1_ECC_EN | NFC_CONFIG1_INT_MSK)
++	strh r3, [r12, #NFC_OFFSET_CONFIG1]
++
++nfc_read_page:
++	BOOT_TRACE(5)
++	/*  send NAND_CMD_READ0 command				*/
++	ldr r3, =NAND_CMD_READ0;
++	strh r3, [r12, #NFC_OFFSET_FLASH_CMD]
++
++	ldr r3, =NFC_CONFIG2_FCMD
++	strh r3, [r12, #NFC_OFFSET_CONFIG2]
++	bl do_wait_op_done
++
++	/* send NAND address to read. TODO small page support		*/
++	BOOT_TRACE(6)
++	mov r3, r1, lsr #1
++	bl do_addr_input	   /* 1st addr cycle */
++
++	mov r3, r1, lsr #9
++	and r3, r3, #0x03
++	bl do_addr_input	   /* 2nd addr cycle */
++
++	mov r3, r1, lsr #11
++	bl do_addr_input	   /* 3rd addr cycle */
++
++	mov r3, r1, lsr #19
++	bl do_addr_input	   /* 4th addr cycle */
++
++	/* Small NAND flashs (== 1Gb) support 5 addr cycles		*/
++	mov r3, r1, lsr #27
++	bl do_addr_input	   /* 5th addr cycle */
++
++	/* send NAND_CMD_READSTART command. TODO small page support	*/
++	BOOT_TRACE(7)
++	mov r3, #NAND_CMD_READSTART;
++	strh r3, [r12, #NFC_OFFSET_FLASH_CMD]
++	mov r3, #NFC_CONFIG2_FCMD
++	strh r3, [r12, #NFC_OFFSET_CONFIG2]
++	bl do_wait_op_done
++
++	/* read and copy buf 0						*/
++	BOOT_TRACE(8)
++	mov r3, #0
++	strh r3, [r12, #NFC_OFFSET_BUF_ADDR]
++
++	mov r3, #NFC_CONFIG2_FDO_PAGE
++	strh r3, [r12, #NFC_OFFSET_CONFIG2]
++	bl do_wait_op_done
++
++	bl test_and_copy_buffer
++
++	/* read and copy buf 1						*/
++	mov r3, #1
++	strh r3, [r12, #NFC_OFFSET_BUF_ADDR]
++
++	mov r3, #NFC_CONFIG2_FDO_PAGE
++	strh r3, [r12, #NFC_OFFSET_CONFIG2]
++	bl do_wait_op_done
++
++	bl test_and_copy_buffer
++
++	/* here we should test if 512B page flash and bypass next buffers */
++	/* read and copy buf 2. TODO small page support		*/
++	mov r3, #2
++	strh r3, [r12, #NFC_OFFSET_BUF_ADDR]
++
++	mov r3, #NFC_CONFIG2_FDO_PAGE
++	strh r3, [r12, #NFC_OFFSET_CONFIG2]
++	bl do_wait_op_done
++
++	bl test_and_copy_buffer
++
++	/* read and copy buf 3 */
++	mov r3, #3
++	strh r3, [r12, #NFC_OFFSET_BUF_ADDR]
++
++	mov r3, #NFC_CONFIG2_FDO_PAGE
++	strh r3, [r12, #NFC_OFFSET_CONFIG2]
++	bl do_wait_op_done
++
++	bl test_and_copy_buffer
++
++	/* is the last page ? */
++	BOOT_TRACE(12)
++	cmp r11, r13
++	bge nand_copy_main_done
++
++	/* r0: nfc base. Reloaded after each page copying */
++	ldr r0, =IMX_NFC_MAIN_AREA0
++	/* r2: end of 1st RAM buf. Doesn't change */
++	ldr r2, =IMX_NFC_MAIN_AREA1
++	b nfc_read_page
++
++nand_copy_main_done:
++	BOOT_TRACE(13)
++	.endm /* nand_boot */
++
++	.macro init_aipi
++	/*
++	 * setup AIPI1 and AIPI2
++	 */
++	write32 AIPI1_PSR0, ACFG_AIPI1_PSR0_VAL
++	write32 AIPI1_PSR1, ACFG_AIPI1_PSR1_VAL
++	write32 AIPI2_PSR0, ACFG_AIPI2_PSR0_VAL
++	write32 AIPI2_PSR1, ACFG_AIPI2_PSR1_VAL
++
++	/* Change SDRAM signal strengh */
++	ldr r0, =GPCR
++	ldr r1, =ACFG_GPCR_VAL
++	ldr r5, [r0]
++	orr r5, r5, r1
++	str r5, [r0]
++
++	.endm /* init_aipi */
++
++	.macro init_clock
++	ldr r0, =CSCR
++	/* disable MPLL/SPLL first */
++	ldr r1, [r0]
++	bic r1, r1, #(CSCR_MPEN|CSCR_SPEN)
++	str r1, [r0]
++
++ 	/*
++	 * pll clock initialization predefined in apf27.h
++	 */
++	write32 MPCTL0, ACFG_MPCTL0_VAL
++	write32 SPCTL0, ACFG_SPCTL0_VAL
++
++	write32 CSCR, ACFG_CSCR_VAL|CSCR_MPLL_RESTART|CSCR_SPLL_RESTART
++
++	/*
++	 * add some delay here
++	 */
++	mov r1, #0x1000
++	1:  subs r1, r1, #0x1
++	bne 1b
++
++	/* peripheral clock divider */
++	write32 PCDR0, ACFG_PCDR0_VAL
++	write32 PCDR1, ACFG_PCDR1_VAL
++
++	/* Configure PCCR0 and PCCR1 */
++	write32 PCCR0, ACFG_PCCR0_VAL
++	write32 PCCR1, ACFG_PCCR1_VAL
++
++	.endm /* init_clock */
++
++.globl board_init_f
++board_init_f:
++
++	/*
++	 * invalidate I/D cache/TLB and drain write buffer
++	 */
++	mov r0, #0
++	mcr p15, 0, r0, c7, c7, 0	/* invalidate I cache and D cache */
++	mcr p15, 0, r0, c8, c7, 0	/* invalidate TLBs */
++	mcr p15, 0, r0, c7, c10, 4	/* Drain the write buffer */
++
++	/*
++	 * disable MMU stuff and caches
++	 */
++	mrc p15, 0, r0, c1, c0, 0
++	bic	r0, r0, #0x00002300	/* clear bits 13, 9:8 (--V- --RS) */
++	bic	r0, r0, #0x00000087	/* clear bits 7, 2:0 (B--- -CAM) */
++	orr	r0, r0, #0x00000002	/* set bit 2 (A) Align */
++	orr	r0, r0, #0x00001000	/* set bit 12 (I) I-Cache */
++	mcr p15, 0, r0, c1, c0, 0
++
++init_aipi_start:
++	init_aipi
++
++	/* check if sdram has been setup (running within sdram) */
++	cmp pc, #0xa0000000 /* start of first sdram memory space */
++	blo init_clock_start
++	cmp pc, #0xc0000000 /* end of second sdram memory space */
++	blo regular_boot
++
++	/* running from sdram with full code present -> regular_boot */
++init_clock_start:
++	init_clock
++
++init_sdram_start:
++	bl setup_sdram_ddr
++
++	/* save state of previous boot (SDRAM is configured)*/
++	BACKUP_TRACE()
++
++	/* nand_boot BOOT_TRACE(1..13) */
++
++	nand_boot
++
++	BOOT_TRACE(14) /* start regular U-Boot */
++
++regular_boot: /* jump to start of next 2kiB block (U-Boot) */
++	ldr r0, =0xfffff800
++	and r0, r0, pc
++	add pc, r0, #0x800
++
++do_wait_op_done:
++	1:
++	ldrh r3, [r12, #NFC_OFFSET_CONFIG2]
++	ands r3, r3, #NFC_CONFIG2_INT
++	beq 1b
++	mov r3, #0x0
++	strh r3, [r12, #NFC_OFFSET_CONFIG2]
++	mov	pc, lr
++
++do_addr_input:
++	mov r9, lr
++	and r3, r3, #0xFF
++	strh r3, [r12, #NFC_OFFSET_FLASH_ADDR]
++	mov r3, #NFC_CONFIG2_FADD
++	strh r3, [r12, #NFC_OFFSET_CONFIG2]
++	bl do_wait_op_done
++	mov pc, r9
++
++test_and_copy_buffer:
++	/* check for bad block (2 bits error in main or spare are)*/
++	BOOT_TRACE(9)
++	ldrh r4, [r12, #NFC_OFFSET_ECC_STATUS_RESULT]
++	ands r4, r4, #(NFC_ECC_STAT_ERROR2| \
++		(NFC_ECC_STAT_ERROR2<<NFC_ECC_STAT_ERM_SHFT))
++	bne skip_bad_buffer
++
++	/* check BI byte of the current spare buffer */
++	ldr r4, =IMX_NFC_SPARE_AREA0
++	ldrh r3, [r12, #NFC_OFFSET_BUF_ADDR] /* for the current buffer */
++	orr  r4, r3, lsl #0x04
++
++	/* at bi word offset 4. */
++	/* Fixme position change betwwen 8 and 16 bits bus */
++	ldrh r4, [r4, #0x04]
++	and r4, r4, #0x0FF00 /* has to be 0xFFxx */
++	cmp r4, #0x0FF00
++	bne skip_bad_buffer
++
++copy_good_buffer:
++	/* copying 512 bytes buffer */
++	BOOT_TRACE(10)
++1:  ldmia r0!, {r3-r10}
++	stmia r11!, {r3-r10}
++	cmp r0, r2
++	blo 1b
++	b end_of_copy
++
++skip_bad_buffer:
++	BOOT_TRACE(11)
++	/* bad pages do not contain valid data and have to be skip	*/
++	add r0, r0, #0x200
++
++	/* rewind ram addr to start of buffer */
++	ldr r3, =(~0x1FF)
++	and r11, r11, r3
++
++end_of_copy:
++	add r2, r2, #0x200
++	add r1, r1, #0x200
++
++	mov	pc, lr
++
++setup_sdram_ddr:
++
++	/* wait for SDRAM/LPDDR ready (SDRAMRDY) */
++	ldr		r0, =IMX_ESD_BASE
++	ldr		r4, =ESDMISC_SDRAM_RDY
++2:	ldr		r1, [r0, #ESDMISC_ROF]
++	ands		r1, r1, r4
++	bpl		2b
++
++	/* LPDDR Soft Reset Mobile/Low Power DDR SDRAM. */
++	ldr		r0, =IMX_ESD_BASE
++	ldr		r4, =ACFG_ESDMISC_VAL
++	orr		r1, r4, #ESDMISC_MDDR_DL_RST
++	str		r1, [r0, #ESDMISC_ROF]
++
++	/* Hold for more than 200ns */
++	ldr		r1, =0x10000
++1:	subs		r1, r1, #0x1
++	bne		1b
++
++	str		r4, [r0]
++
++	ldr		r0, =IMX_ESD_BASE
++	ldr		r1, =ACFG_SDRAM_ESDCFG_REGISTER_VAL
++	str		r1, [r0, #ESDCFG0_ROF]
++
++	ldr		r0, =IMX_ESD_BASE
++	ldr		r1, =ACFG_PRECHARGE_CMD
++	str		r1, [r0, #ESDCTL0_ROF]
++
++	/* write8(0xA0001000, any value) */
++	ldr		r1, =PHYS_SDRAM_1+ACFG_SDRAM_PRECHARGE_ALL_VAL
++	strb		r2, [r1]
++
++	ldr		r1, =ACFG_AUTOREFRESH_CMD
++	str		r1, [r0, #ESDCTL0_ROF]
++
++	ldr 		r4, =PHYS_SDRAM_1	/* CSD0 base address	*/
++
++	ldr 		r6,=0x7		/* load loop counter	*/
++1:	str 		r5,[r4]		/* run auto-refresh cycle to array 0 */
++	subs 		r6,r6,#1
++	bne 1b
++
++	ldr		r1, =ACFG_SET_MODE_REG_CMD
++	str		r1, [r0, #ESDCTL0_ROF]
++
++	/* set standard mode register */
++	ldr		r4, = PHYS_SDRAM_1+ACFG_SDRAM_MODE_REGISTER_VAL
++	strb		r2, [r4]
++
++	/* set extended mode register */
++	ldr		r4, =PHYS_SDRAM_1+ACFG_SDRAM_EXT_MODE_REGISTER_VAL
++	strb		r5, [r4]
++
++	ldr		r1, =ACFG_NORMAL_RW_CMD
++	str		r1, [r0, #ESDCTL0_ROF]
++
++	/* 2nd sdram */
++	ldr		r0, =IMX_ESD_BASE
++	ldr		r1, =ACFG_SDRAM_ESDCFG_REGISTER_VAL
++	str		r1, [r0, #ESDCFG1_ROF]
++
++	ldr		r0, =IMX_ESD_BASE
++	ldr		r1, =ACFG_PRECHARGE_CMD
++	str		r1, [r0, #ESDCTL1_ROF]
++
++	/* write8(0xB0001000, any value) */
++	ldr		r1, =PHYS_SDRAM_2+ACFG_SDRAM_PRECHARGE_ALL_VAL
++	strb		r2, [r1]
++
++	ldr		r1, =ACFG_AUTOREFRESH_CMD
++	str		r1, [r0, #ESDCTL1_ROF]
++
++	ldr 		r4, =PHYS_SDRAM_2	/* CSD1 base address */
++
++	ldr 		r6,=0x7		/* load loop counter */
++1:	str 		r5,[r4]		/* run auto-refresh cycle to array 0 */
++	subs 		r6,r6,#1
++	bne 1b
++
++	ldr		r1, =ACFG_SET_MODE_REG_CMD
++	str		r1, [r0, #ESDCTL1_ROF]
++
++	/* set standard mode register */
++	ldr		r4, =PHYS_SDRAM_2+ACFG_SDRAM_MODE_REGISTER_VAL
++	strb		r2, [r4]
++
++	/* set extended mode register */
++	ldr		r4, =PHYS_SDRAM_2+ACFG_SDRAM_EXT_MODE_REGISTER_VAL
++	strb		r2, [r4]
++
++	ldr		r1, =ACFG_NORMAL_RW_CMD
++	str		r1, [r0, #ESDCTL1_ROF]
++
++	mov	pc, lr
+diff --git a/boards.cfg b/boards.cfg
+index 0e082a0..58072c0 100644
+--- a/boards.cfg
++++ b/boards.cfg
+@@ -191,6 +191,7 @@ jadecpu                      arm         arm926ejs   jadecpu             syteco
+ mx25pdk                      arm         arm926ejs   mx25pdk             freescale      mx25		mx25pdk:IMX_CONFIG=board/freescale/mx25pdk/imximage.cfg
+ tx25                         arm         arm926ejs   tx25                karo           mx25
+ zmx25                        arm         arm926ejs   zmx25               syteco         mx25
++apf27                        arm         arm926ejs   apf27               armadeus       mx27
+ imx27lite                    arm         arm926ejs   imx27lite           logicpd        mx27
+ magnesium                    arm         arm926ejs   imx27lite           logicpd        mx27
+ mx23_olinuxino               arm         arm926ejs   mx23_olinuxino      olimex         mxs		mx23_olinuxino
+diff --git a/include/configs/apf27.h b/include/configs/apf27.h
+new file mode 100644
+index 0000000..e5e1dea
+--- /dev/null
++++ b/include/configs/apf27.h
+@@ -0,0 +1,448 @@
++/*
++ *
++ * Configuration settings for the Armadeus Project motherboard APF27
++ *
++ * Copyright (C) 2008-2012 ej / Armadeus Project <eric.jarrige@armadeus.org>
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of
++ * the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
++ * MA 02111-1307 USA
++ */
++
++#ifndef __CONFIG_H
++#define __CONFIG_H
++
++#define CONFIG_VERSION_VARIABLE
++#define CONFIG_ENV_VERSION	"3.3"
++#define CONFIG_IDENT_STRING	" apf27 patch 3.9"
++#define CONFIG_BOARD_NAME	apf27
++
++/*
++ * SoC configurations
++ */
++#define CONFIG_ARM926EJS		/* this is an ARM926EJS CPU */
++#define CONFIG_MX27			/* in a Freescale i.MX27 Chip */
++#define CONFIG_MACH_TYPE	1698	/* APF27 */
++
++/*
++ * Enable the call to miscellaneous platform dependent initialization.
++ */
++#define CONFIG_SYS_NO_FLASH	/* to be define before <config_cmd_default.h> */
++#define CONFIG_MISC_INIT_R
++#define CONFIG_BOARD_EARLY_INIT_F
++#ifdef CONFIG_SPL_BUILD
++#define CONFIG_SKIP_LOWLEVEL_INIT
++#endif
++
++/*
++ * Board display option
++ */
++#define CONFIG_DISPLAY_BOARDINFO
++#define CONFIG_DISPLAY_CPUINFO
++
++/*
++ * SPL
++ */
++/* Copy SPL+U-Boot here	     */
++#define CONFIG_SYS_NAND_U_BOOT_DST	(CONFIG_SYS_TEXT_BASE - 0x800)
++/* Size is the partion size  */
++#define CONFIG_SYS_NAND_U_BOOT_SIZE	CONFIG_SYS_MONITOR_LEN
++/* Build image with spl and u-boot */
++#define CONFIG_NAND_U_BOOT
++#define CONFIG_SPL_PAD_TO		0xa0000800
++
++/*
++ * SPL
++ */
++#define	CONFIG_SPL
++#define CONFIG_SPL_TEXT_BASE            0xa0000000
++#define CONFIG_SPL_STACK                0xffffff00
++#define CONFIG_SYS_NAND_U_BOOT_START    0xa0000800
++#define CONFIG_SYS_NAND_U_BOOT_OFFS	0x800
++
++/*
++ * BOOTP options
++ */
++#define CONFIG_BOOTP_SUBNETMASK
++#define CONFIG_BOOTP_GATEWAY
++#define CONFIG_BOOTP_HOSTNAME
++#define CONFIG_BOOTP_BOOTPATH
++#define CONFIG_BOOTP_BOOTFILESIZE
++#define CONFIG_BOOTP_DNS
++#define CONFIG_BOOTP_DNS2
++
++#define CONFIG_HOSTNAME	CONFIG_BOARD_NAME
++#define CONFIG_ROOTPATH	"/tftpboot/" __stringify(CONFIG_BOARD_NAME) "-root"
++
++/*
++ * U-Boot Commands
++ */
++#include <config_cmd_default.h>
++
++#define CONFIG_CMD_ASKENV	/* ask for env variable		*/
++#define CONFIG_CMD_BSP		/* Board Specific functions	*/
++#define CONFIG_CMD_CACHE	/* icache, dcache		*/
++#define CONFIG_CMD_DATE
++#define CONFIG_CMD_DHCP		/* DHCP Support			*/
++#define CONFIG_CMD_DNS
++#define CONFIG_CMD_EEPROM
++#define CONFIG_CMD_EXT2
++#define CONFIG_CMD_FAT		/* FAT support			*/
++#define CONFIG_CMD_IMX_FUSE	/* imx iim fuse                 */
++#define CONFIG_CMD_I2C
++#define CONFIG_CMD_MII		/* MII support			*/
++#define CONFIG_CMD_MMC
++#define CONFIG_CMD_MTDPARTS	/* MTD partition support	*/
++#define CONFIG_CMD_NAND		/* NAND support			*/
++#define CONFIG_CMD_NAND_LOCK_UNLOCK
++#define CONFIG_CMD_NAND_TRIMFFS
++#define CONFIG_CMD_NFS		/* NFS support			*/
++#define CONFIG_CMD_PING		/* ping support			*/
++#define CONFIG_CMD_SETEXPR	/* setexpr support		*/
++#define CONFIG_CMD_UBI
++#define CONFIG_CMD_UBIFS
++
++/*
++ * Memory configurations
++ */
++#define CONFIG_NR_DRAM_POPULATED 1
++#define CONFIG_NR_DRAM_BANKS	2
++
++#define ACFG_SDRAM_MBYTE_SYZE 64
++
++#define PHYS_SDRAM_1			0xA0000000
++#define PHYS_SDRAM_2			0xB0000000
++#define CONFIG_SYS_SDRAM_BASE		PHYS_SDRAM_1
++#define CONFIG_SYS_MALLOC_LEN		(CONFIG_ENV_SIZE + (512<<10))
++#define CONFIG_SYS_MEMTEST_START	0xA0000000	/* memtest test area  */
++#define CONFIG_SYS_MEMTEST_END		0xA0300000	/* 3 MiB RAM test */
++
++#define CONFIG_SYS_INIT_SP_ADDR	(CONFIG_SYS_SDRAM_BASE	\
++		+ PHYS_SDRAM_1_SIZE - 0x0100000)
++
++#define CONFIG_SYS_TEXT_BASE	0xA0000800
++
++/*
++ * FLASH organization
++ */
++#define	ACFG_MONITOR_OFFSET		0x00000000
++#define	CONFIG_SYS_MONITOR_LEN		0x00100000	/* 1MiB */
++#define CONFIG_ENV_IS_IN_NAND
++#define	CONFIG_ENV_OVERWRITE
++#define	CONFIG_ENV_OFFSET		0x00100000	/* NAND offset */
++#define	CONFIG_ENV_SIZE			0x00020000	/* 128kB  */
++#define CONFIG_ENV_RANGE		0X00080000	/* 512kB */
++#define	CONFIG_ENV_OFFSET_REDUND	\
++		(CONFIG_ENV_OFFSET + CONFIG_ENV_RANGE)	/* +512kB */
++#define	CONFIG_ENV_SIZE_REDUND		CONFIG_ENV_SIZE	/* 512kB */
++#define	CONFIG_FIRMWARE_OFFSET		0x00200000
++#define	CONFIG_KERNEL_OFFSET		0x00300000
++#define	CONFIG_ROOTFS_OFFSET		0x00800000
++
++#define CONFIG_MTDMAP			"mxc_nand.0"
++#define MTDIDS_DEFAULT			"nand0=" CONFIG_MTDMAP
++#define MTDPARTS_DEFAULT	"mtdparts=" CONFIG_MTDMAP \
++				":1M(u-boot)ro," \
++				"512K(env)," \
++				"512K(env2)," \
++				"512K(firmware)," \
++				"512K(dtb)," \
++				"5M(kernel)," \
++				"-(rootfs)"
++
++/*
++ * U-Boot general configurations
++ */
++#define CONFIG_SYS_LONGHELP
++#define CONFIG_SYS_PROMPT		"BIOS> "	/* prompt string */
++#define CONFIG_SYS_CBSIZE		2048		/* console I/O buffer */
++#define CONFIG_SYS_PBSIZE		\
++				(CONFIG_SYS_CBSIZE+sizeof(CONFIG_SYS_PROMPT)+16)
++						/* Print buffer size */
++#define CONFIG_SYS_MAXARGS		16		/* max command args */
++#define CONFIG_SYS_BARGSIZE		CONFIG_SYS_CBSIZE
++						/* Boot argument buffer size */
++#define CONFIG_AUTO_COMPLETE
++#define CONFIG_CMDLINE_EDITING
++#define CONFIG_SYS_HUSH_PARSER			/* enable the "hush" shell */
++#define CONFIG_SYS_PROMPT_HUSH_PS2	"> "	/* secondary prompt string */
++
++/*
++ * Boot Linux
++ */
++#define CONFIG_CMDLINE_TAG		/* send commandline to Kernel	*/
++#define CONFIG_SETUP_MEMORY_TAGS	/* send memory definition to kernel */
++#define CONFIG_INITRD_TAG		/* send initrd params	*/
++
++#define CONFIG_OF_LIBFDT
++
++#define CONFIG_BOOTDELAY	5
++#define CONFIG_ZERO_BOOTDELAY_CHECK
++#define	CONFIG_BOOTFILE		__stringify(CONFIG_BOARD_NAME) "-linux.bin"
++#define CONFIG_BOOTARGS		"console=" __stringify(ACFG_CONSOLE_DEV) "," \
++			__stringify(CONFIG_BAUDRATE) " " MTDPARTS_DEFAULT \
++			" ubi.mtd=rootfs root=ubi0:rootfs rootfstype=ubifs "
++
++#define ACFG_CONSOLE_DEV	ttySMX0
++#define CONFIG_BOOTCOMMAND	"run ubifsboot"
++#define CONFIG_SYS_AUTOLOAD	"no"
++/*
++ * Default load address for user programs and kernel
++ */
++#define CONFIG_LOADADDR			0xA0000000
++#define	CONFIG_SYS_LOAD_ADDR		CONFIG_LOADADDR
++
++/*
++ * Extra Environments
++ */
++#define CONFIG_EXTRA_ENV_SETTINGS \
++	"env_version="		CONFIG_ENV_VERSION			"\0" \
++	"consoledev="		__stringify(ACFG_CONSOLE_DEV)		"\0" \
++	"mtdparts="		MTDPARTS_DEFAULT			"\0" \
++	"partition=nand0,6\0"						\
++	"u-boot_addr="		__stringify(ACFG_MONITOR_OFFSET)	"\0" \
++	"env_addr="		__stringify(CONFIG_ENV_OFFSET)		"\0" \
++	"firmware_addr="	__stringify(CONFIG_FIRMWARE_OFFSET)	"\0" \
++	"kernel_addr="		__stringify(CONFIG_KERNEL_OFFSET)	"\0" \
++	"rootfs_addr="		__stringify(CONFIG_ROOTFS_OFFSET)	"\0" \
++	"board_name="		__stringify(CONFIG_BOARD_NAME)		"\0" \
++	"kernel_addr_r=A0000000\0" \
++	"addnfsargs=setenv bootargs ${bootargs} "			\
++		"root=/dev/nfs rw nfsroot=${serverip}:${rootpath}\0"    \
++	"addubifsargs=setenv bootargs ${bootargs} "			\
++		"ubi.mtd=rootfs root=ubi0:rootfs rootfstype=ubifs\0"    \
++	"addmmcargs=setenv bootargs ${bootargs} "			\
++		"root=/dev/mmcblk0p1 rootfstype=ext2\0"			\
++	"addipargs=setenv bootargs ${bootargs} "			\
++		"ip=${ipaddr}:${serverip}:${gatewayip}:${netmask}:"	\
++		"${hostname}:eth0:off \0"				\
++	"nfsboot=setenv bootargs console=${consoledev},${baudrate} "	\
++		"${mtdparts} ${extrabootargs}; run addnfsargs addipargs;"\
++		"nfs ${kernel_addr_r} "					\
++		"${serverip}:${rootpath}/boot/${board_name}-linux.bin;"	\
++		"if test -n ${fdt_addr_r}  ; then "			\
++			"nand read ${fdt_addr_r} dtb; fi;"		\
++		"bootm ${kernel_addr_r} - ${fdt_addr_r}\0"		\
++	"ubifsboot=setenv bootargs console=${consoledev},${baudrate} "	\
++		"${mtdparts} ${extrabootargs};run addubifsargs addipargs;"\
++		"if test -n ${fdt_addr_r}  ; then "			\
++			"nand read ${fdt_addr_r} dtb; fi;"		\
++		"nboot ${kernel_addr_r} kernel;"			\
++		"bootm ${kernel_addr_r} - ${fdt_addr_r}\0"		\
++	"mmcboot=setenv bootargs console=${consoledev},${baudrate} "	\
++		"${mtdparts} ${extrabootargs}; run addmmcargs addipargs;"\
++		"if test -n ${fdt_addr_r}  ; then "			\
++			"nand read ${fdt_addr_r} dtb; fi;"		\
++		"mmc dev 0; ext2load mmc 0 ${kernel_addr_r}"		\
++			" /boot/${board_name}-linux.bin;"		\
++		"bootm ${kernel_addr_r} - ${fdt_addr_r}\0"		\
++	"boot_nfs_fallback_flash=if ping ${serverip};"			\
++			"then echo Boot over NFS; run nfsboot;"		\
++			"else echo Boot from the board; run ubifsboot;"	\
++		"fi\0"							\
++	"firmware_autoload=0\0"						\
++	"flash_uboot=nand unlock ${u-boot_addr} ;"			\
++		"nand erase.part u-boot;"		\
++		"if nand write.trimffs ${fileaddr} ${u-boot_addr} ${filesize};"\
++			"then nand lock; nand unlock ${env_addr};"	\
++				"echo Flashing of uboot succeed;"	\
++			"else echo Flashing of uboot failed;"		\
++		"fi; \0"						\
++	"flash_firmware=nand erase.part firmware;"			\
++	"if nand write.trimffs ${fileaddr} ${firmware_addr} ${filesize};"\
++			"then echo Flashing of Firmware succeed;"	\
++			"else echo Flashing of Firmware failed;"	\
++		"fi\0"							\
++	"flash_kernel=nand erase.part kernel;"				\
++		"if nand write.trimffs ${fileaddr} ${kernel_addr} ${filesize};"\
++			"then echo Flashing of kernel succeed;"		\
++			"else echo Flashing of kernel failed;"		\
++		"fi\0"							\
++	"flash_rootfs=nand erase.part rootfs;"	\
++		"if nand write.trimffs ${fileaddr} ${rootfs_addr} ${filesize};"\
++			"then echo Flashing of rootfs succeed;"		\
++			"else echo Flashing of rootfs failed;"		\
++		"fi\0"							\
++	"flash_dtb=nand erase.part dtb;"				\
++		"if nand write.trimffs ${fileaddr} dtb ${filesize};"	\
++			"then echo Flashing of rootfs succeed;"		\
++			"else echo Flashing of rootfs failed;"		\
++		"fi\0"							\
++	"flash_reset_env=env default -f -a; saveenv;"			\
++		"echo Flash environment variables erased!\0"		\
++	"download_uboot=tftpboot ${loadaddr} ${board_name}-u-boot-nand.bin\0" \
++	"download_kernel=tftpboot ${loadaddr} ${board_name}-linux.bin\0" \
++	"download_rootfs=tftpboot ${loadaddr} ${board_name}-rootfs.ubi\0" \
++	"download_dtb=tftpboot ${loadaddr} imx27-${board_name}.dtb\0" \
++	"update_uboot=run download_uboot flash_uboot\0"			\
++	"update_kernel=run download_kernel flash_kernel\0"		\
++	"update_rootfs=run download_rootfs flash_rootfs\0"		\
++	"update_dtb=run download_dtb flash_dtb\0"		\
++	"update_all=run download_kernel flash_kernel download_rootfs "	\
++		"flash_rootfs download_uboot flash_uboot\0"		\
++	"unlock_regs=mw 10000008 0; mw 10020008 0\0"			\
++
++/*
++ * Serial Driver
++ */
++#define CONFIG_MXC_UART
++#define CONFIG_CONS_INDEX		1
++#define CONFIG_BAUDRATE			115200
++#define CONFIG_MXC_UART_BASE		UART1_BASE
++
++/*
++ * GPIO
++ */
++#define CONFIG_MXC_GPIO
++
++/*
++ * NOR
++ */
++
++/*
++ * NAND
++ */
++#define CONFIG_NAND_MXC
++
++#define CONFIG_MXC_NAND_REGS_BASE	0xD8000000
++#define CONFIG_SYS_NAND_BASE		CONFIG_MXC_NAND_REGS_BASE
++#define CONFIG_SYS_MAX_NAND_DEVICE	1
++
++#define CONFIG_MXC_NAND_HWECC
++#define CONFIG_SYS_NAND_LARGEPAGE
++#define CONFIG_SYS_NAND_BUSWIDTH_16BIT
++#define NAND_MAX_CHIPS			1
++
++
++#define CONFIG_FLASH_SHOW_PROGRESS	45
++#define CONFIG_SYS_NAND_QUIET		1
++
++#define CONFIG_BOOT_TRACE_REG	0xAFFFFFF8 /* Addr to store traces of SPL boot*/
++
++/*
++ * Partitions & Filsystems
++ */
++#define CONFIG_MTD_DEVICE
++#define CONFIG_MTD_PARTITIONS
++#define CONFIG_DOS_PARTITION
++#define CONFIG_SUPPORT_VFAT
++
++/*
++ * UBIFS
++ */
++#define CONFIG_RBTREE
++#define CONFIG_LZO
++
++/*
++ * Ethernet (on SOC imx FEC)
++ */
++#define CONFIG_FEC_MXC
++
++#define CONFIG_NET_MULTI
++#define CONFIG_FEC_MXC_PHYADDR		0x1f
++#define CONFIG_MII			1	/* MII PHY management	*/
++
++/*
++ * FPGA
++ */
++#define CONFIG_FPGA			CONFIG_SYS_SPARTAN3
++#define CONFIG_FPGA_COUNT		1
++#define CONFIG_FPGA_XILINX
++#define CONFIG_FPGA_SPARTAN3
++#define CONFIG_SYS_FPGA_WAIT		20000 /* 20 ms */
++#define CONFIG_SYS_FPGA_PROG_FEEDBACK
++#define CONFIG_SYS_FPGA_CHECK_CTRLC
++#define CONFIG_SYS_FPGA_CHECK_ERROR
++
++/*
++ * Fuses - IIM
++ */
++#ifdef CONFIG_CMD_IMX_FUSE
++#define IIM_MAC_BANK		0
++#define IIM_MAC_ROW		5
++#define IIM0_SCC_KEY		11
++#define IIM1_SUID		1
++#endif
++
++/*
++ * I2C
++ */
++
++#ifdef CONFIG_CMD_I2C
++#define CONFIG_HARD_I2C
++#define CONFIG_I2C_MXC
++#define CONFIG_I2C_MULTI_BUS
++#define CONFIG_SYS_I2C_BASE		IMX_I2C1_BASE
++#define CONFIG_SYS_I2C_SPEED		100000	/* 100 kHz */
++#define CONFIG_SYS_I2C_SLAVE		0x7F
++#define CONFIG_SYS_I2C_NOPROBES		{ }
++
++#ifdef CONFIG_CMD_EEPROM
++# define CONFIG_SYS_I2C_EEPROM_ADDR	0x50	/* EEPROM 24LC02 */
++# define CONFIG_SYS_I2C_EEPROM_ADDR_LEN 1	/* bytes of address */
++#define CONFIG_SYS_EEPROM_PAGE_WRITE_BITS	3
++#define CONFIG_SYS_EEPROM_PAGE_WRITE_DELAY_MS	10	/* msec */
++#endif /* CONFIG_CMD_EEPROM */
++#endif /* CONFIG_CMD_I2C */
++
++/*
++ * SD/MMC
++ */
++#ifdef CONFIG_CMD_MMC
++#define CONFIG_MMC
++#define CONFIG_GENERIC_MMC
++#define CONFIG_MXC_MMC
++#define CONFIG_MXC_MCI_REGS_BASE	0x10014000
++#endif
++
++/*
++ * RTC
++ */
++#ifdef CONFIG_CMD_DATE
++#define CONFIG_RTC_DS1374
++#define CONFIG_SYS_RTC_BUS_NUM		0
++#endif /* CONFIG_CMD_DATE */
++
++/*
++ * Clocks
++ */
++#define	CONFIG_SYS_HZ			1000	/* Ticks per second */
++
++/*
++ * PLL
++ *
++ *  31 | x  |x| x x x x |x x x x x x x x x x |x x|x x x x|x x x x x x x x x x| 0
++ *     |CPLM|X|----PD---|--------MFD---------|XXX|--MFI--|-----MFN-----------|
++ */
++#define CONFIG_MX27_CLK32		32768	/* 32768 or 32000 Hz crystal */
++
++#if (ACFG_SDRAM_MBYTE_SYZE == 64) /* micron MT46H16M32LF -6 */
++/* micron 64MB */
++#define PHYS_SDRAM_1_SIZE			0x04000000 /* 64 MB */
++#define PHYS_SDRAM_2_SIZE			0x04000000 /* 64 MB */
++#endif
++
++#if (ACFG_SDRAM_MBYTE_SYZE == 128)
++/* micron 128MB */
++#define PHYS_SDRAM_1_SIZE			0x08000000 /* 128 MB */
++#define PHYS_SDRAM_2_SIZE			0x08000000 /* 128 MB */
++#endif
++
++#if (ACFG_SDRAM_MBYTE_SYZE == 256)
++/* micron 256MB */
++#define PHYS_SDRAM_1_SIZE			0x10000000 /* 256 MB */
++#define PHYS_SDRAM_2_SIZE			0x10000000 /* 256 MB */
++#endif
++
++#endif /* __CONFIG_H */
+-- 
+1.7.4.4
+

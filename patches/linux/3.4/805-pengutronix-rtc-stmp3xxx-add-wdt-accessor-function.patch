@@ -1,0 +1,147 @@
+From 1a71fb84fda651105e1e194c2d3a3a13a38210a9 Mon Sep 17 00:00:00 2001
+From: Wolfram Sang <w.sang@pengutronix.de>
+Date: Tue, 27 Sep 2011 22:21:37 +0200
+Subject: rtc: stmp3xxx: add wdt-accessor function
+
+This RTC also includes a watchdog timer. Provide an accessor function
+for setting the watchdog timeout value which will be picked up by a
+watchdog driver. Also register the platform_device for the watchdog here
+to get the boot-time dependencies right.
+
+Signed-off-by: Wolfram Sang <w.sang@pengutronix.de>
+Acked-by: Andrew Morton <akpm@linux-foundation.org>
+Signed-off-by: Wim Van Sebroeck <wim@iguana.be>
+
+diff --git a/drivers/rtc/rtc-stmp3xxx.c b/drivers/rtc/rtc-stmp3xxx.c
+index b2a8ed9..98f0d3c 100644
+--- a/drivers/rtc/rtc-stmp3xxx.c
++++ b/drivers/rtc/rtc-stmp3xxx.c
+@@ -27,6 +27,8 @@
+ #include <linux/slab.h>
+ #include <linux/of_device.h>
+ #include <linux/of.h>
++#include <linux/stmp_device.h>
++#include <linux/stmp3xxx_rtc_wdt.h>
+ 
+ #include <mach/common.h>
+ 
+@@ -36,6 +38,7 @@
+ #define STMP3XXX_RTC_CTRL_ALARM_IRQ_EN		0x00000001
+ #define STMP3XXX_RTC_CTRL_ONEMSEC_IRQ_EN	0x00000002
+ #define STMP3XXX_RTC_CTRL_ALARM_IRQ		0x00000004
++#define STMP3XXX_RTC_CTRL_WATCHDOGEN		0x00000010
+ 
+ #define STMP3XXX_RTC_STAT			0x10
+ #define STMP3XXX_RTC_STAT_STALE_SHIFT		16
+@@ -45,6 +48,8 @@
+ 
+ #define STMP3XXX_RTC_ALARM			0x40
+ 
++#define STMP3XXX_RTC_WATCHDOG			0x50
++
+ #define STMP3XXX_RTC_PERSISTENT0		0x60
+ #define STMP3XXX_RTC_PERSISTENT0_SET		0x64
+ #define STMP3XXX_RTC_PERSISTENT0_CLR		0x68
+@@ -52,12 +57,70 @@
+ #define STMP3XXX_RTC_PERSISTENT0_ALARM_EN	0x00000004
+ #define STMP3XXX_RTC_PERSISTENT0_ALARM_WAKE	0x00000080
+ 
++#define STMP3XXX_RTC_PERSISTENT1		0x70
++/* missing bitmask in headers */
++#define STMP3XXX_RTC_PERSISTENT1_FORCE_UPDATER	0x80000000
++
+ struct stmp3xxx_rtc_data {
+ 	struct rtc_device *rtc;
+ 	void __iomem *io;
+ 	int irq_alarm;
+ };
+ 
++#if IS_ENABLED(CONFIG_STMP3XXX_RTC_WATCHDOG)
++/**
++ * stmp3xxx_wdt_set_timeout - configure the watchdog inside the STMP3xxx RTC
++ * @dev: the parent device of the watchdog (= the RTC)
++ * @timeout: the desired value for the timeout register of the watchdog.
++ *           0 disables the watchdog
++ *
++ * The watchdog needs one register and two bits which are in the RTC domain.
++ * To handle the resource conflict, the RTC driver will create another
++ * platform_device for the watchdog driver as a child of the RTC device.
++ * The watchdog driver is passed the below accessor function via platform_data
++ * to configure the watchdog. Locking is not needed because accessing SET/CLR
++ * registers is atomic.
++ */
++
++static void stmp3xxx_wdt_set_timeout(struct device *dev, u32 timeout)
++{
++	struct stmp3xxx_rtc_data *rtc_data = dev_get_drvdata(dev);
++
++	if (timeout) {
++		writel(timeout, rtc_data->io + STMP3XXX_RTC_WATCHDOG);
++		writel(STMP3XXX_RTC_CTRL_WATCHDOGEN,
++		       rtc_data->io + STMP3XXX_RTC_CTRL + STMP_OFFSET_REG_SET);
++		writel(STMP3XXX_RTC_PERSISTENT1_FORCE_UPDATER,
++		       rtc_data->io + STMP3XXX_RTC_PERSISTENT1 + STMP_OFFSET_REG_SET);
++	} else {
++		writel(STMP3XXX_RTC_CTRL_WATCHDOGEN,
++		       rtc_data->io + STMP3XXX_RTC_CTRL + STMP_OFFSET_REG_CLR);
++		writel(STMP3XXX_RTC_PERSISTENT1_FORCE_UPDATER,
++		       rtc_data->io + STMP3XXX_RTC_PERSISTENT1 + STMP_OFFSET_REG_CLR);
++	}
++}
++
++static struct stmp3xxx_wdt_pdata wdt_pdata = {
++	.wdt_set_timeout = stmp3xxx_wdt_set_timeout,
++};
++
++static void stmp3xxx_wdt_register(struct platform_device *rtc_pdev)
++{
++	struct platform_device *wdt_pdev =
++		platform_device_alloc("stmp3xxx_rtc_wdt", rtc_pdev->id);
++
++	if (wdt_pdev) {
++		wdt_pdev->dev.parent = &rtc_pdev->dev;
++		wdt_pdev->dev.platform_data = &wdt_pdata;
++		platform_device_add(wdt_pdev);
++	}
++}
++#else
++static void stmp3xxx_wdt_register(struct platform_device *rtc_pdev)
++{
++}
++#endif /* CONFIG_STMP3XXX_RTC_WATCHDOG */
++
+ static void stmp3xxx_wait_time(struct stmp3xxx_rtc_data *rtc_data)
+ {
+ 	/*
+@@ -233,6 +296,7 @@ static int stmp3xxx_rtc_probe(struct platform_device *pdev)
+ 		goto out_irq_alarm;
+ 	}
+ 
++	stmp3xxx_wdt_register(pdev);
+ 	return 0;
+ 
+ out_irq_alarm:
+diff --git a/include/linux/stmp3xxx_rtc_wdt.h b/include/linux/stmp3xxx_rtc_wdt.h
+new file mode 100644
+index 0000000..1dd12c9
+--- /dev/null
++++ b/include/linux/stmp3xxx_rtc_wdt.h
+@@ -0,0 +1,15 @@
++/*
++ * stmp3xxx_rtc_wdt.h
++ *
++ * Copyright (C) 2011 Wolfram Sang, Pengutronix e.K.
++ *
++ * This file is released under the GPLv2.
++ */
++#ifndef __LINUX_STMP3XXX_RTC_WDT_H
++#define __LINUX_STMP3XXX_RTC_WDT_H
++
++struct stmp3xxx_wdt_pdata {
++	void (*wdt_set_timeout)(struct device *dev, u32 timeout);
++};
++
++#endif /* __LINUX_STMP3XXX_RTC_WDT_H */
+-- 
+cgit v0.10.1
+

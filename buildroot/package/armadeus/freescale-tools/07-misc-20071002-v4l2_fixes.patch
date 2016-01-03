@@ -1,0 +1,76 @@
+linux/videodev.h include doesn't exist anymore on V4L2 only (=recent kernels).
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+diff -urN -X linux-2.6.38.8/Documentation/dontdiff misc-20071002/test/mxc_vpu_test/vpu_capture.c misc-20071002.mod/test/mxc_vpu_test/vpu_capture.c
+--- misc-20071002/test/mxc_vpu_test/vpu_capture.c	2011-10-24 23:43:08.000000000 +0200
++++ misc-20071002.mod/test/mxc_vpu_test/vpu_capture.c	2011-10-24 20:40:54.000000000 +0200
+@@ -31,7 +31,7 @@
+ #include <fcntl.h>
+ 
+ #include <errno.h>
+-#include <linux/videodev.h>
++#include <linux/videodev2.h>
+ #include <string.h>
+ #include <malloc.h>
+ 
+diff -urN -X linux-2.6.38.8/Documentation/dontdiff misc-20071002/test/mxc_vpu_test/vpu_codec.c misc-20071002.mod/test/mxc_vpu_test/vpu_codec.c
+--- misc-20071002/test/mxc_vpu_test/vpu_codec.c	2011-10-24 23:43:08.000000000 +0200
++++ misc-20071002.mod/test/mxc_vpu_test/vpu_codec.c	2011-10-24 20:44:03.000000000 +0200
+@@ -28,7 +28,7 @@
+ #include <string.h>
+ #include <signal.h>
+ #include <sys/time.h>
+-#include <linux/videodev.h>
++#include <linux/videodev2.h>
+ 
+ #include "vpu_voip_test.h"
+ #include "vpu_display.h"
+diff -urN -X linux-2.6.38.8/Documentation/dontdiff misc-20071002/test/mxc_vpu_test/vpu_codec_loopback_opt.c misc-20071002.mod/test/mxc_vpu_test/vpu_codec_loopback_opt.c
+--- misc-20071002/test/mxc_vpu_test/vpu_codec_loopback_opt.c	2011-10-24 23:43:08.000000000 +0200
++++ misc-20071002.mod/test/mxc_vpu_test/vpu_codec_loopback_opt.c	2011-10-24 20:46:04.000000000 +0200
+@@ -28,7 +28,7 @@
+ #include <pthread.h>
+ #include <signal.h>
+ #include <sys/time.h>
+-#include <linux/videodev.h>
++#include <linux/videodev2.h>
+ 
+ #include "vpu_voip_test.h"
+ #include "vpu_display.h"
+diff -urN -X linux-2.6.38.8/Documentation/dontdiff misc-20071002/test/mxc_vpu_test/vpu_display.c misc-20071002.mod/test/mxc_vpu_test/vpu_display.c
+--- misc-20071002/test/mxc_vpu_test/vpu_display.c	2011-10-24 23:43:08.000000000 +0200
++++ misc-20071002.mod/test/mxc_vpu_test/vpu_display.c	2011-10-24 20:41:48.000000000 +0200
+@@ -35,7 +35,7 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <asm/types.h>
+-#include <linux/videodev.h>
++#include <linux/videodev2.h>
+ #include <linux/fb.h>
+ #include <sys/mman.h>
+ #include <math.h>
+diff -urN -X linux-2.6.38.8/Documentation/dontdiff misc-20071002/test/mxc_vpu_test/vpu_voip_test.c misc-20071002.mod/test/mxc_vpu_test/vpu_voip_test.c
+--- misc-20071002/test/mxc_vpu_test/vpu_voip_test.c	2011-10-24 23:43:08.000000000 +0200
++++ misc-20071002.mod/test/mxc_vpu_test/vpu_voip_test.c	2011-10-24 20:45:13.000000000 +0200
+@@ -30,7 +30,7 @@
+ #include <sys/ioctl.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
+-#include <linux/videodev.h>
++#include <linux/videodev2.h>
+ 
+ #include "rtp.h"
+ #include "vpu_display.h"
+diff -urN -X linux-2.6.38.8/Documentation/dontdiff misc-20071002/test/mxc_vpu_test/vpu_loopback_opt_test.c misc-20071002.mod//test/mxc_vpu_test/vpu_loopback_opt_test.c
+--- misc-20071002/test/mxc_vpu_test/vpu_loopback_opt_test.c	2011-10-25 00:02:47.000000000 +0200
++++ misc-20071002.mod//test/mxc_vpu_test/vpu_loopback_opt_test.c	2011-10-24 23:50:01.000000000 +0200
+@@ -29,7 +29,7 @@
+ #include <sys/ioctl.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
+-#include <linux/videodev.h>
++#include <linux/videodev2.h>
+ 
+ #include "rtp.h"
+ #include "vpu_display.h"

@@ -1,0 +1,80 @@
+Joe: Add Joe's Own Editor program.
+
+Signed-off-by: Janos Angeli <angelo@angelo.hu>
+---
+
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in
++++ buildroot/package/Config.in
+@@ -901,6 +901,7 @@ endmenu
+ 
+ menu "Text editors and viewers"
+ source "package/ed/Config.in"
++source "package/joe/Config.in"
+ if BR2_PACKAGE_BUSYBOX_SHOW_OTHERS
+ source "package/less/Config.in"
+ endif
+Index: buildroot/package/joe/Config.in
+===================================================================
+--- /dev/null
++++ buildroot/package/joe/Config.in
+@@ -0,0 +1,5 @@
++config BR2_PACKAGE_JOE
++	bool "joe"
++	help
++	  Joe's Own Editor.
++	  http://joe-editor.sourceforge.net/
+Index: buildroot/package/joe/joe.mk
+===================================================================
+--- /dev/null
++++ buildroot/package/joe/joe.mk
+@@ -0,0 +1,11 @@
++#############################################################
++#
++# Joe
++#
++#############################################################
++JOE_VERSION = 3.7
++JOE_SOURCE = joe-$(JOE_VERSION).tar.gz
++JOE_SITE = http://downloads.sourceforge.net/project/joe-editor/JOE%20sources/joe-$(JOE_VERSION)
++JOE_DEPENDENCIES = ncurses
++
++$(eval $(autotools-package))
+Index: buildroot/package/joe/joe-3.7-disable-j0-j1-y0-y1-math-functions.patch
+===================================================================
+--- /dev/null
++++ buildroot/package/joe/joe-3.7-disable-j0-j1-y0-y1-math-functions.patch
+@@ -0,0 +1,32 @@
++--- joe-3.7.orig/umath.c
+++++ joe-3.7/umath.c
++@@ -396,10 +396,10 @@ double m_ceil(double n) { return ceil(n)
++ double m_fabs(double n) { return fabs(n); }
++ double m_erf(double n) { return erf(n); }
++ double m_erfc(double n) { return erfc(n); }
++-double m_j0(double n) { return j0(n); }
++-double m_j1(double n) { return j1(n); }
++-double m_y0(double n) { return y0(n); }
++-double m_y1(double n) { return y1(n); }
+++//double m_j0(double n) { return j0(n); }
+++//double m_j1(double n) { return j1(n); }
+++//double m_y0(double n) { return y0(n); }
+++//double m_y1(double n) { return y1(n); }
++ 
++ double calc(BW *bw, unsigned char *s)
++ {
++@@ -434,10 +434,10 @@ double calc(BW *bw, unsigned char *s)
++ 		v = get(USTR "abs"); v->func = m_fabs;
++ 		v = get(USTR "erf"); v->func = m_erf;
++ 		v = get(USTR "erfc"); v->func = m_erfc;
++-		v = get(USTR "j0"); v->func = m_j0;
++-		v = get(USTR "j1"); v->func = m_j1;
++-		v = get(USTR "y0"); v->func = m_y0;
++-		v = get(USTR "y1"); v->func = m_y1;
+++//		v = get(USTR "j0"); v->func = m_j0;
+++//		v = get(USTR "j1"); v->func = m_j1;
+++//		v = get(USTR "y0"); v->func = m_y0;
+++//		v = get(USTR "y1"); v->func = m_y1;
++ 	}
++ 
++ 	v = get(USTR "top");

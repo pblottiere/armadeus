@@ -1,0 +1,4 @@
+# User defined U-Boot / environment variable
+# Add your own variables
+welcome= echo Welcome to the Armadeus development environment.
+

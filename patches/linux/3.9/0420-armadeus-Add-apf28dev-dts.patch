@@ -1,0 +1,37 @@
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: linux-3.8-rc5/arch/arm/boot/dts/imx28-apf28dev.dts
+===================================================================
+--- linux-3.8-rc5.orig/arch/arm/boot/dts/imx28-apf28dev.dts
++++ linux-3.8-rc5/arch/arm/boot/dts/imx28-apf28dev.dts
+@@ -32,6 +32,13 @@
+ 				pinctrl-names = "default";
+ 				pinctrl-0 = <&spi2_pins_a>;
+ 				status = "okay";
++/* Uncomment to have spidev on SPI2 (ChipSelect 0):
++				device@0 {
++					compatible = "spidev";
++					reg = <0>;
++					spi-max-frequency = <3125000>;
++				};
++*/
+ 			};
+ 
+ 			pinctrl@80018000 {
+@@ -48,6 +55,7 @@
+ 						0x1143 /* MX28_PAD_LCD_D20__GPIO_1_20 */
+ 						0x1153 /* MX28_PAD_LCD_D21__GPIO_1_21 */
+ 						0x1163 /* MX28_PAD_LCD_D22__GPIO_1_22 */
++						0x1173 /* MX28_PAD_LCD_D23__GPIO_1_23 */
+ 					>;
+ 					fsl,drive-strength = <0>;
+ 					fsl,voltage = <1>;
+@@ -78,6 +86,7 @@
+ 
+ 		apbx@80040000 {
+ 			lradc@80050000 {
++				fsl,lradc-touchscreen-wires = <4>;
+ 				status = "okay";
+ 			};
+ 

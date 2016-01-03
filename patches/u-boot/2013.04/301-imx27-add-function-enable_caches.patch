@@ -1,0 +1,26 @@
+mx27: add function enable_caches
+
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+ arch/arm/cpu/arm926ejs/mx27/generic.c |    6 ++++++
+ 1 files changed, 6 insertions(+), 0 deletions(-)
+
+diff --git a/arch/arm/cpu/arm926ejs/mx27/generic.c b/arch/arm/cpu/arm926ejs/mx27/generic.c
+index 41bb84b..4239fa0 100644
+--- a/arch/arm/cpu/arm926ejs/mx27/generic.c
++++ b/arch/arm/cpu/arm926ejs/mx27/generic.c
+@@ -380,3 +380,9 @@ void mx27_sd2_init_pins(void)
+ 
+ }
+ #endif /* CONFIG_MXC_MMC */
++
++void enable_caches(void)
++{
++	/* Enable D-cache. I-cache is already enabled in start.S */
++	dcache_enable();
++}
+-- 
+1.7.4.4
+
+

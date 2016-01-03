@@ -1,0 +1,38 @@
+usbphy is mandatory to avoid null pointer when a device is (un)plugged.
+
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+---
+Index: linux-3.11-rc1/arch/arm/boot/dts/imx51.dtsi
+===================================================================
+--- linux-3.11-rc1.orig/arch/arm/boot/dts/imx51.dtsi
++++ linux-3.11-rc1/arch/arm/boot/dts/imx51.dtsi
+@@ -182,6 +182,13 @@
+ 				status = "okay";
+ 			};
+ 
++			usbphy1: usbphy@1 {
++				compatible = "usb-nop-xceiv";
++				clocks = <&clks 125>;
++				clock-names = "main_clk";
++				status = "okay";
++			};
++
+ 			usbotg: usb@73f80000 {
+ 				compatible = "fsl,imx51-usb", "fsl,imx27-usb";
+ 				reg = <0x73f80000 0x0200>;
+@@ -198,6 +205,7 @@
+ 				interrupts = <14>;
+ 				clocks = <&clks 108>;
+ 				fsl,usbmisc = <&usbmisc 1>;
++				fsl,usbphy = <&usbphy1>;
+ 				status = "disabled";
+ 			};
+ 
+@@ -207,6 +215,7 @@
+ 				interrupts = <16>;
+ 				clocks = <&clks 108>;
+ 				fsl,usbmisc = <&usbmisc 2>;
++				fsl,usbphy = <&usbphy1>;
+ 				status = "disabled";
+ 			};
+ 

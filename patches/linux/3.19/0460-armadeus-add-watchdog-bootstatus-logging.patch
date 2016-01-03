@@ -1,0 +1,12 @@
+Index: linux-3.16.2/drivers/watchdog/imx2_wdt.c
+===================================================================
+--- linux-3.16.2.orig/drivers/watchdog/imx2_wdt.c	2014-09-06 01:37:11.000000000 +0200
++++ linux-3.16.2/drivers/watchdog/imx2_wdt.c	2014-09-15 13:50:32.106375741 +0200
+@@ -229,6 +229,7 @@
+ 
+ 	regmap_read(wdev->regmap, IMX2_WDT_WRSR, &val);
+ 	wdog->bootstatus = val & IMX2_WDT_WRSR_TOUT ? WDIOF_CARDRESET : 0;
++	dev_info(&pdev->dev, "bootstatus : %d\n", wdog->bootstatus);
+ 
+ 	wdog->timeout = clamp_t(unsigned, timeout, 1, IMX2_WDT_MAX_TIME);
+ 	if (wdog->timeout != timeout)

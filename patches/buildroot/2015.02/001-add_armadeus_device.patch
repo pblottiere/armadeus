@@ -1,0 +1,25 @@
+Add armadeus target specific menu to BR.
+
+Index: buildroot/Makefile
+===================================================================
+--- buildroot.orig/Makefile
++++ buildroot/Makefile
+@@ -386,6 +386,8 @@ ifneq ($(PACKAGE_OVERRIDE_FILE),)
+ -include $(PACKAGE_OVERRIDE_FILE)
+ endif
+
++include target/device/armadeus/Makefile.in
++
+ include $(sort $(wildcard package/*/*.mk))
+
+ include boot/common.mk
+Index: buildroot/system/Config.in
+===================================================================
+--- buildroot.orig/system/Config.in
++++ buildroot/system/Config.in
+@@ -433,4 +433,5 @@ config BR2_ROOTFS_POST_SCRIPT_ARGS
+	  directory / images directory. The arguments in this option will be
+	  passed *after* those.
+
++source "target/device/armadeus/Config.in"
+ endmenu

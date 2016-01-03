@@ -1,0 +1,45 @@
+From 9006d3a3a357c16a426886b59b1688a9ee7f1599 Mon Sep 17 00:00:00 2001
+From: Yegor Yefremov <yegorslists@googlemail.com>
+Date: Sun, 02 Sep 2012 22:37:45 +0000
+Subject: linux-firmware: add ti-connectivity fw v5
+
+Signed-off-by: Yegor Yefremov <yegorslists@googlemail.com>
+Signed-off-by: Peter Korsgaard <jacmet@sunsite.dk>
+---
+(limited to 'package/linux-firmware/linux-firmware.mk')
+
+diff --git a/package/linux-firmware/linux-firmware.mk b/package/linux-firmware/linux-firmware.mk
+index 2a6bfc1..c71dc15 100644
+--- a/package/linux-firmware/linux-firmware.mk
++++ b/package/linux-firmware/linux-firmware.mk
+@@ -6,7 +6,7 @@
+ ifeq ($(BR2_PACKAGE_LINUX_FIRMWARE_88W8686_SDIO),y)
+ LINUX_FIRMWARE_VERSION = af5222c5ded5d944267acfbd001571409bea7eeb
+ else
+-LINUX_FIRMWARE_VERSION = 8ccddee5ee23a0e192da38d98bcbbbb41bf385dd
++LINUX_FIRMWARE_VERSION = 7560108a2c94a62056fa82d912282b901aa0904f
+ endif
+ LINUX_FIRMWARE_SITE = git://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git
+ LINUX_FIRMWARE_SITE_METHOD = git
+@@ -51,6 +51,9 @@ LINUX_FIRMWARE_FILES_$(BR2_PACKAGE_LINUX_FIRMWARE_TI_WL127X) += \
+ 	ti-connectivity/wl127x-fw-4-mr.bin			\
+ 	ti-connectivity/wl127x-fw-4-plt.bin			\
+ 	ti-connectivity/wl127x-fw-4-sr.bin			\
++	ti-connectivity/wl127x-fw-5-mr.bin			\
++	ti-connectivity/wl127x-fw-5-plt.bin			\
++	ti-connectivity/wl127x-fw-5-sr.bin			\
+ 	ti-connectivity/TIInit_7.2.31.bts 			\
+ 	LICENCE.ti-connectivity
+ 
+@@ -66,6 +69,9 @@ LINUX_FIRMWARE_FILES_$(BR2_PACKAGE_LINUX_FIRMWARE_TI_WL128X) += \
+ 	ti-connectivity/wl128x-fw-4-mr.bin			\
+ 	ti-connectivity/wl128x-fw-4-plt.bin			\
+ 	ti-connectivity/wl128x-fw-4-sr.bin			\
++	ti-connectivity/wl128x-fw-5-mr.bin			\
++	ti-connectivity/wl128x-fw-5-plt.bin			\
++	ti-connectivity/wl128x-fw-5-sr.bin			\
+ 	ti-connectivity/TIInit_7.2.31.bts 			\
+ 	LICENCE.ti-connectivity
+ 
+--
+cgit v0.9.0.1-2-gef13

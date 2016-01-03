@@ -1,0 +1,52 @@
+Index: buildroot/package/python-flask-login/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/python-flask-login/Config.in	2015-03-09 18:08:56.848078024 +0100
+@@ -0,0 +1,8 @@
++config BR2_PACKAGE_PYTHON_FLASK_LOGIN
++	bool "python-flask-login"
++	select BR2_PACKAGE_PYTHON_FLASK
++	help
++	  Flask is a microframework for Python based on Werkzeug,
++	  Jinja 2 and good intentions.
++
++	  http://flask.pocoo.org/
+Index: buildroot/package/python-flask-login/python-flask-login.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/python-flask-login/python-flask-login.mk	2015-03-09 18:08:56.848078024 +0100
+@@ -0,0 +1,15 @@
++################################################################################
++#
++# python-flask-login
++#
++################################################################################
++
++PYTHON_FLASK_LOGIN_VERSION = 0.2.11
++PYTHON_FLASK_LOGIN_SOURCE = Flask-Login-$(PYTHON_FLASK_LOGIN_VERSION).tar.gz
++PYTHON_FLASK_LOGIN_SITE = http://pypi.python.org/packages/source/F/Flask-Login
++PYTHON_FLASK_LOGIN_SETUP_TYPE = setuptools
++PYTHON_FLASK_LOGIN_LICENSE = MIT
++PYTHON_FLASK_LOGIN_LICENSE_FILES = LICENSE
++PYTHON_FLASK_LOGIN_DEPENDENCIES = python-flask
++
++$(eval $(python-package))
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2015-03-09 18:08:56.852078024 +0100
++++ buildroot/package/Config.in	2015-03-09 18:20:16.000000000 +0100
+@@ -549,6 +549,7 @@
+ 	source "package/python-enum34/Config.in"
+ 	source "package/python-flask/Config.in"
+ 	source "package/python-flask-jsonrpc/Config.in"
++	source "package/python-flask-login/Config.in"
+ 	source "package/python-flup/Config.in"
+ 	source "package/python-gobject/Config.in"
+ 	source "package/python-httplib2/Config.in"
+Index: buildroot/package/python-flask-login/python-flask-login.hash
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/python-flask-login/python-flask-login.hash	2015-03-09 18:08:56.848078024 +0100
+@@ -0,0 +1,2 @@
++md5	c0a7eaf28623f0aeac4929dc05a7a064  Flask-Login-0.2.11.tar.gz
++sha256	83d5f10e5c4f214feed6cc41c212db63a58a15ac32e56df81591bfa0a5cee3e5  Flask-Login-0.2.11.tar.gz

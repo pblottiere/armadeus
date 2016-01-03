@@ -1,0 +1,7 @@
+#
+#
+
+config MX27_GPT2
+	tristate "Use i.MX27 timer 2 as counter"
+	---help---
+	  TBD.

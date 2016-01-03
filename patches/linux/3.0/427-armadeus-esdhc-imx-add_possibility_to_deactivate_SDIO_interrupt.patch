@@ -1,0 +1,67 @@
+Allows to deactivate SDIO interrupt usage.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: linux-2.6.38.1/include/linux/mmc/sdhci.h
+===================================================================
+--- linux-2.6.38.1.orig/include/linux/mmc/sdhci.h	2011-04-05 15:18:40.000000000 +0200
++++ linux-2.6.38.1/include/linux/mmc/sdhci.h	2011-04-05 15:19:26.000000000 +0200
+@@ -22,6 +22,7 @@ struct sdhci_host {
+ 	const char *hw_name;	/* Hardware bus name */
+ 
+ 	unsigned int quirks;	/* Deviations from spec. */
++	unsigned int quirks2;	/* Deviations from spec. */
+ 
+ /* Controller doesn't honor resets unless we touch the clock register */
+ #define SDHCI_QUIRK_CLOCK_BEFORE_RESET			(1<<0)
+@@ -87,6 +88,9 @@ struct sdhci_host {
+ #define SDHCI_QUIRK_BROKEN_ADMA_ZEROLEN_DESC		(1<<30)
+ /* The read-only detection via SDHCI_PRESENT_STATE register is unstable */
+ #define SDHCI_QUIRK_UNSTABLE_RO_DETECT			(1<<31)
++/* QUIRKS 2 */
++/* Controller do not handle SDIO interrupts correctly */
++#define SDHCI_QUIRK_NO_SDIO_IRQ				(1<<0)
+ 
+ 	int irq;		/* Device IRQ */
+ 	void __iomem *ioaddr;	/* Mapped address */
+Index: linux-2.6.38.1/arch/arm/plat-mxc/include/mach/esdhc.h
+===================================================================
+--- linux-2.6.38.1.orig/arch/arm/plat-mxc/include/mach/esdhc.h	2011-04-05 15:18:40.000000000 +0200
++++ linux-2.6.38.1/arch/arm/plat-mxc/include/mach/esdhc.h	2011-04-05 15:19:26.000000000 +0200
+@@ -22,5 +22,6 @@
+ struct esdhc_platform_data {
+ 	unsigned int wp_gpio;
+ 	unsigned int cd_gpio;
++	unsigned int no_sdio_irq;
+ };
+ #endif /* __ASM_ARCH_IMX_ESDHC_H */
+Index: linux-2.6.38.1/drivers/mmc/host/sdhci-esdhc-imx.c
+===================================================================
+--- linux-2.6.38.1.orig/drivers/mmc/host/sdhci-esdhc-imx.c	2011-04-05 15:22:09.000000000 +0200
++++ linux-2.6.38.1/drivers/mmc/host/sdhci-esdhc-imx.c	2011-04-05 15:23:48.000000000 +0200
+@@ -310,6 +310,9 @@ static int esdhc_pltfm_init(struct sdhci
+ 		imx_data->flags |= ESDHC_FLAG_GPIO_FOR_CD_WP;
+ 		/* Now we have a working card_detect again */
+ 		host->quirks &= ~SDHCI_QUIRK_BROKEN_CARD_DETECTION;
++
++		if (boarddata->no_sdio_irq)
++			host->quirks2 |= SDHCI_QUIRK_NO_SDIO_IRQ;
+ 	}
+ 
+ 	return 0;
+Index: linux-2.6.38.1/drivers/mmc/host/sdhci.c
+===================================================================
+--- linux-2.6.38.1.orig/drivers/mmc/host/sdhci.c	2011-04-05 15:24:22.000000000 +0200
++++ linux-2.6.38.1/drivers/mmc/host/sdhci.c	2011-04-05 15:26:07.000000000 +0200
+@@ -2485,7 +2485,10 @@ int sdhci_add_host(struct sdhci_host *ho
+ 	} else
+ 		mmc->f_min = host->max_clk / SDHCI_MAX_DIV_SPEC_200;
+ 
+-	mmc->caps |= MMC_CAP_SDIO_IRQ | MMC_CAP_ERASE | MMC_CAP_CMD23;
++	mmc->caps |= MMC_CAP_ERASE | MMC_CAP_CMD23;
++
++	if (!(host->quirks2 & SDHCI_QUIRK_NO_SDIO_IRQ))
++		mmc->caps |= MMC_CAP_SDIO_IRQ;
+ 
+ 	if (host->quirks & SDHCI_QUIRK_MULTIBLOCK_READ_ACMD12)
+ 		host->flags |= SDHCI_AUTO_CMD12;

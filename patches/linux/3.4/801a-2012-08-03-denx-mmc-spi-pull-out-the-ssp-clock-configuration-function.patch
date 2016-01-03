@@ -1,0 +1,100 @@
+From 1308239858c33feeeb67003d08c754ee181f33cf Mon Sep 17 00:00:00 2001
+From: Marek Vasut <marex@denx.de>
+Date: Fri, 3 Aug 2012 17:26:10 +0200
+Subject: [PATCH] mmc: spi: Pull out the SSP clock configuration function
+
+Pull out the MMC clock configuration function and make it
+into SSP clock configuration function, so it can be used by
+the SPI driver too.
+
+!! Hacked by JB / Armadeus !!
+
+Signed-off-by: Marek Vasut <marex@denx.de>
+Acked-by: Chris Ball <cjb@laptop.org>
+Acked-by: Shawn Guo <shawn.guo@linaro.org>
+Signed-off-by: Mark Brown <broonie@opensource.wolfsonmicro.com>
+---
+ drivers/clk/Makefile    |    2 +-
+ drivers/clk/mxs/clk-ssp.c   |   62 +++++++++++++++++++++++++++++++++++++++++++
+ drivers/mmc/host/mxs-mmc.c  |   39 +--------------------------
+ include/linux/spi/mxs-spi.h |    2 +
+ 4 files changed, 66 insertions(+), 39 deletions(-)
+ create mode 100644 drivers/clk/mxs/clk-ssp.c
+
+Index: linux-3.4.28/drivers/clk/clk-ssp.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-3.4.28/drivers/clk/clk-ssp.c	2013-02-15 00:20:46.000000000 +0100
+@@ -0,0 +1,62 @@
++/*
++ * Copyright 2012 DENX Software Engineering, GmbH
++ *
++ * Pulled from code:
++ * Portions copyright (C) 2003 Russell King, PXA MMCI Driver
++ * Portions copyright (C) 2004-2005 Pierre Ossman, W83L51xD SD/MMC driver
++ *
++ * Copyright 2008 Embedded Alley Solutions, Inc.
++ * Copyright 2009-2011 Freescale Semiconductor, Inc.
++ *
++ * The code contained herein is licensed under the GNU General Public
++ * License. You may obtain a copy of the GNU General Public License
++ * Version 2 or later at the following locations:
++ *
++ * http://www.opensource.org/licenses/gpl-license.html
++ * http://www.gnu.org/copyleft/gpl.html
++ */
++
++#include <linux/kernel.h>
++#include <linux/init.h>
++#include <linux/clk.h>
++#include <linux/module.h>
++#include <linux/device.h>
++#include <linux/io.h>
++#include <linux/spi/mxs-spi.h>
++
++void mxs_ssp_set_clk_rate(struct mxs_ssp *ssp, unsigned int rate)
++{
++	unsigned int ssp_clk, ssp_sck;
++	u32 clock_divide, clock_rate;
++	u32 val;
++
++	ssp_clk = clk_get_rate(ssp->clk);
++
++	for (clock_divide = 2; clock_divide <= 254; clock_divide += 2) {
++		clock_rate = DIV_ROUND_UP(ssp_clk, rate * clock_divide);
++		clock_rate = (clock_rate > 0) ? clock_rate - 1 : 0;
++		if (clock_rate <= 255)
++			break;
++	}
++
++	if (clock_divide > 254) {
++		dev_err(ssp->dev,
++			"%s: cannot set clock to %d\n", __func__, rate);
++		return;
++	}
++
++	ssp_sck = ssp_clk / clock_divide / (1 + clock_rate);
++
++	val = readl(ssp->base + HW_SSP_TIMING(ssp));
++	val &= ~(BM_SSP_TIMING_CLOCK_DIVIDE | BM_SSP_TIMING_CLOCK_RATE);
++	val |= BF_SSP(clock_divide, TIMING_CLOCK_DIVIDE);
++	val |= BF_SSP(clock_rate, TIMING_CLOCK_RATE);
++	writel(val, ssp->base + HW_SSP_TIMING(ssp));
++
++	ssp->clk_rate = ssp_sck;
++
++	dev_dbg(ssp->dev,
++		"%s: clock_divide %d, clock_rate %d, ssp_clk %d, rate_actual %d, rate_requested %d\n",
++		__func__, clock_divide, clock_rate, ssp_clk, ssp_sck, rate);
++}
++EXPORT_SYMBOL_GPL(mxs_ssp_set_clk_rate);
+Index: linux-3.4.28/drivers/clk/Makefile
+===================================================================
+--- linux-3.4.28.orig/drivers/clk/Makefile	2013-02-15 00:20:58.000000000 +0100
++++ linux-3.4.28/drivers/clk/Makefile	2013-02-15 00:23:49.000000000 +0100
+@@ -1,4 +1,4 @@
+ 
+-obj-$(CONFIG_CLKDEV_LOOKUP)	+= clkdev.o
++obj-$(CONFIG_CLKDEV_LOOKUP)	+= clkdev.o clk-ssp.o
+ obj-$(CONFIG_COMMON_CLK)	+= clk.o clk-fixed-rate.o clk-gate.o \
+ 				   clk-mux.o clk-divider.o

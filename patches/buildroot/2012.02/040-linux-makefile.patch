@@ -1,0 +1,47 @@
+Index: buildroot/linux/linux.mk
+===================================================================
+--- buildroot.orig/linux/linux.mk	2012-02-12 23:22:29.000000000 +0100
++++ buildroot/linux/linux.mk	2012-02-21 20:57:38.000000000 +0100
+@@ -44,7 +44,8 @@
+ 
+ # Get the real Linux version, which tells us where kernel modules are
+ # going to be installed in the target filesystem.
+-LINUX_VERSION_PROBED = $(shell $(MAKE) $(LINUX_MAKE_FLAGS) -C $(LINUX_DIR) --no-print-directory -s kernelrelease)
++LINUX_VERSION_PROBED = $(LINUX_VERSION)
++#LINUX_VERSION_PROBED = $(shell $(MAKE) $(LINUX_MAKE_FLAGS) -C $(LINUX_DIR) --no-print-directory -s kernelrelease)
+ 
+ ifeq ($(BR2_LINUX_KERNEL_IMAGE_TARGET_CUSTOM),y)
+ LINUX_IMAGE_NAME=$(call qstrip,$(BR2_LINUX_KERNEL_IMAGE_TARGET_NAME))
+@@ -124,7 +125,14 @@
+ KERNEL_SOURCE_CONFIG = $(BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE)
+ endif
+ 
++ifeq ($(strip $(BR2_TARGET_ARMADEUS)),y)
++define ARMADEUS_LINUX_CONFIG_HACKS
++	ln -sf $(ARMADEUS_TOPDIR)/target/linux/modules/ $(@D)/drivers/armadeus
++endef
++endif
++
+ define LINUX_CONFIGURE_CMDS
++	$(ARMADEUS_LINUX_CONFIG_HACKS)
+ 	cp $(KERNEL_SOURCE_CONFIG) $(KERNEL_ARCH_PATH)/configs/buildroot_defconfig
+ 	$(TARGET_MAKE_ENV) $(MAKE1) $(LINUX_MAKE_FLAGS) -C $(@D) buildroot_defconfig
+ 	rm $(KERNEL_ARCH_PATH)/configs/buildroot_defconfig
+@@ -168,7 +176,7 @@
+ endif
+ 
+ define LINUX_INSTALL_IMAGES_CMDS
+-	cp $(LINUX_IMAGE_PATH) $(BINARIES_DIR)
++	cp $(LINUX_IMAGE_PATH) $(BINARIES_DIR)/$(ARMADEUS_LINUX_IMAGE_NAME)
+ endef
+ 
+ define LINUX_INSTALL_TARGET_CMDS
+@@ -214,7 +222,7 @@
+ 	# Build the kernel.
+ 	$(TARGET_MAKE_ENV) $(MAKE) $(LINUX_MAKE_FLAGS) -C $(@D) $(LINUX_IMAGE_NAME)
+ 	# Copy the kernel image to its final destination
+-	cp $(LINUX_IMAGE_PATH) $(BINARIES_DIR)
++	cp $(LINUX_IMAGE_PATH) $(BINARIES_DIR)/$(ARMADEUS_LINUX_IMAGE_NAME)
+ 	$(Q)touch $@
+ 
+ # The initramfs building code must make sure this target gets called

@@ -1,0 +1,88 @@
+Add package Marble to Buildroot.
+
+Signed-off-by: Jérémie Scheer <jeremie.scheer@armadeus.com>
+
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2013-08-25 21:48:05.281080224 +0200
++++ buildroot/package/Config.in	2013-08-25 21:48:05.445081025 +0200
+@@ -156,6 +156,7 @@
+ comment "other GUIs"
+ source "package/efl/Config.in"
+ source "package/qt/Config.in"
++source "package/marble/Config.in"
+ 
+ if BR2_PACKAGE_QT
+ comment "QT libraries and helper libraries"
+Index: buildroot/package/marble/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/marble/Config.in	2013-08-25 21:48:05.445081025 +0200
+@@ -0,0 +1,11 @@
++config BR2_PACKAGE_MARBLE
++	bool "KDE Marble"
++	select BR2_PACKAGE_QT
++	select BR2_PACKAGE_QT_SCRIPT
++	select BR2_PACKAGE_QT_SVG
++	select BR2_PACKAGE_QT_WEBKIT
++	select BR2_PACKAGE_QT_XML
++	help
++	  Compile & install KDE Marble for
++	  geolocalization applications.
++
+Index: buildroot/package/marble/marble.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/marble/marble.mk	2013-08-25 21:48:05.445081025 +0200
+@@ -0,0 +1,51 @@
++#############################################################
++#
++# KDE Marble
++#
++#############################################################
++MARBLE_VERSION = 0299004157ce00cf901b6113c4ac14fa0c323c00
++MARBLE_SOURCE = marble-$(MARBLE_VERSION)-source.tar.gz
++MARBLE_SITE = git://anongit.kde.org/marble.git
++MARBLE_SITE_METHOD = git
++
++MARBLE_DEPENDENCIES = qt
++
++MARBLE_CONF_OPT += -DQTONLY=ON
++MARBLE_CONF_OPT += -DTILES_AT_COMPILETIME=OFF
++
++define MARBLE_CONFIGURE_CMDS
++	(cd $(@D) && \
++	rm -f CMakeCache.txt && \
++	$(HOST_DIR)/usr/bin/cmake $(@D) \
++		-DCMAKE_TOOLCHAIN_FILE="$(BASE_DIR)/host/usr/share/buildroot/toolchainfile.cmake" \
++		$(MARBLE_CONF_OPT) \
++	)
++endef
++
++define MARBLE_BUILD_CMDS
++	$(MAKE) -C $(@D)
++endef
++
++MARBLE_INSTALL_STAGING = YES
++
++define MARBLE_CLEAN_TARGET_INSTALL
++	rm -rf $(TARGET_DIR)/usr/local/share/marble/*
++	rm -rf $(TARGET_DIR)/usr/local/include/marble
++	rm -rf $(TARGET_DIR)/usr/local/bin/marble
++endef
++
++define MARBLE_PUT_NECESSARY_DATA_IN_TARGET
++	mkdir -p $(TARGET_DIR)/usr/local/share/marble/data/svg
++	mkdir -p $(TARGET_DIR)/usr/local/share/marble/data/maps/earth
++	cp -rf $(STAGING_DIR)/usr/local/share/marble/cmake $(TARGET_DIR)/usr/local/share/marble
++	cp -rf $(STAGING_DIR)/usr/local/share/marble/data/svg/lunarmap.svg $(TARGET_DIR)/usr/local/share/marble/data/svg
++	cp -rf $(STAGING_DIR)/usr/local/share/marble/data/svg/worldmap.svg $(TARGET_DIR)/usr/local/share/marble/data/svg
++	cp -rf $(STAGING_DIR)/usr/local/share/marble/data/svg/track_turtle.svg $(TARGET_DIR)/usr/local/share/marble/data/svg
++	cp -rf $(STAGING_DIR)/usr/local/share/marble/data/maps/earth/hillshading $(TARGET_DIR)/usr/local/share/marble/data/maps/earth
++	cp -rf $(STAGING_DIR)/usr/local/share/marble/data/maps/earth/openstreetmap $(TARGET_DIR)/usr/local/share/marble/data/maps/earth
++endef
++
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_CLEAN_TARGET_INSTALL
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_PUT_NECESSARY_DATA_IN_TARGET
++
++$(eval $(cmake-package))

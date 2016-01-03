@@ -1,0 +1,32 @@
+#
+# Armadeus custom drivers configuration
+#
+
+menuconfig ARMADEUS_DRIVERS
+	bool "Support for specific Armadeus drivers"
+	---help---
+	  This menu will give you access on some Armadeus drivers and tool.
+
+if ARMADEUS_DRIVERS
+
+comment "Misc."
+source "drivers/armadeus/generic/Kconfig"
+source "drivers/armadeus/as1531_platform/Kconfig"
+source "drivers/armadeus/mxs_lradc/Kconfig"
+source "drivers/armadeus/gpio/Kconfig"
+source "drivers/armadeus/imxlkeypad/Kconfig"
+source "drivers/armadeus/max1027/Kconfig"
+source "drivers/armadeus/max9768/Kconfig"
+
+comment "FPGA related"
+source "drivers/armadeus/fpga/Kconfig"
+
+comment "Handheld related"
+source "drivers/armadeus/pwm/Kconfig"
+source "drivers/armadeus/backlight/Kconfig"
+source "drivers/armadeus/display/Kconfig"
+
+comment "Communication bus related"
+source "drivers/armadeus/isp1761/Kconfig"
+
+endif # ARMADEUS_DRIVERS

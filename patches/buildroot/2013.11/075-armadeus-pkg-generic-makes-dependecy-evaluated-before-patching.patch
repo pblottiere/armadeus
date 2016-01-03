@@ -1,0 +1,23 @@
+Mainly to have xenomai stuff ready befoe having to patch Linux kernel (which
+depends on it).
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/pkg-generic.mk
+===================================================================
+--- buildroot.orig/package/pkg-generic.mk	2014-02-18 17:22:20.586652642 +0100
++++ buildroot/package/pkg-generic.mk	2014-02-18 17:23:07.070883136 +0100
+@@ -394,10 +394,10 @@
+ #  extract
+ #  patch
+ #  configure
+-$(1)-configure:		$(1)-patch $(1)-depends \
+-			$$($(2)_TARGET_CONFIGURE)
++$(1)-configure:		$(1)-patch $$($(2)_TARGET_CONFIGURE)
+ 
+-$(1)-patch:		$(1)-extract $$($(2)_TARGET_PATCH)
++$(1)-patch:		$(1)-extract $(1)-depends \
++			$$($(2)_TARGET_PATCH)
+ 
+ $(1)-extract:		$(1)-source \
+ 			$$($(2)_TARGET_EXTRACT)

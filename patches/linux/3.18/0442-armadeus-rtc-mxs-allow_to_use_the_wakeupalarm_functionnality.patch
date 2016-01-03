@@ -1,0 +1,22 @@
+Without this fix /sys RTC interface can't be used to program a wakeup alarm,
+for example:
+	echo enabled > /sys/class/rtc/rtc0/device/power/wakeup
+	sec=`date '+%s'`
+	let "sec=$sec+30"
+	echo $sec > /sys/class/rtc/rtc0/wakealarm
+	poweroff
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: linux-3.10-rc2/drivers/rtc/rtc-stmp3xxx.c
+===================================================================
+--- linux-3.10-rc2.orig/drivers/rtc/rtc-stmp3xxx.c
++++ linux-3.10-rc2/drivers/rtc/rtc-stmp3xxx.c
+@@ -272,6 +272,7 @@ static int stmp3xxx_rtc_probe(struct pla
+ 			STMP3XXX_RTC_CTRL_ALARM_IRQ_EN,
+ 			rtc_data->io + STMP3XXX_RTC_CTRL_CLR);
+ 
++	device_set_wakeup_capable(&pdev->dev, 1);
+ 	rtc_data->rtc = devm_rtc_device_register(&pdev->dev, pdev->name,
+ 				&stmp3xxx_rtc_ops, THIS_MODULE);
+ 	if (IS_ERR(rtc_data->rtc)) {

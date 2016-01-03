@@ -1,0 +1,20 @@
+Backport from BR mainline for SITE. (Can be removed when switching to BR 2015.05.)
+VERSION is taken frome BR 2013.11 as newer can-utils fails to build on old kernels. TO FIX !
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeuse.com>
+
+Index: buildroot/package/can-utils/can-utils.mk
+===================================================================
+--- buildroot.orig/package/can-utils/can-utils.mk	2015-03-01 22:26:12.000000000 +0100
++++ buildroot/package/can-utils/can-utils.mk	2015-03-09 15:28:02.176007201 +0100
+@@ -4,8 +4,8 @@
+ #
+ ################################################################################
+ 
+-CAN_UTILS_VERSION = 111f8d3acf6f6b30bf208fd9c98399c5fb9d29de
+-CAN_UTILS_SITE = git://gitorious.org/linux-can/can-utils.git
++CAN_UTILS_VERSION = 16c970d40e6c19dde705bad4751bab1a3a4f3a0d
++CAN_UTILS_SITE = $(call github,linux-can,can-utils,$(CAN_UTILS_VERSION))
+ CAN_UTILS_AUTORECONF = YES
+ 
+ $(eval $(autotools-package))

@@ -1,0 +1,7 @@
+# Clock at 96MHz
+NET "Clk" LOC = "N8"; # EIM_BCLK
+NET "Clk" TNM_NET = "Clk";
+TIMESPEC "TS_Clk" = PERIOD "Clk" 10 ns HIGH 50 %;
+# LED
+NET "led_cathode" LOC = "G15"| IOSTANDARD = LVCMOS33 ; #IO_L41N_GCLK8_M1CASN_1
+NET "led_anode"   LOC = "G14"| IOSTANDARD = LVCMOS33 ; #IO_L41P_GCLK9_IRDY_M1RASN_1

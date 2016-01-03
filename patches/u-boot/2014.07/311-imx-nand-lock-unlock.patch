@@ -1,0 +1,98 @@
+mxc_nand.c: Support nand lock/unlock
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+--
+ drivers/mtd/nand/mxc_nand.c |   66 +++++++++++++++++++++++++++++++++++++++++++
+ 1 files changed, 66 insertions(+), 0 deletions(-)
+
+diff --git a/drivers/mtd/nand/mxc_nand.c b/drivers/mtd/nand/mxc_nand.c
+index d0ded48..2bbc1fd 100644
+--- a/drivers/mtd/nand/mxc_nand.c
++++ b/drivers/mtd/nand/mxc_nand.c
+@@ -47,6 +47,28 @@ static struct mxc_nand_host *host = &mxc_host;
+ #define MAIN_SINGLEBIT_ERROR 0x4
+ #define SPARE_SINGLEBIT_ERROR 0x1
+ 
++#ifdef CONFIG_CMD_NAND_LOCK_UNLOCK
++/******************************************************************************
++ * Support for locking / unlocking feature of imx NFC controller
++ *****************************************************************************/
++
++#define NAND_CMD_LOCK		0x2a
++#define NAND_CMD_LOCK_TIGHT	0x2c
++#define NAND_CMD_UNLOCK1	0x23
++#define NAND_CMD_UNLOCK2	0x24
++#define NAND_CMD_LOCK_STATUS	0x7a
++
++/* NFC_WRPROT Control Register Bit Fields */
++#define NFC_WRPROT_UNLOCKBLK	(4<<0)		/* unlock block according to given address range */
++#define NFC_WRPROT_LOCKALL	(2<<0)		/* lock all */
++#define NFC_WRPROT_LOCKTIGHT	(1<<0)		/* lock-tight locked blocks */
++/* NFC_WRPR_STAT Status Register Bit Fields */
++#define NFC_WRPR_US 	        (1<<2)		/* Unlocked status	*/
++#define NFC_WRPR_LS 	        (1<<1)		/* Locked status */
++#define NFC_WRPR_LTS 	        (1<<0)		/* Lock-tight Status */
++
++#endif
++
+ /* OOB placement block for use with hardware ecc generation */
+ #if defined(MXC_NFC_V1)
+ #ifndef CONFIG_SYS_NAND_LARGEPAGE
+@@ -1079,6 +1091,53 @@ void mxc_nand_command(struct mtd_info *mtd, unsigned command,
+ 		}
+ 
+ 		break;
++#ifdef CONFIG_CMD_NAND_LOCK_UNLOCK
++   	case NAND_CMD_LOCK:
++		/* Blocks to be unlocked */
++		writew(-1, &host->regs->unlockstart_blkaddr);
++		writew(-1, &host->regs->unlockend_blkaddr);
++
++		/* Lock Block Command for given address range */
++		writew(NFC_WRPROT_LOCKALL, &host->regs->wrprot);
++		return;
++   	case NAND_CMD_LOCK_TIGHT:
++		/* Blocks to be unlocked */
++		writew(-1, &host->regs->unlockstart_blkaddr);
++		writew(-1, &host->regs->unlockend_blkaddr);
++
++		/* Lock Block Command for given address range */
++		writew(NFC_WRPROT_LOCKTIGHT, &host->regs->wrprot);
++		return;
++   	case NAND_CMD_UNLOCK1:
++		writew(page_addr>>6, &host->regs->unlockstart_blkaddr);
++		return;
++   	case NAND_CMD_UNLOCK2:
++		writew(page_addr>>6, &host->regs->unlockend_blkaddr);
++
++		/* Lock Block Command for given address range */
++		writew(NFC_WRPROT_UNLOCKBLK, &host->regs->wrprot);
++		return;
++   	case NAND_CMD_LOCK_STATUS:
++		host->col_addr = 0;
++		host->spare_only = false;
++
++    		MTDDEBUG(MTD_DEBUG_LEVEL3,"get_lock_status %x\n", readw(&host->regs->nf_wrprst));
++
++		if ((readw(&host->regs->nf_wrprst) & NFC_WRPR_US)
++			&& !(readw(&host->regs->nf_wrprst) & NFC_WRPR_LTS)
++			&& ((readw(&host->regs->unlockend_blkaddr) >= page_addr>>6)
++			&& (readw(&host->regs->unlockstart_blkaddr) <= page_addr>>6))) {
++			void __iomem *main_buf = host->regs->main_area[0];
++			writew(NFC_WRPR_US, main_buf);
++		} else if (readw(&host->regs->nf_wrprst) & NFC_WRPR_LTS) {
++			void __iomem *main_buf = host->regs->main_area[0];
++			writew(readw(&host->regs->nf_wrprst), main_buf);
++		} else {
++			void __iomem *main_buf = host->regs->main_area[0];
++			writew(readw(&host->regs->nf_wrprst) & ~NFC_WRPR_US, main_buf);
++		}
++		return;
++#endif
+ 	}
+ 
+ 	/* Write out the command to the device. */
+-- 
+1.7.2.5
+

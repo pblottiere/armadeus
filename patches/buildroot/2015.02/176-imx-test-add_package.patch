@@ -1,0 +1,148 @@
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/imx-test/Config.in
+===================================================================
+--- /dev/null
++++ buildroot/package/imx-test/Config.in
+@@ -0,0 +1,5 @@
++config BR2_PACKAGE_IMX_TEST
++	bool "imx-test"
++	select BR2_PACKAGE_IMX_LIB
++	help
++	  Freescale specific test utilities for i.MX processors family.
+Index: buildroot/package/imx-test/imx-test.mk
+===================================================================
+--- /dev/null
++++ buildroot/package/imx-test/imx-test.mk
+@@ -0,0 +1,43 @@
++#############################################################
++#
++# imx-test (test tools from Freescale BSP)
++#
++#############################################################
++IMX_TEST_VERSION = 10.11.01
++IMX_TEST_SOURCE = imx-test-$(IMX_TEST_VERSION).tar.gz
++IMX_TEST_SITE = ftp://ftp2.armadeus.com/armadeusw/download/
++IMX_TEST_DEPENDENCIES = imx-lib
++
++ifeq ($(BR2_CPU_NAME),imx27)
++BUILD_PLATFORM = IMX27
++BUILD_CFLAGS = -DCONFIG_ARCH_MX2
++else
++BUILD_PLATFORM = IMX51
++BUILD_CFLAGS = -DCONFIG_ARCH_MX5
++endif
++
++define IMX_TEST_BUILD_CMDS
++	$(MAKE) CC="$(TARGET_CC)" \
++		VERBOSE="" \
++		LINUXPATH=$(LINUX_DIR) \
++		CROSS_COMPILE="$(HOST_DIR)/usr/bin/arm-linux-" \
++		PLATFORM=$(BUILD_PLATFORM) \
++		DIRS="mxc_sahara_test mxc_scc2 mxc_spi_test mxc_vpu_test mxc_uart_test mxc_usb_test" \
++		CFLAGS="$(BUILD_CFLAGS) -I$(LINUX_DIR)/drivers/mxc/security/sahara2/include" \
++		-C $(@D)
++endef
++
++define IMX_TEST_INSTALL_TARGET_CMDS
++	$(MAKE) LINUXPATH=$(LINUX_DIR) INSTALL_MOD_PATH=$(TARGET_DIR) install -C $(@D)/module_test
++	$(MAKE) DESTDIR=$(TARGET_DIR)/unit_tests PLATFORM=IMX51 install -C $(@D)
++endef
++
++define IMX_TEST_UNINSTALL_TARGET_CMDS
++	rm -rf $(TARGET_DIR)/unit_tests
++endef
++
++define IMX_TEST_CLEAN_CMDS
++	-$(MAKE) -C $(@D) clean
++endef
++
++$(eval $(generic-package))
+Index: buildroot/package/imx-test/imx-test-01_fixes.patch
+===================================================================
+--- /dev/null
++++ buildroot/package/imx-test/imx-test-01_fixes.patch
+@@ -0,0 +1,50 @@
++Add some fixes for imx-test. Some are temporary.
++
++Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
++
++diff -urN -X buildroot/output/build/linux-2.6.38.8/Documentation/dontdiff imx-test-10.11.01/module_test/Makefile imx-test-10.11.01.mod//module_test/Makefile
++--- imx-test-10.11.01/module_test/Makefile	2010-11-02 21:53:40.000000000 +0100
+++++ imx-test-10.11.01.mod//module_test/Makefile	2011-10-17 19:29:23.000000000 +0200
++@@ -39,7 +39,8 @@
++                            $(SAHARA_TEST_SOURCE)user_wrap.o
++
++
++-obj-m += $(module_list-y)
+++obj-m += $(module_list-m)
+++obj-y += $(module_list-y)
++
++ EXTRA_CFLAGS := -DLINUX_KERNEL -DIMX_NEEDS_DEPRECATED_SYMBOLS
++
++@@ -51,7 +52,7 @@
++
++ # Need to remove sahara objects because the test app uses same objects
++ all:
++-	$(MAKE) -C $(LINUXPATH) M=`pwd` KBUILD_OUTPUT=$(KBUILD_OUTPUT) ARCH=arm CROSS_COMPILE=$(CROSS_COMPILE)  modules
+++	$(MAKE) -C $(LINUXPATH) SUBDIRS=`pwd` KBUILD_OUTPUT=$(KBUILD_OUTPUT) ARCH=arm CROSS_COMPILE=$(CROSS_COMPILE)  modules
++
++ install:
++ 	$(MAKE) -C $(LINUXPATH) INSTALL_MOD_DIR=test M=`pwd` KBUILD_OUTPUT=$(KBUILD_OUTPUT) ARCH=arm CROSS_COMPILE=$(CROSS_COMPILE)  modules_install
++diff -urN -X buildroot/output/build/linux-2.6.38.8/Documentation/dontdiff imx-test-10.11.01/module_test/scc2_test_driver.c imx-test-10.11.01.mod//module_test/scc2_test_driver.c
++--- imx-test-10.11.01/module_test/scc2_test_driver.c	2010-11-02 21:53:40.000000000 +0100
+++++ imx-test-10.11.01.mod//module_test/scc2_test_driver.c	2011-10-18 16:20:42.000000000 +0200
++@@ -26,6 +26,7 @@
++
++ #include "../include/scc2_test_driver.h"
++
+++#define SCC2_DEBUG
++
++ MODULE_AUTHOR("Freescale Semiconductor");
++ MODULE_DESCRIPTION("Test Device Driver for SCC2 (SMN/SCM) Driver");
++@@ -263,9 +264,9 @@
++ #ifdef SCC2_DEBUG
++         printk("SCC2 TEST: Error in ioctl(): (0x%x) is an invalid "
++                "command (0x%x,0x%x)\n", cmd, SCC2_TEST_GET_CONFIGURATION,
++-               SCC2_TEST_ALLOC_SLOT);
++-        printk("uint64 is %d, alloc is %d\n", sizeof(uint64_t),
++-               sizeof(scc_alloc_slot_access));
+++               SCC2_TEST_RELEASE_PART);
+++/*        printk("uint64 is %d, alloc is %d\n", sizeof(uint64_t),
+++               sizeof(scc_alloc_slot_access));*/
++ #endif
++         error_code = -IOCTL_SCC2_INVALID_CMD;
++         break;
+Index: buildroot/package/imx-test/imx-test-02-mxc_vpu_test_v4l2_fixes.patch
+===================================================================
+--- /dev/null
++++ buildroot/package/imx-test/imx-test-02-mxc_vpu_test_v4l2_fixes.patch
+@@ -0,0 +1,16 @@
++linux/videodev.h include doesn't exist anymore on V4L2 only (=recent kernels).
++
++Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
++
++diff -urN -X linux-2.6.38.8/Documentation/dontdiff imx-test-10.11.01/test/mxc_vpu_test/vpu_test.h imx-test-10.11.01.mod/test/mxc_vpu_test/vpu_test.h
++--- imx-test-10.11.01/test/mxc_vpu_test/vpu_test.h	2010-11-02 21:53:40.000000000 +0100
+++++ imx-test-10.11.01.mod/test/mxc_vpu_test/vpu_test.h	2011-10-24 23:26:23.000000000 +0200
++@@ -16,7 +16,7 @@
++ #ifndef _DEC_H
++ #define _DEC_H
++
++-#include <linux/videodev.h>
+++#include <linux/videodev2.h>
++ #include <pthread.h>
++ #include <errno.h>
++ #include <stdint.h>
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in
++++ buildroot/package/Config.in
+@@ -340,6 +340,7 @@ if BR2_PACKAGE_BUSYBOX_SHOW_OTHERS
+ endif
+	source "package/hwdata/Config.in"
+	source "package/i2c-tools/Config.in"
++	source "package/imx-test/Config.in"
+	source "package/input-event-daemon/Config.in"
+	source "package/input-tools/Config.in"
+	source "package/intel-microcode/Config.in"

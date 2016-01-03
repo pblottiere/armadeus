@@ -1,0 +1,47 @@
+Add support for GPIO SD detection
+
+Signed-off-by: Nicolas Colombain <nicolas.colombain@armadeus.com>
+
+Index: linux-2.6.38.1/drivers/mmc/host/sdhci-esdhc-imx.c
+===================================================================
+--- linux-2.6.38.1.orig/drivers/mmc/host/sdhci-esdhc-imx.c	2011-03-30 18:33:47.000000000 +0200
++++ linux-2.6.38.1/drivers/mmc/host/sdhci-esdhc-imx.c	2011-04-05 18:11:27.000000000 +0200
+@@ -50,6 +50,29 @@ struct pltfm_imx_data {
+ 	u32 scratchpad;
+ };
+ 
++static u32 esdhc_readl(struct sdhci_host *host, int reg)
++{
++	u32 val;
++
++	if (unlikely(reg == SDHCI_PRESENT_STATE)) {
++		/* simulate card presence*/
++		val = readl(host->ioaddr + reg);
++		return val | SDHCI_CARD_PRESENT;
++	}
++
++	return readl(host->ioaddr + reg);
++}
++
++static void esdhc_writel(struct sdhci_host *host, u32 val, int reg)
++{
++	if (unlikely(reg == SDHCI_INT_ENABLE)) {
++		if (! ((val & SDHCI_INT_CARD_REMOVE) || (val & SDHCI_INT_CARD_INSERT)))
++			writel(val, host->ioaddr + reg);
++	}
++	else
++		writel(val, host->ioaddr + reg);
++}
++
+ static inline void esdhc_clrset_le(struct sdhci_host *host, u32 mask, u32 val, int reg)
+ {
+ 	void __iomem *base = host->ioaddr + (reg & ~0x3);
+@@ -273,7 +296,7 @@ static int esdhc_pltfm_init(struct sdhci
+ 		}
+ 
+ 		/* i.MX5x has issues to be researched */
+-		if (!cpu_is_mx25() && !cpu_is_mx35())
++		if (!cpu_is_mx25() && !cpu_is_mx35() && !cpu_is_mx51())
+ 			goto not_supported;
+ 
+ 		err = request_irq(gpio_to_irq(boarddata->cd_gpio), cd_irq,

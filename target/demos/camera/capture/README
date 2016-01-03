@@ -1,0 +1,7 @@
+Compile me:
+* native:
+	$ make CC=gcc
+* cross-compilation:
+	$ make
+* with i.MX27 VPU support:
+	$ make VPU=yes

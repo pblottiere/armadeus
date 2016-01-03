@@ -1,0 +1,38 @@
+From 0e849cd5272155e375152c7da52156d532d74183 Mon Sep 17 00:00:00 2001
+From: Philippe Reynes <tremyfr@yahoo.fr>
+Date: Mon, 20 May 2013 18:41:50 +0200
+Subject: [PATCH] apf27: update init timer to new api
+
+
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+---
+ arch/arm/mach-imx/mach-apf27.c |    6 +-----
+ 1 files changed, 1 insertions(+), 5 deletions(-)
+
+diff --git a/arch/arm/mach-imx/mach-apf27.c b/arch/arm/mach-imx/mach-apf27.c
+index 5b5020c..bf9fe47 100644
+--- a/arch/arm/mach-imx/mach-apf27.c
++++ b/arch/arm/mach-imx/mach-apf27.c
+@@ -282,10 +282,6 @@ static void __init apf27_timer_init(void)
+ 	mx27_clocks_init(26000000); /* init ext ref, even if not used */
+ }
+ 
+-static struct sys_timer apf27_timer = {
+-	.init = apf27_timer_init,
+-};
+-
+ MACHINE_START(APF27, "Armadeus APF27")
+ 	/* Maintainer: Julien Boibessot <julien.boibessot@armadeus.com> */
+ 	.atag_offset = 0x100,
+@@ -293,7 +289,7 @@ MACHINE_START(APF27, "Armadeus APF27")
+ 	.init_early = imx27_init_early,
+ 	.init_irq = mx27_init_irq,
+ 	.handle_irq = imx27_handle_irq,
+-	.timer = &apf27_timer,
++	.init_time = apf27_timer_init,
+ 	.init_machine = apf27_init,
+ 	.restart = mxc_restart,
+ MACHINE_END
+-- 
+1.7.4.4
+

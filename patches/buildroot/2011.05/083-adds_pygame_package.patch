@@ -1,0 +1,221 @@
+This patch adds PyGame package to buildroot.
+Currently added to "graphic libraries".
+
+Movie and Scrap modules are NOT tested: movie requires spmeg (SDL MPEG library)
+and Scrap needs X11.
+numeric*array modules requires Numeric or numpy Python package which is not
+in BR yet.
+
+Commited in BR.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/python-pygame/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/python-pygame/Config.in	2012-01-12 21:20:18.000000000 +0100
+@@ -0,0 +1,76 @@
++config BR2_PACKAGE_PYTHON_PYGAME
++	bool "pygame"
++	depends on BR2_PACKAGE_PYTHON
++	select BR2_PACKAGE_SDL
++	help
++	  Pygame is a cross-platfrom library designed to make it easy to write
++	  multimedia software, such as games, in Python. Pygame requires the
++	  Python language and SDL multimedia library.
++	  It can also make use of several other popular libraries.
++
++	  http://www.pygame.org/
++
++if BR2_PACKAGE_PYTHON_PYGAME
++config BR2_PACKAGE_PYTHON_PYGAME_IMAGE
++	bool "pygame.image"
++	select BR2_PACKAGE_SDL_IMAGE
++	select BR2_PACKAGE_SDL_IMAGE_PNG
++	select BR2_PACKAGE_SDL_IMAGE_JPEG
++	help
++	  pygame module for loading, saving and transfering images.
++	  Will autoselect sdl_image with png and jpeg support.
++
++config BR2_PACKAGE_PYTHON_PYGAME_FONT
++	bool "pygame.font"
++	select BR2_PACKAGE_SDL_TTF
++	help
++	  pygame module for loading and rendering fonts.
++	  Will autoselect sdl_ttf.
++
++config BR2_PACKAGE_PYTHON_PYGAME_MIXER
++	bool "pygame.mixer"
++	select BR2_PACKAGE_SDL_MIXER
++	help
++	  pygame module for loading and playing sounds.
++	  Will autoselect sdl_mixer.
++
++config BR2_PACKAGE_PYTHON_PYGAME_MIXER_MUSIC
++	bool "pygame.mixer.music"
++	depends on BR2_PACKAGE_PYTHON_PYGAME_MIXER
++	help
++	  pygame module for controlling streamed audio
++
++config BR2_PACKAGE_PYTHON_PYGAME_SNDARRAY
++	bool "pygame.sndarray"
++	depends on BR2_PACKAGE_PYTHON_PYGAME_MIXER && BR2_PACKAGE_PYTHON_NUMERIC
++	help
++	  pygame module for accessing sound sample data
++
++comment "pygame.sndarray depends on Python's Numeric extension that is not (yet) supported"
++	depends on !BR2_PACKAGE_PYTHON_PYGAME_SNDARRAY
++
++config BR2_PACKAGE_PYTHON_PYGAME_SURFARRAY
++	bool "pygame.surfarray"
++	depends on BR2_PACKAGE_PYTHON_NUMERIC
++	help
++	  pygame module for accessing surface pixel data using array interfaces
++
++comment "pygame.surfarray depends on Python's Numeric extension that is not (yet) supported"
++	depends on !BR2_PACKAGE_PYTHON_PYGAME_SURFARRAY
++
++config BR2_PACKAGE_PYTHON_PYGAME_MOVIE
++	bool "pygame.movie"
++	depends on BR2_PACKAGE_SMPEG
++	help
++	  pygame module for playback of mpeg video
++
++comment "pygame.movie depends on smpeg"
++	depends on !BR2_PACKAGE_PYTHON_PYGAME_MOVIE
++
++config BR2_PACKAGE_PYTHON_PYGAME_SCRAP
++	bool "pygame.scrap"
++	depends on BR2_PACKAGE_SDL_X11
++	help
++	  pygame module for clipboard support (X11 needed)
++
++endif
+Index: buildroot/package/python-pygame/python-pygame.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/python-pygame/python-pygame.mk	2012-01-12 21:24:05.000000000 +0100
+@@ -0,0 +1,111 @@
++#############################################################
++#
++# Pygame
++#
++#############################################################
++# stable 1.9.1 release requires V4L which has been wiped out of recent Linux
++# kernels, so use latest mercurial revision until next stable release is out.
++PYTHON_PYGAME_VERSION = f0bb4a4b365d
++PYTHON_PYGAME_SOURCE  = pygame-$(PYTHON_PYGAME_VERSION).tar.gz
++PYTHON_PYGAME_SITE = https://bitbucket.org/pygame/pygame
++PYTHON_PYGAME_SITE_METHOD = hg
++
++ifeq ($(BR2_PACKAGE_PYTHON_PYGAME_IMAGE),y)
++PYTHON_PYGAME_OPT_DEPENDS += sdl_image
++endif
++
++ifeq ($(BR2_PACKAGE_PYTHON_PYGAME_FONT),y)
++PYTHON_PYGAME_OPT_DEPENDS += sdl_ttf
++endif
++
++ifeq ($(BR2_PACKAGE_PYTHON_PYGAME_MIXER),y)
++PYTHON_PYGAME_OPT_DEPENDS += sdl_mixer
++endif
++
++PYTHON_PYGAME_DEPENDENCIES = python sdl $(PYTHON_PYGAME_OPT_DEPENDS)
++
++ifneq ($(BR2_PACKAGE_PYTHON_PYGAME_IMAGE),y)
++define PYTHON_PYGAME_UNCONFIGURE_IMAGE
++	$(SED) 's/^imageext/#imageext/' $(@D)/Setup
++endef
++endif
++
++ifneq ($(BR2_PACKAGE_PYTHON_PYGAME_FONT),y)
++define PYTHON_PYGAME_UNCONFIGURE_FONT
++	$(SED) 's/^font/#font/' $(@D)/Setup
++endef
++endif
++
++ifneq ($(BR2_PACKAGE_PYTHON_PYGAME_MIXER),y)
++define PYTHON_PYGAME_UNCONFIGURE_MIXER
++	$(SED) 's/^mixer/#mixer/g' $(@D)/Setup
++endef
++endif
++
++# Both require numpy or numeric python module
++define PYTHON_PYGAME_UNCONFIGURE_SNDARRAY
++	$(SED) 's/^_numericsndarray/#_numericsndarray/' $(@D)/Setup
++endef
++
++define PYTHON_PYGAME_UNCONFIGURE_SURFARRAY
++	$(SED) 's/^_numericsurfarray/#_numericsurfarray/' $(@D)/Setup
++endef
++
++# Requires smpeg
++define PYTHON_PYGAME_UNCONFIGURE_MOVIE
++	$(SED) 's/^movie/#movie/' $(@D)/Setup
++endef
++
++ifneq ($(BR2_PACKAGE_PYTHON_PYGAME_SCRAP),y)
++define PYTHON_PYGAME_UNCONFIGURE_SCRAP
++	$(SED) 's/^scrap/#scrap/' $(@D)/Setup
++endef
++endif
++
++PYTHON_PYGAME_SDL_FLAGS = $(shell $(STAGING_DIR)/usr/bin/sdl-config --cflags)
++PYTHON_PYGAME_SDL_FLAGS += $(shell $(STAGING_DIR)/usr/bin/sdl-config --libs)
++
++# Pygame needs a Setup file where options should be commented out if
++# dependencies are not available
++define PYTHON_PYGAME_CONFIGURE_CMDS
++	cp -f $(@D)/Setup.in $(@D)/Setup
++	$(SED) 's~^SDL = ~SDL = $(PYTHON_PYGAME_SDL_FLAGS) \n#~' $(@D)/Setup
++	$(SED) 's/^pypm/#pypm/' $(@D)/Setup
++	$(PYTHON_PYGAME_UNCONFIGURE_IMAGE)
++	$(PYTHON_PYGAME_UNCONFIGURE_FONT)
++	$(PYTHON_PYGAME_UNCONFIGURE_MIXER)
++	$(PYTHON_PYGAME_UNCONFIGURE_SNDARRAY)
++	$(PYTHON_PYGAME_UNCONFIGURE_SURFARRAY)
++	$(PYTHON_PYGAME_UNCONFIGURE_MOVIE)
++	$(PYTHON_PYGAME_UNCONFIGURE_SCRAP)
++endef
++
++define PYTHON_PYGAME_BUILD_CMDS
++	(cd $(@D); CC="$(TARGET_CC)" CFLAGS="$(TARGET_CFLAGS)" \
++		LDSHARED="$(TARGET_CROSS)gcc -shared" \
++		CROSS_COMPILING=yes \
++		_python_sysroot=$(STAGING_DIR) \
++		_python_srcdir=$(BUILD_DIR)/python$(PYTHON_VERSION) \
++		_python_prefix=/usr \
++		_python_exec_prefix=/usr \
++		$(HOST_DIR)/usr/bin/python setup.py build)
++endef
++
++ifneq ($(BR2_HAVE_DOCUMENTATION),y)
++define PYTHON_PYGAME_REMOVE_DOC
++	rm -rf $(TARGET_DIR)/usr/lib/python*/site-packages/pygame/docs
++endef
++endif
++
++define PYTHON_PYGAME_INSTALL_TARGET_CMDS
++	(cd $(@D); $(HOST_DIR)/usr/bin/python setup.py install \
++		--prefix=$(TARGET_DIR)/usr)
++	rm -rf $(TARGET_DIR)/usr/lib/python*/site-packages/pygame/tests
++	$(PYTHON_PYGAME_REMOVE_DOC)
++endef
++
++define PYTHON_PYGAME_UNINSTALL_TARGET_CMDS
++	rm -rf $(TARGET_DIR)/usr/lib/python*/site-packages/pygame*
++endef
++
++$(eval $(call GENTARGETS,package,python-pygame))
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2012-01-12 21:16:29.000000000 +0100
++++ buildroot/package/Config.in	2012-01-12 21:25:13.000000000 +0100
+@@ -112,6 +112,7 @@
+ source "package/imagemagick/Config.in"
+ source "package/linux-fusion/Config.in"
+ source "package/lite/Config.in"
++source "package/python-pygame/Config.in"
+ source "package/sawman/Config.in"
+ source "package/sdl/Config.in"
+ source "package/sdl_image/Config.in"

@@ -1,0 +1,26 @@
+
+BR maintainer removes this change (and others) with this commit:
+http://git.buildroot.net/buildroot/commit/?id=3bab463be4a42de790b745ab2e873e1c1ce42f2d
+
+We need it because U-Boot's mainline doesn't have (yet?) our boards configs.
+So this patch reverts the removing + refines it.
+
+Index: buildroot/boot/uboot/Config.in
+===================================================================
+--- buildroot.orig/boot/uboot/Config.in	2012-02-21 16:44:24.000000000 +0100
++++ buildroot/boot/uboot/Config.in	2012-02-21 16:44:26.000000000 +0100
+@@ -11,6 +11,14 @@
+ 	  One of U-Boot supported boards to be built.
+ 	  This will be suffixed with _config to meet U-Boot standard naming.
+ 
++config BR2_TARGET_UBOOT_CONFIG_HEADER_FILE
++	string "U-Boot header file"
++	default "$(BR2_BOARD_PATH)/$(BR2_BOARD_NAME)-u-boot-$(BR2_TARGET_UBOOT_VERSION).h"
++	help
++	  U-Boot config header file to use to build U-Boot for your target.
++	  Mainly for people using boards not (yet) integrated in U-Boot's
++	  mainline or wanting to test a config different from the default one.
++
+ choice
+ 	prompt "U-Boot Version"
+ 	default BR2_TARGET_UBOOT_2011_12

@@ -1,0 +1,44 @@
+
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+---
+Index: linux-3.12-rc1/arch/arm/boot/dts/imx27-apf27.dts
+===================================================================
+--- linux-3.12-rc1.orig/arch/arm/boot/dts/imx27-apf27.dts
++++ linux-3.12-rc1/arch/arm/boot/dts/imx27-apf27.dts
+@@ -35,10 +35,14 @@
+ };
+ 
+ &uart1 {
++	pinctrl-0 = <&pinctrl_uart1_1>;
++	pinctrl-names = "default";
+ 	status = "okay";
+ };
+ 
+ &fec {
++	pinctrl-0 = <&pinctrl_fec1_1>;
++	pinctrl-names = "default";
+ 	status = "okay";
+ };
+ 
+Index: linux-3.12-rc1/arch/arm/boot/dts/imx27-apf27dev.dts
+===================================================================
+--- linux-3.12-rc1.orig/arch/arm/boot/dts/imx27-apf27dev.dts
++++ linux-3.12-rc1/arch/arm/boot/dts/imx27-apf27dev.dts
+@@ -76,6 +76,8 @@
+ 
+ &i2c1 {
+ 	clock-frequency = <400000>;
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_i2c1_1>;
+ 	status = "okay";
+ 
+ 	rtc@68 {
+@@ -85,6 +87,8 @@
+ };
+ 
+ &i2c2 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_i2c2_1>;
+ 	status = "okay";
+ };
+ 

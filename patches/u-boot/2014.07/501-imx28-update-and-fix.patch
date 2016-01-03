@@ -1,0 +1,60 @@
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+---
+ arch/arm/cpu/arm926ejs/mxs/u-boot-imx28.bd |    4 ++--
+ common/memsize.c                           |    2 ++
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm/cpu/arm926ejs/mxs/u-boot-imx28.bd b/arch/arm/cpu/arm926ejs/mxs/u-boot-imx28.bd
+index c60615a..f533ad0 100644
+--- a/arch/arm/cpu/arm926ejs/mxs/u-boot-imx28.bd
++++ b/arch/arm/cpu/arm926ejs/mxs/u-boot-imx28.bd
+@@ -8,7 +8,7 @@ section (0) {
+ 	load ivt (entry = 0x0014) > 0x8000;
+ 	hab call 0x8000;
+ 
+-	load u_boot > 0x40000100;
+-	load ivt (entry = 0x40000100) > 0x8000;
++	load u_boot > 0x40000000;
++	load ivt (entry = 0x40000000) > 0x8000;
+ 	hab call 0x8000;
+ }
+--- a/arch/arm/cpu/arm926ejs/mxs/mxsimage.mx28.cfg
++++ b/arch/arm/cpu/arm926ejs/mxs/mxsimage.mx28.cfg
+@@ -3,6 +3,6 @@ SECTION 0x0 BOOTABLE
+  LOAD     0x1000     spl/u-boot-spl.bin
+  LOAD IVT 0x8000     0x1000
+  CALL HAB 0x8000     0x0
+- LOAD     0x40002000 u-boot.bin
+- LOAD IVT 0x8000     0x40002000
++ LOAD     0x40000000 u-boot.bin
++ LOAD IVT 0x8000     0x40000000
+  CALL HAB 0x8000     0x0
+--- a/include/configs/mxs.h
++++ b/include/configs/mxs.h
+@@ -89,7 +89,9 @@
+  * As for the SPL, we must avoid the first 4 KiB as well, but we load the
+  * IVT and CST to 0x8000, so we don't need to waste the subsequent 4 KiB.
+  */
++#ifndef CONFIG_SYS_TEXT_BASE
+ #define CONFIG_SYS_TEXT_BASE		0x40002000
++#endif
+ #define CONFIG_SPL_TEXT_BASE		0x00001000
+ 
+ /* U-Boot general configuration */
+diff --git a/common/memsize.c b/common/memsize.c
+index 963e4f3..a9f76bc 100644
+--- a/common/memsize.c
++++ b/common/memsize.c
+@@ -61,6 +61,8 @@ long get_ram_size(long *base, long maxsize)
+ 		return (0);
+ 	}
+ 
++	sync();
++	*addr = save[i];
+ 	for (cnt = 1; cnt < maxsize / sizeof (long); cnt <<= 1) {
+ 		addr = base + cnt;	/* pointer arith! */
+ 		val = *addr;
+-- 
+1.7.2.5
+

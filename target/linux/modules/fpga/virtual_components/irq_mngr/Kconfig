@@ -1,0 +1,8 @@
+
+config ARMADEUS_FPGA_VIRTUAL_COMPONENTS_IRQ_MNGR
+	tristate "irq manager"
+	default n
+	depends on ARMADEUS_FPGA_VIRTUAL_COMPONENTS
+	---help---
+	  Armadeus driver for virtual irq_mngr component
+

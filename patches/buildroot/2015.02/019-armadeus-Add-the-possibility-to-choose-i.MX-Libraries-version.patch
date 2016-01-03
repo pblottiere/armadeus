@@ -1,0 +1,76 @@
+From 8d3a9e4482c7e349f22fb29bb9676d599d88435a Mon Sep 17 00:00:00 2001
+From: Julien Boibessot <julien.boibessot@armadeus.com>
+Date: Mon, 2 Mar 2015 16:46:07 +0100
+Subject: [PATCH 1/1] Add the possibility to choose i.MX Libraries version
+
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+---
+ package/freescale-imx/Config.in                    |   25 ++++++++++++++++++++
+ package/freescale-imx/freescale-imx.mk             |    2 +-
+ .../0001-vpu-io-fix-IOSystemInit-failure.patch     |    0
+ ...-lib-fix-IOGetVirtMem-return-value-checks.patch |    0
+ 4 files changed, 26 insertions(+), 1 deletion(-)
+ rename package/freescale-imx/imx-vpu/{ => 3.10.17-1.0.0}/0001-vpu-io-fix-IOSystemInit-failure.patch (100%)
+ rename package/freescale-imx/imx-vpu/{ => 3.10.17-1.0.0}/0002-vpu-lib-fix-IOGetVirtMem-return-value-checks.patch (100%)
+
+diff --git a/package/freescale-imx/Config.in b/package/freescale-imx/Config.in
+index 72d3c59..c2629b3 100644
+--- a/package/freescale-imx/Config.in
++++ b/package/freescale-imx/Config.in
+@@ -42,6 +42,31 @@ config BR2_PACKAGE_FREESCALE_IMX_PLATFORM
+ 	default "IMX53" if BR2_PACKAGE_FREESCALE_IMX_PLATFORM_IMX53
+ 	default "IMX6Q" if BR2_PACKAGE_FREESCALE_IMX_PLATFORM_IMX6Q
+ 
++choice
++	prompt "Version"
++	help
++	  Freescale libraries are tidly binded with Linux kernel and so one
++	  must choose the right librairies version for the right kernel.
++	  For ex: rel_imx_3.10.17_1.0.0_ga kernel works only with 3.10.17-1.0.0
++	  libraires.
++
++config BR2_PACKAGE_FREESCALE_IMX_VERSION_3_10_17
++	bool "3.10.17-1.0.0"
++
++config BR2_PACKAGE_FREESCALE_IMX_VERSION_3_10_31
++	bool "3.10.31-1.1.0-beta"
++
++config BR2_PACKAGE_FREESCALE_IMX_VERSION_3_10_53
++	bool "3.10.53-1.0.0"
++
++endchoice
++
++config BR2_PACKAGE_FREESCALE_IMX_VERSION
++	string
++	default "3.10.17-1.0.0" if BR2_PACKAGE_FREESCALE_IMX_VERSION_3_10_17
++	default "3.10.31-1.1.0-beta" if BR2_PACKAGE_FREESCALE_IMX_VERSION_3_10_31
++	default "3.10.53-1.0.0" if BR2_PACKAGE_FREESCALE_IMX_VERSION_3_10_53
++
+ source "package/freescale-imx/imx-lib/Config.in"
+ source "package/freescale-imx/imx-vpu/Config.in"
+ source "package/freescale-imx/firmware-imx/Config.in"
+diff --git a/package/freescale-imx/freescale-imx.mk b/package/freescale-imx/freescale-imx.mk
+index 64f3b6b..e34205a 100644
+--- a/package/freescale-imx/freescale-imx.mk
++++ b/package/freescale-imx/freescale-imx.mk
+@@ -4,7 +4,7 @@
+ #
+ ################################################################################
+ 
+-FREESCALE_IMX_VERSION = 3.10.17-1.0.0
++FREESCALE_IMX_VERSION = $(call qstrip,$(BR2_PACKAGE_FREESCALE_IMX_VERSION))
+ FREESCALE_IMX_SITE = http://www.freescale.com/lgfiles/NMG/MAD/YOCTO
+ 
+ # Helper for self-extracting binaries distributed by Freescale.
+diff --git a/package/freescale-imx/imx-vpu/0001-vpu-io-fix-IOSystemInit-failure.patch b/package/freescale-imx/imx-vpu/3.10.17-1.0.0/0001-vpu-io-fix-IOSystemInit-failure.patch
+similarity index 100%
+rename from package/freescale-imx/imx-vpu/0001-vpu-io-fix-IOSystemInit-failure.patch
+rename to package/freescale-imx/imx-vpu/3.10.17-1.0.0/0001-vpu-io-fix-IOSystemInit-failure.patch
+diff --git a/package/freescale-imx/imx-vpu/0002-vpu-lib-fix-IOGetVirtMem-return-value-checks.patch b/package/freescale-imx/imx-vpu/3.10.17-1.0.0/0002-vpu-lib-fix-IOGetVirtMem-return-value-checks.patch
+similarity index 100%
+rename from package/freescale-imx/imx-vpu/0002-vpu-lib-fix-IOGetVirtMem-return-value-checks.patch
+rename to package/freescale-imx/imx-vpu/3.10.17-1.0.0/0002-vpu-lib-fix-IOGetVirtMem-return-value-checks.patch
+-- 
+1.7.9.5
+

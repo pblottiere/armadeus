@@ -1,0 +1,17 @@
+Fix IW download URL.
+
+Signed-off-by: Jérémie Scheer <jeremie.scheer@armadeus.com>
+
+Index: buildroot/package/iw/iw.mk
+===================================================================
+--- buildroot.orig/package/iw/iw.mk	2012-02-29 23:19:47.000000000 +0100
++++ buildroot/package/iw/iw.mk	2013-03-12 10:33:46.000000000 +0100
+@@ -6,7 +6,7 @@
+ 
+ IW_VERSION = 3.3
+ IW_SOURCE = iw-$(IW_VERSION).tar.bz2
+-IW_SITE = http://wireless.kernel.org/download/iw
++IW_SITE = $(BR2_KERNEL_MIRROR)/software/network/iw
+ IW_DEPENDENCIES = host-pkg-config libnl
+ IW_CONFIG = $(IW_DIR)/.config
+ IW_MAKE_ENV = PKG_CONFIG_PATH="$(STAGING_DIR)/usr/lib/pkgconfig" \

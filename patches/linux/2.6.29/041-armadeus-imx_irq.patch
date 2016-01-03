@@ -1,0 +1,25 @@
+Index: linux-2.6.29.4/arch/arm/mach-imx/irq.c
+===================================================================
+--- linux-2.6.29.4.orig/arch/arm/mach-imx/irq.c	2009-03-24 00:12:14.000000000 +0100
++++ linux-2.6.29.4/arch/arm/mach-imx/irq.c	2009-06-04 09:54:16.000000000 +0200
+@@ -122,6 +122,12 @@
+ #endif /* CONFIG_FIQ */
+ 
+ static int
++imx_irq_type(unsigned int _irq, unsigned int type)
++{
++    return 0;
++}
++
++static int
+ imx_gpio_irq_type(unsigned int _irq, unsigned int type)
+ {
+ 	unsigned int irq_type = 0, irq, reg, bit;
+@@ -256,6 +262,7 @@
+ 	.ack = imx_mask_irq,
+ 	.mask = imx_mask_irq,
+ 	.unmask = imx_unmask_irq,
++	.set_type = imx_irq_type,
+ };
+ 
+ static struct irq_chip imx_gpio_chip = {

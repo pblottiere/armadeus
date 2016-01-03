@@ -1,0 +1,1802 @@
+Add APF28Dev support to Freescale's 2.6.35 BSP.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+
+Index: linux-2.6.35.3/arch/arm/mach-mx28/Kconfig
+===================================================================
+--- linux-2.6.35.3.orig/arch/arm/mach-mx28/Kconfig
++++ linux-2.6.35.3/arch/arm/mach-mx28/Kconfig
+@@ -16,6 +16,22 @@ config MACH_APF28
+ 
+ endchoice
+ 
++config MACH_APF28_HAS_BASEBOARD
++	bool
++
++choice
++	prompt "APF28 baseboard choice"
++	depends on MACH_APF28
++
++config MACH_APF28DEV
++	bool "Armadeus systems APF28Dev"
++	select MACH_APF28_HAS_BASEBOARD
++	help
++	  Include support for the Armadeus systems APF28Dev. This includes
++	  specific configurations for the module and its peripherals.
++
++endchoice
++
+ config VECTORS_PHY_ADDR
+ 	int "vectors address"
+ 	default 0
+Index: linux-2.6.35.3/arch/arm/mach-mx28/Makefile
+===================================================================
+--- linux-2.6.35.3.orig/arch/arm/mach-mx28/Makefile
++++ linux-2.6.35.3/arch/arm/mach-mx28/Makefile
+@@ -6,6 +6,7 @@ obj-y += pinctrl.o clock.o device.o seri
+ # Board select
+ obj-$(CONFIG_MACH_MX28EVK) += mx28evk.o mx28evk_pins.o
+ obj-$(CONFIG_MACH_APF28)   += mach-apf28.o
++obj-$(CONFIG_MACH_APF28DEV)+= apf28dev.o
+ obj-$(CONFIG_GENERIC_GPIO) += gpio.o
+ obj-$(CONFIG_MXS_RAM_FREQ_SCALING) +=emi.o emi_settings.o
+ 
+Index: linux-2.6.35.3/arch/arm/mach-mx28/apf28dev.c
+===================================================================
+--- /dev/null
++++ linux-2.6.35.3/arch/arm/mach-mx28/apf28dev.c
+@@ -0,0 +1,1085 @@
++/*
++ * Copyright (C) 2012 Armadeus systems
++ *
++ * Based on code which is:
++ * Copyright (C) 2009-2010 Freescale Semiconductor, Inc. All Rights Reserved.
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program; if not, write to the Free Software Foundation, Inc.,
++ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
++ */
++
++#include <linux/kernel.h>
++#include <linux/init.h>
++#include <linux/io.h>
++#include <linux/err.h>
++#include <linux/clk.h>
++#include <linux/delay.h>
++#include <linux/fec.h>
++#include <linux/fsl_devices.h>
++#include <linux/gpio_keys.h>
++#include <linux/input.h>
++#include <linux/leds.h>
++#include <linux/mmc/host.h>
++#include <linux/platform_device.h>
++#include <linux/i2c.h>
++
++#include <asm/setup.h>
++#include <asm/mach-types.h>
++#include <asm/mach/arch.h>
++
++#include <mach/apf28.h>
++#include <mach/arc_otg.h>
++#include <mach/device.h>
++#include <mach/dma.h>
++#include <mach/hardware.h>
++#include <mach/pinctrl.h>
++
++#include <linux/spi/spi.h>
++
++#include "mx28_pins.h"
++#include "device.h"
++#include "usb.h"
++#include "../../../drivers/armadeus/pwm/mxs-pwm.h"
++#include "../../../drivers/armadeus/mxs_lradc/mxs_lradc.h"
++
++#define USB_POWER_ENABLE MXS_PIN_TO_GPIO(PINID_LCD_D23)
++
++static struct pin_desc apf28dev_fixed_pins[] = {
++	/* USB OTG VBus */
++	{
++		.name = "USB_VBUS",
++		.id = PINID_LCD_D23,
++		.fun = PIN_GPIO,
++		.strength = PAD_8MA,
++		.voltage = PAD_3_3V,
++		.drive = 1,
++		.data = 0,
++		.output = 1,
++	},
++	/* USB OTG ID */
++	{
++		.name = "USB_ID",
++		.id = PINID_PWM2,
++		.fun = PIN_FUN2,
++		.strength = PAD_8MA,
++		.voltage = PAD_3_3V,
++		.drive = 1,
++		.pull 	= 0,
++		.pullup = 0,
++	},
++#if defined(CONFIG_FB_MXS) || defined(CONFIG_FB_MXS_MODULE)
++	{
++		.name = "LCD_D00",
++		.id = PINID_LCD_D00,
++		.fun = PIN_FUN1,
++		.strength = PAD_8MA,
++		.voltage = PAD_3_3V,
++		.drive = 1,
++	},
++	{
++		.name = "LCD_D01",
++		.id = PINID_LCD_D01,
++		.fun = PIN_FUN1,
++		.strength = PAD_8MA,
++		.voltage = PAD_3_3V,
++		.drive = 1,
++	},
++	{
++		.name = "LCD_D02",
++		.id = PINID_LCD_D02,
++		.fun = PIN_FUN1,
++		.strength = PAD_8MA,
++		.voltage = PAD_3_3V,
++		.drive = 1,
++	},
++	{
++		.name = "LCD_D03",
++		.id = PINID_LCD_D03,
++		.fun = PIN_FUN1,
++		.strength = PAD_8MA,
++		.voltage = PAD_3_3V,
++		.drive = 1,
++	},
++	{
++		.name = "LCD_D04",
++		.id = PINID_LCD_D04,
++		.fun = PIN_FUN1,
++		.strength = PAD_8MA,
++		.voltage = PAD_3_3V,
++		.drive = 1,
++	},
++	{
++		.name = "LCD_D05",
++		.id = PINID_LCD_D05,
++		.fun = PIN_FUN1,
++		.strength = PAD_8MA,
++		.voltage = PAD_3_3V,
++		.drive = 1,
++	},
++	{
++		.name = "LCD_D06",
++		.id = PINID_LCD_D06,
++		.fun = PIN_FUN1,
++		.strength = PAD_8MA,
++		.voltage = PAD_3_3V,
++		.drive = 1,
++	},
++	{
++		.name = "LCD_D07",
++		.id = PINID_LCD_D07,
++		.fun = PIN_FUN1,
++		.strength = PAD_8MA,
++		.voltage = PAD_3_3V,
++		.drive = 1,
++	},
++	{
++		.name = "LCD_D08",
++		.id = PINID_LCD_D08,
++		.fun = PIN_FUN1,
++		.strength = PAD_8MA,
++		.voltage = PAD_3_3V,
++		.drive = 1,
++	},
++	{
++		.name = "LCD_D09",
++		.id = PINID_LCD_D09,
++		.fun = PIN_FUN1,
++		.strength = PAD_8MA,
++		.voltage = PAD_3_3V,
++		.drive = 1,
++	},
++	{
++		.name = "LCD_D10",
++		.id = PINID_LCD_D10,
++		.fun = PIN_FUN1,
++		.strength = PAD_8MA,
++		.voltage = PAD_3_3V,
++		.drive = 1,
++	},
++	{
++		.name = "LCD_D11",
++		.id = PINID_LCD_D11,
++		.fun = PIN_FUN1,
++		.strength = PAD_8MA,
++		.voltage = PAD_3_3V,
++		.drive = 1,
++	},
++	{
++		.name = "LCD_D12",
++		.id = PINID_LCD_D12,
++		.fun = PIN_FUN1,
++		.strength = PAD_8MA,
++		.voltage = PAD_3_3V,
++		.drive = 1,
++	},
++	{
++		.name = "LCD_D13",
++		.id = PINID_LCD_D13,
++		.fun = PIN_FUN1,
++		.strength = PAD_8MA,
++		.voltage = PAD_3_3V,
++		.drive = 1,
++	},
++	{
++		.name = "LCD_D14",
++		.id = PINID_LCD_D14,
++		.fun = PIN_FUN1,
++		.strength = PAD_8MA,
++		.voltage = PAD_3_3V,
++		.drive = 1,
++	},
++	{
++		.name = "LCD_D15",
++		.id = PINID_LCD_D15,
++		.fun = PIN_FUN1,
++		.strength = PAD_8MA,
++		.voltage = PAD_3_3V,
++		.drive = 1,
++	},
++	{
++		.name = "LCD_VSYNC",
++		.id = PINID_LCD_RD_E,
++		.fun = PIN_FUN2,
++		.strength = PAD_8MA,
++		.voltage = PAD_3_3V,
++		.drive = 1,
++	},
++	{
++		.name = "LCD_HSYNC",
++		.id = PINID_LCD_WR_RWN,
++		.fun = PIN_FUN2,
++		.strength = PAD_8MA,
++		.voltage = PAD_3_3V,
++		.drive = 1,
++	},
++	{
++		.name = "LCD_OE_ACD",
++		.id = PINID_LCD_CS,
++		.fun = PIN_FUN2,
++		.strength = PAD_8MA,
++		.voltage = PAD_3_3V,
++		.drive = 1,
++	},
++	{
++		.name = "LCD_CLK",
++		.id = PINID_LCD_RS,
++		.fun = PIN_FUN2,	/* DOTCLK */
++		.strength = PAD_8MA,
++		.voltage = PAD_3_3V,
++		.drive = 1,
++	},
++	{
++	 .name = "LCD_CONTRAST",
++	 .id = PINID_PWM3,
++	 .fun = PIN_FUN1,
++	 .strength = PAD_8MA,
++	 .voltage = PAD_3_3V,
++	 .drive	= 1,
++	 },
++
++#endif
++#if defined(CONFIG_MMC_MXS) || defined(CONFIG_MMC_MXS_MODULE)
++	/* SSP0 SD/MMC port pins */
++	{
++		.name		= "SSP0_DATA0",
++		.id		= PINID_SSP0_DATA0,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_8MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 1,
++		.drive		= 1,
++		.pull		= 1,
++	},
++	{
++		.name		= "SSP0_DATA1",
++		.id		= PINID_SSP0_DATA1,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_8MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 1,
++		.drive		= 1,
++		.pull		= 1,
++	},
++	{
++		.name		= "SSP0_DATA2",
++		.id		= PINID_SSP0_DATA2,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_8MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 1,
++		.drive		= 1,
++		.pull		= 1,
++	},
++	{
++		.name		= "SSP0_DATA3",
++		.id		= PINID_SSP0_DATA3,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_8MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 1,
++		.drive		= 1,
++		.pull		= 1,
++	},
++	{
++		.name		= "SSP0_CMD",
++		.id		= PINID_SSP0_CMD,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_8MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 1,
++		.drive		= 1,
++		.pull		= 1,
++	},
++	{
++		.name		= "SSP0_SCK",
++		.id		= PINID_SSP0_SCK,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_12MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= 1,
++		.pull		= 0,
++	},
++	{
++		.name		= "SSP0_DETECT",
++		.id		= PINID_SSP0_DETECT,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_8MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= 1,
++		.pull		= 0,
++	},
++#endif /* defined(CONFIG_MMC_MXS) || defined(CONFIG_MMC_MXS_MODULE) */
++#ifdef CONFIG_MXS_AUART0_DEVICE_ENABLE
++	{
++		.name		= "AUART0.RX",
++		.id		= PINID_AUART0_RX,
++		.fun		= PIN_FUN1,
++		},
++	{
++		.name		= "AUART0.TX",
++		.id		= PINID_AUART0_TX,
++		.fun		= PIN_FUN1,
++	},
++	{
++		.name		= "AUART0.CTS",
++		.id		= PINID_AUART0_CTS,
++		.fun		= PIN_FUN1,
++		},
++	{
++		.name		= "AUART0.RTS",
++		.id		= PINID_AUART0_RTS,
++		.fun		= PIN_FUN1,
++	},
++#endif
++#ifdef CONFIG_MXS_AUART1_DEVICE_ENABLE
++	{
++		.name		= "AUART1.RX",
++		.id		= PINID_AUART1_RX,
++		.fun		= PIN_FUN1,
++		},
++	{
++		.name		= "AUART1.TX",
++		.id		= PINID_AUART1_TX,
++		.fun		= PIN_FUN1,
++	},
++	{
++		.name		= "AUART1.CTS",
++		.id		= PINID_AUART1_CTS,
++		.fun		= PIN_FUN1,
++		},
++	{
++		.name		= "AUART1.RTS",
++		.id		= PINID_AUART1_RTS,
++		.fun		= PIN_FUN1,
++	},
++#endif
++#ifdef CONFIG_MXS_AUART2_DEVICE_ENABLE
++	{
++		.name		= "AUART2.RX",
++		.id		= PINID_AUART2_RX,
++		.fun		= PIN_FUN1,
++	},
++	{
++		.name		= "AUART2.TX",
++		.id		= PINID_AUART2_TX,
++		.fun		= PIN_FUN1,
++	},
++	{
++		.name		= "AUART2.CTS",
++		.id		= PINID_AUART2_CTS,
++		.fun		= PIN_FUN1,
++	},
++	{
++		.name		= "AUART2.RTS",
++		.id		= PINID_AUART2_RTS,
++		.fun		= PIN_FUN1,
++	},
++#endif
++#ifdef CONFIG_MXS_AUART3_DEVICE_ENABLE
++	{
++		.name		= "AUART3.RX",
++		.id		= PINID_AUART3_RX,
++		.fun		= PIN_FUN1,
++	},
++	{
++		.name		= "AUART3.TX",
++		.id		= PINID_AUART3_TX,
++		.fun		= PIN_FUN1,
++	},
++	{
++		.name		= "AUART3.CTS",
++		.id		= PINID_AUART3_CTS,
++		.fun		= PIN_FUN1,
++	},
++	{
++		.name		= "AUART3.RTS",
++		.id		= PINID_AUART3_RTS,
++		.fun		= PIN_FUN1,
++	},
++#endif
++#ifdef CONFIG_MXS_AUART4_DEVICE_ENABLE
++	{
++		.name		= "AUART4.RX",
++		.id		= PINID_SSP3_MOSI,
++		.fun		= PIN_FUN2,
++	},
++	{
++		.name		= "AUART4.TX",
++		.id		= PINID_SSP3_SCK,
++		.fun		= PIN_FUN2,
++	},
++	{
++		.name		= "AUART4.CTS",
++		.id		= PINID_SSP3_SS0,
++		.fun		= PIN_FUN2,
++	},
++	{
++		.name		= "AUART4.RTS",
++		.id		= PINID_SSP3_MISO,
++		.fun		= PIN_FUN2,
++	},
++#endif
++#if defined(CONFIG_CAN_FLEXCAN) || defined(CONFIG_CAN_FLEXCAN_MODULE)
++	{
++		.name		= "CAN0_TX",
++		.id		= PINID_GPMI_RDY2,
++		.fun		= PIN_FUN2,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= 1,
++		.pull		= 0,
++	},
++	{
++		.name		= "CAN0_RX",
++		.id		= PINID_GPMI_RDY3,
++		.fun		= PIN_FUN2,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= 1,
++		.pull		= 0,
++	},
++	{
++		.name		= "CAN1_TX",
++		.id		= PINID_GPMI_CE2N,
++		.fun		= PIN_FUN2,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= 1,
++		.pull		= 0,
++	},
++	{
++		.name		= "CAN1_RX",
++		.id		= PINID_GPMI_CE3N,
++		.fun		= PIN_FUN2,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= 1,
++		.pull		= 0,
++	},
++#endif
++#if defined(CONFIG_I2C_MXS) || \
++	defined(CONFIG_I2C_MXS_MODULE)
++#if defined(CONFIG_I2C_MXS_SELECT0)
++	{
++		.name		= "I2C0_SCL",
++		.id		= PINID_I2C0_SCL,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_8MA,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++		.pullup		= 0,
++		.pull		= 1,
++	},
++	{
++		.name		= "I2C0_SDA",
++		.id		= PINID_I2C0_SDA,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_8MA,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++		.pullup		= 0,
++		.pull		= 1,
++	},
++#endif
++#if defined(CONFIG_I2C_MXS_SELECT1)
++	{
++		.name		= "I2C1_SCL",
++		.id		= PINID_AUART2_CTS,
++		.fun		= PIN_FUN2,
++		.strength	= PAD_8MA,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++		.pullup		= 0,
++		.pull		= 1,
++	},
++	{
++		.name		= "I2C1_SDA",
++		.id		= PINID_AUART2_RTS,
++		.fun		= PIN_FUN2,
++		.strength	= PAD_8MA,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++		.pullup		= 0,
++		.pull		= 1,
++	},
++#endif
++#endif
++#if defined(CONFIG_SND_MXS_SOC_DAI) || defined(CONFIG_SND_MXS_SOC_DAI_MODULE)
++	/* Configurations of SAIF0 port pins */
++	{
++		.name		= "SAIF0_MCLK",
++		.id		= PINID_SAIF0_MCLK,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 1,
++		.drive		= 1,
++		.pull		= 1,
++	},
++	{
++		.name		= "SAIF0_LRCLK",
++		.id		= PINID_SAIF0_LRCLK,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 1,
++		.drive		= 1,
++		.pull		= 1,
++	},
++	{
++		.name		= "SAIF0_BITCLK",
++		.id		= PINID_SAIF0_BITCLK,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 1,
++		.drive		= 1,
++		.pull		= 1,
++	},
++	{
++		.name		= "SAIF0_SDATA0",
++		.id		= PINID_SAIF0_SDATA0,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 1,
++		.drive		= 1,
++		.pull		= 1,
++	},
++	{
++		.name		= "SAIF1_SDATA0",
++		.id		= PINID_SAIF1_SDATA0,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 1,
++		.drive		= 1,
++		.pull		= 1,
++	},
++#endif
++#if defined(CONFIG_SND_SOC_MXS_SPDIF) || \
++	defined(CONFIG_SND_SOC_MXS_SPDIF_MODULE)
++	{
++		.name		= "SPDIF",
++		.id		= PINID_SPDIF,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 1,
++		.drive		= 1,
++		.pull		= 1,
++	},
++#endif
++#if defined(CONFIG_FEC2) || defined(CONFIG_FEC2_MODULE)\
++	|| defined(CONFIG_FEC_L2SWITCH)
++	{
++		.name		= "ENET1_RX_EN",
++		.id		= PINID_ENET0_CRS,
++		.fun		= PIN_FUN2,
++		.strength	= PAD_4MA,
++		.pull		= 1,
++		.pullup		= 1,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++	},
++	{
++		.name		= "ENET1_RXD0",
++		.id		= PINID_ENET0_RXD2,
++		.fun		= PIN_FUN2,
++		.strength	= PAD_4MA,
++		.pull		= 1,
++		.pullup		= 1,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++	},
++	{
++		.name		= "ENET1_RXD1",
++		.id		= PINID_ENET0_RXD3,
++		.fun		= PIN_FUN2,
++		.strength	= PAD_4MA,
++		.pull		= 1,
++		.pullup		= 1,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++	},
++	{
++		.name		= "ENET1_TX_EN",
++		.id		= PINID_ENET0_COL,
++		.fun		= PIN_FUN2,
++		.strength	= PAD_4MA,
++		.pull		= 1,
++		.pullup		= 1,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++	},
++	{
++		.name		= "ENET1_TXD0",
++		.id		= PINID_ENET0_TXD2,
++		.fun		= PIN_FUN2,
++		.strength	= PAD_4MA,
++		.pull		= 1,
++		.pullup		= 1,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++	},
++	{
++		.name		= "ENET1_TXD1",
++		.id		= PINID_ENET0_TXD3,
++		.fun		= PIN_FUN2,
++		.strength	= PAD_4MA,
++		.pull		= 1,
++		.pullup		= 1,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++	},
++	{
++		.name		= "ETH1_INT",
++		.id		= PINID_LCD_VSYNC,
++		.fun		= PIN_GPIO,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= 1,
++		.pull		= 0,
++		.output		= 0,
++	},
++	{
++		.name		= "PHY1_RESET",
++		.id		= PINID_LCD_HSYNC,
++		.fun		= PIN_GPIO,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= 1,
++		.pull		= 0,
++		.output		= 1,
++		.data		= 1,
++	},
++#endif /* defined(CONFIG_FEC2) || defined(CONFIG_FEC2_MODULE).. */
++#if defined(CONFIG_SPI_MXS) || defined(CONFIG_SPI_MXS_MODULE)
++	{
++		.name		= "SSP2 MOSI",
++		.id		= PINID_SSP2_MOSI,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++	},
++	{
++		.name		= "SSP2 MISO",
++		.id		= PINID_SSP2_MISO,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++	},
++	{
++		.name		= "SSP2 SCK",
++		.id		= PINID_SSP2_SCK,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++	},
++	{
++		.name		= "SSP2 SS0",
++		.id		= PINID_SSP2_SS0,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++	},
++	{
++		.name		= "SSP2 SS1",
++		.id		= PINID_SSP2_SS1,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++	},
++	{
++		.name		= "SSP2 SS2",
++		.id		= PINID_SSP2_SS2,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++	},
++#endif
++	{
++		.name		= "PWM4",
++		.id		= PINID_PWM4,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_8MA,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++	},
++};
++
++extern unsigned int vbus5v_gpio;
++static int otg_mode_host = -1;
++
++static int __init apf28_otg_mode(char *options)
++{
++	if (!strcmp(options, "host"))
++		otg_mode_host = 1;
++	else if (!strcmp(options, "device"))
++		otg_mode_host = 0;
++
++	return 0;
++}
++__setup("otg_mode=", apf28_otg_mode);
++
++extern int clk_get_usecount(struct clk *clk);
++static struct clk *usb_clk;
++static struct clk *usb_phy_clk;
++static int internal_phy_clk_already_on;
++
++static void apf28dev_usbotg_internal_phy_clock_gate(bool on)
++{
++	u32 tmp;
++	void __iomem *phy_reg = IO_ADDRESS(USBPHY0_PHYS_ADDR);
++	if (on) {
++		internal_phy_clk_already_on += 1;
++		if (internal_phy_clk_already_on == 1) {
++			pr_debug ("%s, Clock on UTMI \n", __func__);
++			tmp = BM_USBPHY_CTRL_SFTRST | BM_USBPHY_CTRL_CLKGATE;
++			__raw_writel(tmp, phy_reg + HW_USBPHY_CTRL_CLR);
++		}
++	} else {
++		internal_phy_clk_already_on -= 1;
++		if (internal_phy_clk_already_on == 0) {
++			pr_debug ("%s, Clock off UTMI \n", __func__);
++			tmp = BM_USBPHY_CTRL_CLKGATE;
++			__raw_writel(tmp, phy_reg + HW_USBPHY_CTRL_SET);
++		}
++	}
++	if (internal_phy_clk_already_on < 0)
++		printk(KERN_ERR "please check internal phy clock ON/OFF sequence \n");
++}
++
++
++static int apf28dev_usbotg_init_ext(struct platform_device *pdev)
++{
++	usb_clk = clk_get(NULL, "usb_clk0");
++	clk_enable(usb_clk);
++	clk_put(usb_clk);
++
++	usb_phy_clk = clk_get(NULL, "usb_phy_clk0");
++	clk_enable(usb_phy_clk);
++	clk_put(usb_phy_clk);
++
++	apf28dev_usbotg_internal_phy_clock_gate(true);
++	return usbotg_init(pdev);
++}
++
++static void apf28dev_usbotg_uninit_ext(struct fsl_usb2_platform_data *pdata)
++{
++	usbotg_uninit(pdata);
++
++	apf28dev_usbotg_internal_phy_clock_gate(false);
++	clk_disable(usb_phy_clk);
++	clk_disable(usb_clk);
++}
++
++static void apf28dev_usbotg_clock_gate(bool on)
++{
++	pr_debug("%s: on is %d\n", __func__, on);
++	if (on) {
++		/*clk_enable(usb_clk);
++		clk_enable(usb_phy_clk);
++		apf28dev_usbotg_internal_phy_clock_gate(on);*/
++	} else {
++		/*apf28dev_usbotg_internal_phy_clock_gate(on);
++		clk_disable(usb_phy_clk);
++		clk_disable(usb_clk);*/
++	}
++
++	pr_debug("usb_clk0_ref_count:%d, usb_phy_clk0_ref_count:%d\n", clk_get_usecount(usb_clk), clk_get_usecount(usb_phy_clk));
++}
++
++
++#if defined(CONFIG_KEYBOARD_GPIO) || defined(CONFIG_KEYBOARD_GPIO_MODULE)
++static struct gpio_keys_button apf28dev_gpio_keys[] = {
++	{
++		.code = BTN_EXTRA, /* See include/linux/input.h */
++		.gpio = MXS_PIN_TO_GPIO(PINID_GPMI_CE1N), /* GPIO number */
++		.active_low = 1,
++		.desc = "user", /* Button description*/
++		.wakeup = 1,
++	},
++};
++
++static struct gpio_keys_platform_data apf28dev_gpio_keys_data = {
++	.buttons = apf28dev_gpio_keys,
++	.nbuttons = ARRAY_SIZE(apf28dev_gpio_keys),
++};
++
++static struct platform_device apf28dev_gpio_keys_device = {
++	.name = "gpio-keys",
++	.id = -1,
++	.dev = {
++		.platform_data = &apf28dev_gpio_keys_data,
++	},
++};
++#endif /* CONFIG_KEYBOARD_GPIO */
++
++#if defined(CONFIG_LEDS_GPIO) || defined(CONFIG_LEDS_GPIO_MODULE)
++static struct gpio_led apf28dev_led[] = {
++	{
++		.name = "apfdev:green:user",
++		.default_trigger = "heartbeat",
++		.gpio = MXS_PIN_TO_GPIO(PINID_GPMI_RDY1),
++		.active_low = 0,
++	},
++};
++
++static struct gpio_led_platform_data apf28dev_led_data = {
++	.num_leds	= ARRAY_SIZE(apf28dev_led),
++	.leds		= apf28dev_led
++};
++
++static struct platform_device apf28dev_led_dev = {
++	.name		= "leds-gpio",
++	.id		= -1,
++	.dev		= {
++		.platform_data	= &apf28dev_led_data,
++	},
++};
++#endif /* CONFIG_LEDS_GPIO */
++
++#if defined(CONFIG_ARMADEUS_MXS_PWM_DRIVER) || \
++	defined(CONFIG_ARMADEUS_MXS_PWM_DRIVER_MODULE)
++static struct resource mx28_pwm_res = {
++	.flags = IORESOURCE_MEM,
++	.start = PWM_PHYS_ADDR,
++	.end   = PWM_PHYS_ADDR + 0x2000,
++};
++
++static struct platform_device apf28dev_pwm_dev = {
++	.name		= "mxs_pwm",
++	.id		= 4,
++	.resource	= &mx28_pwm_res,
++	.num_resources	= 1,
++};
++#endif /* defined(CONFIG_ARMADEUS_MXS_PWM_DRIVER) ||
++	defined(CONFIG_ARMADEUS_MXS_PWM_DRIVER_MODULE) */
++
++#if defined(CONFIG_ARMADEUS_SENSOR_MXS_LRADC) || \
++	defined(CONFIG_ARMADEUS_SENSOR_MXS_LRADC_MODULE)
++static struct resource mx28_lradc_res = {
++	 .flags = IORESOURCE_MEM,
++	 .start = LRADC_PHYS_ADDR,
++	 .end   = LRADC_PHYS_ADDR + 0x2000 - 1,
++};
++
++static struct mxs_lradc_info apf28dev_lradc[] = {
++	{
++		.name = "lradc0",
++		.channel = 0,		/* LRADC channel */
++		.mux_pad = 0,		/* LRADC muxed pad */
++		.enable_div2 = 1,	/* enable for signal up to VDDIO -50mV*/
++		.samples = 7,		/* oversampling factor */
++	},
++	{
++		.name = "lradc1",
++		.channel = 1,		/* LRADC channel */
++		.mux_pad = 1,		/* LRADC muxed pad */
++		.enable_div2 = 1,	/* enable for signal up to VDDIO -50mV*/
++		.samples = 7,		/* oversampling factor */
++	},
++};
++
++static struct mxs_lradc_platform_data apf28dev_lradc_data = {
++	.num_lradc	= ARRAY_SIZE(apf28dev_lradc),
++	.lradc		= apf28dev_lradc
++};
++
++static struct platform_device apf28dev_lradc_dev = {
++	.name		= "mxs_lradc",
++	.id		= 0,
++	.resource	= &mx28_lradc_res,
++	.num_resources	= 1,
++	.dev		= {
++		.platform_data	= &apf28dev_lradc_data,
++	},
++};
++#endif /* defined(CONFIG_ARMADEUS_SENSOR_MXS_LRADC) ||
++	defined(CONFIG_ARMADEUS_SENSOR_MXS_LRADC_MODULE) */
++
++static struct platform_device *apf28dev_platform_devices[] __initdata = {
++#if defined(CONFIG_KEYBOARD_GPIO) || defined(CONFIG_KEYBOARD_GPIO_MODULE)
++	&apf28dev_gpio_keys_device,
++#endif
++#if defined(CONFIG_LEDS_GPIO) || defined(CONFIG_LEDS_GPIO_MODULE)
++	&apf28dev_led_dev,
++#endif
++#if defined(CONFIG_ARMADEUS_MXS_PWM_DRIVER) || \
++	defined(CONFIG_ARMADEUS_MXS_PWM_DRIVER_MODULE)
++	&apf28dev_pwm_dev,
++
++#endif
++#if defined(CONFIG_ARMADEUS_SENSOR_MXS_LRADC) || \
++	defined(CONFIG_ARMADEUS_SENSOR_MXS_LRADC_MODULE)
++	&apf28dev_lradc_dev,
++
++#endif
++};
++
++#if defined(CONFIG_FEC2) || defined(CONFIG_FEC2_MODULE)\
++	|| defined(CONFIG_FEC_L2SWITCH)
++int mx287_fec1_gpio_init(void)
++{
++	/* reset 2nd phy */
++	gpio_direction_output(MXS_PIN_TO_GPIO(PINID_LCD_HSYNC), 0);
++	mdelay(1);
++	gpio_direction_output(MXS_PIN_TO_GPIO(PINID_LCD_HSYNC), 1);
++
++	return 0;
++}
++#endif /* defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE) */
++
++#if defined(CONFIG_MMC_MXS) || defined(CONFIG_MMC_MXS_MODULE)
++static void mxs_mmc_cmd_pullup_ssp0(int enable)
++{
++	mxs_set_pullup(PINID_SSP0_CMD, enable, "mmc0_cmd");
++}
++
++static unsigned long mxs_mmc_setclock_ssp0(unsigned long hz)
++{
++	struct clk *ssp = clk_get(NULL, "ssp.0"), *parent;
++
++	if (hz > 1000000)
++		parent = clk_get(NULL, "ref_io.0");
++	else
++		parent = clk_get(NULL, "xtal.0");
++
++	clk_set_parent(ssp, parent);
++	clk_set_rate(ssp, 2 * hz);
++	clk_put(parent);
++	clk_put(ssp);
++
++	return hz;
++}
++
++static struct mxs_mmc_platform_data mmc0_data = {
++	.cmd_pullup	= mxs_mmc_cmd_pullup_ssp0,
++	.setclock	= mxs_mmc_setclock_ssp0,
++	.caps 		= MMC_CAP_4_BIT_DATA
++				| MMC_CAP_DATA_DDR,
++	.min_clk	= 400000,
++	.max_clk	= 48000000,
++	.read_uA        = 50000,
++	.write_uA       = 70000,
++	.clock_mmc = "ssp.0",
++	.power_mmc = NULL,
++	.fastpath_sz = 1024,
++};
++
++static struct resource mmc0_resource[] = {
++	{
++		.flags	= IORESOURCE_MEM,
++		.start	= SSP0_PHYS_ADDR,
++		.end	= SSP0_PHYS_ADDR + 0x2000 - 1,
++	},
++	{
++		.flags	= IORESOURCE_DMA,
++		.start	= MXS_DMA_CHANNEL_AHB_APBH_SSP0,
++		.end	= MXS_DMA_CHANNEL_AHB_APBH_SSP0,
++	},
++	{
++		.flags	= IORESOURCE_IRQ,
++		.start	= IRQ_SSP0_DMA,
++		.end	= IRQ_SSP0_DMA,
++	},
++	{
++		.flags	= IORESOURCE_IRQ,
++		.start	= IRQ_SSP0,
++		.end	= IRQ_SSP0,
++	},
++};
++
++static void __init apf28dev_init_mmc(void)
++{
++	struct platform_device *pdev;
++
++	if (mxs_get_type(PINID_SSP0_CMD) == PIN_FUN1) {
++		pdev = mxs_get_device("mxs-mmc", 0);
++		if (pdev == NULL || IS_ERR(pdev))
++			return;
++		pdev->resource = mmc0_resource;
++		pdev->num_resources = ARRAY_SIZE(mmc0_resource);
++		pdev->dev.platform_data = &mmc0_data;
++		mxs_add_device(pdev, 2);
++		mxs_get_devices("mxs-mmc"); /* reserve the mxs-mmx ressource */
++	}
++}
++#else
++static void apf28dev_init_mmc(void)
++{
++}
++#endif /* defined(CONFIG_MMC_MXS) || defined(CONFIG_MMC_MXS_MODULE) */
++
++#if defined(CONFIG_SPI_MXS) || defined(CONFIG_SPI_MXS_MODULE)
++static struct spi_board_info spi_board_info[] __initdata = {
++	{
++		.modalias = "spidev",
++		.max_speed_hz = 120000,
++		.bus_num = 1, /* SSPI2 */
++		.chip_select = 0,
++	},
++};
++#endif /* defined(CONFIG_SPI_MXS) || defined(CONFIG_SPI_MXS_MODULE) */
++
++void __init apf28_baseboard_pins_init(void)
++{
++	printk("--- apf28_baseboard_init %d\n", MXS_PIN_TO_GPIO(PINID_PWM3));
++
++	apf28_init_pin_group(apf28dev_fixed_pins, ARRAY_SIZE(apf28dev_fixed_pins));
++
++	/* some init code that should be done before mx28_device_init() */
++	apf28dev_init_mmc();
++}
++
++void __init apf28_baseboard_devices_init(void)
++{
++	struct fsl_usb2_platform_data * dr_config = usb_dr_get_plateform_data();
++	dr_config->platform_init     = apf28dev_usbotg_init_ext;
++	dr_config->platform_uninit   = apf28dev_usbotg_uninit_ext;
++	dr_config->usb_clock_for_pm  = apf28dev_usbotg_clock_gate;
++	if (otg_mode_host == 1){
++		gpio_direction_output(USB_POWER_ENABLE, 1);
++		gpio_set_value(USB_POWER_ENABLE, 1);
++		dr_config->vbus_gpio = 0;
++	} else if (otg_mode_host == 0){
++		gpio_direction_output(USB_POWER_ENABLE, 0);
++		gpio_set_value(USB_POWER_ENABLE, 0);
++		dr_config->vbus_gpio = 0;
++	} else dr_config->vbus_gpio         = USB_POWER_ENABLE;
++	vbus5v_gpio = USB_POWER_ENABLE;
++
++	/* Add apf28dev special code */
++	platform_add_devices(apf28dev_platform_devices, ARRAY_SIZE(apf28dev_platform_devices));
++
++#if defined(CONFIG_SPI_MXS) || defined(CONFIG_SPI_MXS_MODULE)
++	spi_register_board_info(spi_board_info, ARRAY_SIZE(spi_board_info));
++#endif /* defined(CONFIG_SPI_MXS) || defined(CONFIG_SPI_MXS_MODULE) */
++}
++
+Index: linux-2.6.35.3/drivers/video/mxs/Kconfig
+===================================================================
+--- linux-2.6.35.3.orig/drivers/video/mxs/Kconfig
++++ linux-2.6.35.3/drivers/video/mxs/Kconfig
+@@ -21,6 +21,20 @@ config FB_MXS_LCD_LMS430
+ 	---help---
+ 	  Use LMS430 dotclock LCD panel for MXS
+ 
++config FB_MXS_LCD_TM035
++	depends on FB_MXS
++	bool "TM035"
++	default y if MACH_APF28DEV
++	---help---
++	  Use Tianma 3,5' LCD (324x240) on APF28Dev baseboard.
++
++config FB_MXS_LCD_LW700
++	depends on FB_MXS
++	bool "LW700"
++	default y if MACH_APF28DEV
++	---help---
++	  Use Densitron 7' LCD (800x480) on APF28Dev baseboard.
++
+ config FB_MXS_TVENC
+ 	depends on ARCH_MXS
+ 	bool "TVENC"
+Index: linux-2.6.35.3/drivers/video/mxs/Makefile
+===================================================================
+--- linux-2.6.35.3.orig/drivers/video/mxs/Makefile
++++ linux-2.6.35.3/drivers/video/mxs/Makefile
+@@ -2,5 +2,7 @@ obj-$(CONFIG_ARCH_MXS)				+= lcdif.o
+ obj-$(CONFIG_FB_MXS)				+= mxsfb.o
+ obj-$(CONFIG_FB_MXS_LCD_43WVF1G)		+= lcd_43wvf1g.o
+ obj-$(CONFIG_FB_MXS_LCD_LMS430)			+= lcd_lms430.o
++obj-$(CONFIG_FB_MXS_LCD_TM035)			+= lcd_tm035.o
++obj-$(CONFIG_FB_MXS_LCD_LW700)			+= lcd_lw700.o
+ # TVOUT support
+ obj-$(CONFIG_FB_MXS_TVENC)			+= tvenc.o
+Index: linux-2.6.35.3/drivers/video/mxs/lcd_tm035.c
+===================================================================
+--- /dev/null
++++ linux-2.6.35.3/drivers/video/mxs/lcd_tm035.c
+@@ -0,0 +1,305 @@
++/*
++ * Tianma TM035 LCD panel initialization for Armadeus APF28Dev
++ *
++ * Copyright (C) 2012 Armadeus systems
++ *
++ * Based on code which is:
++ * Copyright (C) 2009-2010 Freescale Semiconductor, Inc.
++ * Copyright 2009 Embedded Alley Solutions, Inc All Rights Reserved.
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program; if not, write to the Free Software Foundation, Inc.,
++ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
++ */
++
++#include <linux/init.h>
++#include <linux/delay.h>
++#include <linux/clk.h>
++#include <linux/notifier.h>
++#include <linux/regulator/consumer.h>
++#include <linux/platform_device.h>
++
++#include <mach/device.h>
++#include <mach/lcdif.h>
++#include <mach/regs-pwm.h>
++#include <mach/system.h>
++
++#define REGS_PWM_BASE IO_ADDRESS(PWM_PHYS_ADDR)
++
++#define DOTCLK_H_ACTIVE  320
++#define DOTCLK_H_PULSE_WIDTH 1
++#define DOTCLK_HF_PORCH  15
++#define DOTCLK_HB_PORCH  24
++#define DOTCLK_H_WAIT_CNT  (DOTCLK_H_PULSE_WIDTH + (3 * DOTCLK_HB_PORCH))
++#define DOTCLK_H_PERIOD (DOTCLK_H_WAIT_CNT + DOTCLK_HF_PORCH + DOTCLK_H_ACTIVE)
++
++#define DOTCLK_V_ACTIVE  240
++#define DOTCLK_V_PULSE_WIDTH  1
++#define DOTCLK_VF_PORCH  4
++#define DOTCLK_VB_PORCH  13
++#define DOTCLK_V_WAIT_CNT (DOTCLK_V_PULSE_WIDTH + DOTCLK_VB_PORCH)
++#define DOTCLK_V_PERIOD (DOTCLK_VF_PORCH + DOTCLK_V_ACTIVE + DOTCLK_V_WAIT_CNT)
++
++#define LM035_BPP	16
++
++static struct mxs_platform_bl_data bl_data;
++static struct clk *lcd_clk;
++
++static int init_panel(struct device *dev, dma_addr_t phys, int memsize,
++		      struct mxs_platform_fb_entry *pentry)
++{
++	int ret = 0;
++
++	lcd_clk = clk_get(NULL, "dis_lcdif");
++	if (IS_ERR(lcd_clk)) {
++		ret = PTR_ERR(lcd_clk);
++		goto out;
++	}
++	printk("--- %s %d\n", __func__, __LINE__);
++	ret = clk_enable(lcd_clk);
++	if (ret) {
++		clk_put(lcd_clk);
++		goto out;
++	}
++
++	ret = clk_set_rate(lcd_clk, 1000000 / pentry->cycle_time_ns);	/* kHz */
++	if (ret) {
++		clk_disable(lcd_clk);
++		clk_put(lcd_clk);
++		goto out;
++	}
++
++	/*
++	 * Make sure we do a high-to-low transition to reset the panel.
++	 * First make it low for 100 msec, hi for 10 msec, low for 10 msec,
++	 * then hi.
++	 */
++	__raw_writel(BM_LCDIF_CTRL1_RESET, REGS_LCDIF_BASE + HW_LCDIF_CTRL1_CLR);	/* low */
++	mdelay(100);
++	__raw_writel(BM_LCDIF_CTRL1_RESET, REGS_LCDIF_BASE + HW_LCDIF_CTRL1_SET);	/* high */
++	mdelay(10);
++	__raw_writel(BM_LCDIF_CTRL1_RESET, REGS_LCDIF_BASE + HW_LCDIF_CTRL1_CLR);	/* low */
++
++	/* For the Samsung, Reset must be held low at least 30 uSec
++	 * Therefore, we'll hold it low for about 10 mSec just to be sure.
++	 * Then we'll wait 1 mSec afterwards.
++	 */
++	mdelay(10);
++	__raw_writel(BM_LCDIF_CTRL1_RESET, REGS_LCDIF_BASE + HW_LCDIF_CTRL1_SET);	/* high */
++	mdelay(1);
++
++	setup_dotclk_panel(DOTCLK_V_PULSE_WIDTH, DOTCLK_V_PERIOD,
++			   DOTCLK_V_WAIT_CNT, DOTCLK_V_ACTIVE,
++			   DOTCLK_H_PULSE_WIDTH, DOTCLK_H_PERIOD,
++			   DOTCLK_H_WAIT_CNT, DOTCLK_H_ACTIVE, LM035_BPP, 0);
++
++	ret = mxs_lcdif_dma_init(dev, phys, memsize);
++	if (ret)
++		goto out;
++
++	mxs_lcd_set_bl_pdata(pentry->bl_data);
++	mxs_lcdif_notify_clients(MXS_LCDIF_PANEL_INIT, pentry);
++	return 0;
++
++out:
++	return ret;
++}
++
++static void release_panel(struct device *dev,
++			  struct mxs_platform_fb_entry *pentry)
++{
++	/* Reset LCD panel signal. */
++	__raw_writel(BM_LCDIF_CTRL1_RESET,
++		REGS_LCDIF_BASE + HW_LCDIF_CTRL1_CLR);
++	mdelay(100);
++	mxs_lcdif_notify_clients(MXS_LCDIF_PANEL_RELEASE, pentry);
++	release_dotclk_panel();
++	mxs_lcdif_dma_release();
++	clk_disable(lcd_clk);
++	clk_put(lcd_clk);
++	__raw_writel(BM_LCDIF_CTRL_CLKGATE,
++		     REGS_LCDIF_BASE + HW_LCDIF_CTRL_SET);
++}
++
++static int blank_panel(int blank)
++{
++	int ret = 0, count;
++
++	switch (blank) {
++	case FB_BLANK_NORMAL:
++	case FB_BLANK_VSYNC_SUSPEND:
++	case FB_BLANK_HSYNC_SUSPEND:
++	case FB_BLANK_POWERDOWN:
++		__raw_writel(BM_LCDIF_CTRL_BYPASS_COUNT,
++			     REGS_LCDIF_BASE + HW_LCDIF_CTRL_CLR);
++		for (count = 10000; count; count--) {
++			if (__raw_readl(REGS_LCDIF_BASE + HW_LCDIF_STAT) &
++			    BM_LCDIF_STAT_TXFIFO_EMPTY)
++				break;
++			udelay(1);
++		}
++		break;
++
++	case FB_BLANK_UNBLANK:
++		__raw_writel(BM_LCDIF_CTRL_BYPASS_COUNT,
++			     REGS_LCDIF_BASE + HW_LCDIF_CTRL_SET);
++		break;
++
++	default:
++		ret = -EINVAL;
++	}
++	return ret;
++}
++
++static struct mxs_platform_fb_entry fb_entry = {
++	.name = "tm035",
++	.x_res = 240,	/* <- WTF Freescale !!?? */
++	.y_res = 320,
++	.bpp = LM035_BPP,
++	.cycle_time_ns = 156,
++	.lcd_type = MXS_LCD_PANEL_DOTCLK,
++	.init_panel = init_panel,
++	.release_panel = release_panel,
++	.blank_panel = blank_panel,
++	.run_panel = mxs_lcdif_run,
++	.stop_panel = mxs_lcdif_stop,
++	.pan_display = mxs_lcdif_pan_display,
++	.bl_data = &bl_data,
++};
++
++static struct clk *pwm_clk;
++
++static int init_bl(struct mxs_platform_bl_data *data)
++{
++	int ret = 0;
++
++	pwm_clk = clk_get(NULL, "pwm");
++	if (IS_ERR(pwm_clk)) {
++		ret = PTR_ERR(pwm_clk);
++		return ret;
++	}
++	clk_enable(pwm_clk);
++	mxs_reset_block(REGS_PWM_BASE, 1);
++
++	__raw_writel(BF_PWM_ACTIVEn_INACTIVE(0) |
++		     BF_PWM_ACTIVEn_ACTIVE(0),
++		     REGS_PWM_BASE + HW_PWM_ACTIVEn(3));
++	__raw_writel(BF_PWM_PERIODn_CDIV(6) |	/* divide by 64 */
++		     BF_PWM_PERIODn_INACTIVE_STATE(2) |	/* low */
++		     BF_PWM_PERIODn_ACTIVE_STATE(3) |	/* high */
++		     BF_PWM_PERIODn_PERIOD(99),
++		     REGS_PWM_BASE + HW_PWM_PERIODn(3));
++	__raw_writel(BM_PWM_CTRL_PWM3_ENABLE, REGS_PWM_BASE + HW_PWM_CTRL_SET);
++
++	return 0;
++}
++
++static void free_bl(struct mxs_platform_bl_data *data)
++{
++	__raw_writel(BF_PWM_ACTIVEn_INACTIVE(0) |
++		     BF_PWM_ACTIVEn_ACTIVE(0),
++		     REGS_PWM_BASE + HW_PWM_ACTIVEn(3));
++	__raw_writel(BF_PWM_PERIODn_CDIV(6) |	/* divide by 64 */
++		     BF_PWM_PERIODn_INACTIVE_STATE(2) |	/* low */
++		     BF_PWM_PERIODn_ACTIVE_STATE(3) |	/* high */
++		     BF_PWM_PERIODn_PERIOD(99),
++		     REGS_PWM_BASE + HW_PWM_PERIODn(3));
++	__raw_writel(BM_PWM_CTRL_PWM3_ENABLE, REGS_PWM_BASE + HW_PWM_CTRL_CLR);
++
++	clk_disable(pwm_clk);
++	clk_put(pwm_clk);
++}
++
++static int values[] = { 0, 4, 9, 14, 20, 27, 35, 45, 57, 75, 100 };
++
++static int power[] = {
++	0, 1500, 3600, 6100, 10300,
++	15500, 74200, 114200, 155200,
++	190100, 191000
++};
++
++static int bl_to_power(int br)
++{
++	int base;
++	int rem;
++
++	if (br > 100)
++		br = 100;
++	base = power[br / 10];
++	rem = br % 10;
++	if (!rem)
++		return base;
++	else
++		return base + (rem * (power[br / 10 + 1]) - base) / 10;
++}
++
++static int set_bl_intensity(struct mxs_platform_bl_data *data,
++			    struct backlight_device *bd, int suspended)
++{
++	int intensity = bd->props.brightness;
++	int scaled_int;
++
++	if (bd->props.power != FB_BLANK_UNBLANK)
++		intensity = 0;
++	if (bd->props.fb_blank != FB_BLANK_UNBLANK)
++		intensity = 0;
++	if (suspended)
++		intensity = 0;
++
++	/*
++	 * This is not too cool but what can we do?
++	 * Luminance changes non-linearly...
++	 */
++	if (regulator_set_current_limit
++	    (data->regulator, bl_to_power(intensity), bl_to_power(intensity)))
++		return -EBUSY;
++
++	scaled_int = values[intensity / 10];
++	if (scaled_int < 100) {
++		int rem = intensity - 10 * (intensity / 10);	/* r = i % 10; */
++		scaled_int += rem * (values[intensity / 10 + 1] -
++				     values[intensity / 10]) / 10;
++	}
++	__raw_writel(BF_PWM_ACTIVEn_INACTIVE(scaled_int) |
++		     BF_PWM_ACTIVEn_ACTIVE(0),
++		     REGS_PWM_BASE + HW_PWM_ACTIVEn(3));
++	__raw_writel(BF_PWM_PERIODn_CDIV(6) |	/* divide by 64 */
++		     BF_PWM_PERIODn_INACTIVE_STATE(2) |	/* low */
++		     BF_PWM_PERIODn_ACTIVE_STATE(3) |	/* high */
++		     BF_PWM_PERIODn_PERIOD(99),
++		     REGS_PWM_BASE + HW_PWM_PERIODn(3));
++	return 0;
++}
++
++static struct mxs_platform_bl_data bl_data = {
++	.bl_max_intensity = 100,
++	.bl_default_intensity = 50,
++	.bl_cons_intensity = 50,
++	.init_bl = init_bl,
++	.free_bl = free_bl,
++	.set_bl_intensity = set_bl_intensity,
++};
++
++static int __init register_devices(void)
++{
++	struct platform_device *pdev;
++	pdev = mxs_get_device("mxs-fb", 0);
++	if (pdev == NULL || IS_ERR(pdev))
++		return -ENODEV;
++
++	mxs_lcd_register_entry(&fb_entry, pdev->dev.platform_data);
++
++	return 0;
++}
++
++subsys_initcall(register_devices);
+Index: linux-2.6.35.3/drivers/video/mxs/lcd_lw700.c
+===================================================================
+--- /dev/null
++++ linux-2.6.35.3/drivers/video/mxs/lcd_lw700.c
+@@ -0,0 +1,297 @@
++/*
++ * Freescale MX28 Densitron LW700 LCD panel driver
++ *
++ * Copyright (C) 2012 Armadeus systems.
++ *
++ * Based on code which is:
++ * Copyright (C) 2009-2010 Freescale Semiconductor, Inc. All Rights Reserved.
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program; if not, write to the Free Software Foundation, Inc.,
++ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
++ */
++
++#include <linux/init.h>
++#include <linux/delay.h>
++#include <linux/clk.h>
++#include <linux/notifier.h>
++#include <linux/regulator/consumer.h>
++#include <linux/platform_device.h>
++
++#include <mach/device.h>
++#include <mach/lcdif.h>
++#include <mach/regs-pwm.h>
++#include <mach/system.h>
++
++#define DOTCLK_H_ACTIVE  800
++#define DOTCLK_H_PULSE_WIDTH 10
++#define DOTCLK_HF_PORCH  164
++#define DOTCLK_HB_PORCH  89
++#define DOTCLK_H_WAIT_CNT  (DOTCLK_H_PULSE_WIDTH + DOTCLK_HB_PORCH)
++#define DOTCLK_H_PERIOD (DOTCLK_H_WAIT_CNT + DOTCLK_HF_PORCH + DOTCLK_H_ACTIVE)
++
++#define DOTCLK_V_ACTIVE  480
++#define DOTCLK_V_PULSE_WIDTH  10
++#define DOTCLK_VF_PORCH  10
++#define DOTCLK_VB_PORCH  23
++#define DOTCLK_V_WAIT_CNT (DOTCLK_V_PULSE_WIDTH + DOTCLK_VB_PORCH)
++#define DOTCLK_V_PERIOD (DOTCLK_VF_PORCH + DOTCLK_V_ACTIVE + DOTCLK_V_WAIT_CNT)
++
++#define LW700_BPP	16
++
++static struct mxs_platform_bl_data bl_data;
++static struct clk *lcd_clk;
++
++static int init_panel(struct device *dev, dma_addr_t phys, int memsize,
++		      struct mxs_platform_fb_entry *pentry)
++{
++	int ret = 0;
++
++	printk("--- init_panel LW700\n");
++
++	lcd_clk = clk_get(dev, "dis_lcdif");
++	if (IS_ERR(lcd_clk)) {
++		ret = PTR_ERR(lcd_clk);
++		goto out;
++	}
++	ret = clk_enable(lcd_clk);
++	if (ret) {
++		clk_put(lcd_clk);
++		goto out;
++	}
++
++	ret = clk_set_rate(lcd_clk, 1000000 / pentry->cycle_time_ns);	/* kHz */
++	if (ret) {
++		clk_disable(lcd_clk);
++		clk_put(lcd_clk);
++		goto out;
++	}
++
++	/*
++	 * Make sure we do a high-to-low transition to reset the panel.
++	 * First make it low for 100 msec, hi for 10 msec, low for 10 msec,
++	 * then hi.
++	 */
++	__raw_writel(BM_LCDIF_CTRL1_RESET, REGS_LCDIF_BASE + HW_LCDIF_CTRL1_CLR);	/* low */
++	mdelay(100);
++	__raw_writel(BM_LCDIF_CTRL1_RESET, REGS_LCDIF_BASE + HW_LCDIF_CTRL1_SET);	/* high */
++	mdelay(10);
++	__raw_writel(BM_LCDIF_CTRL1_RESET, REGS_LCDIF_BASE + HW_LCDIF_CTRL1_CLR);	/* low */
++
++	/* For the Samsung, Reset must be held low at least 30 uSec
++	 * Therefore, we'll hold it low for about 10 mSec just to be sure.
++	 * Then we'll wait 1 mSec afterwards.
++	 */
++	mdelay(10);
++	__raw_writel(BM_LCDIF_CTRL1_RESET, REGS_LCDIF_BASE + HW_LCDIF_CTRL1_SET);	/* high */
++	mdelay(1);
++
++	setup_dotclk_panel(DOTCLK_V_PULSE_WIDTH, DOTCLK_V_PERIOD,
++			   DOTCLK_V_WAIT_CNT, DOTCLK_V_ACTIVE,
++			   DOTCLK_H_PULSE_WIDTH, DOTCLK_H_PERIOD,
++			   DOTCLK_H_WAIT_CNT, DOTCLK_H_ACTIVE, LW700_BPP, 0);
++
++	ret = mxs_lcdif_dma_init(dev, phys, memsize);
++	if (ret)
++		goto out;
++
++	mxs_lcd_set_bl_pdata(pentry->bl_data);
++	mxs_lcdif_notify_clients(MXS_LCDIF_PANEL_INIT, pentry);
++	return 0;
++
++out:
++	return ret;
++}
++
++static void release_panel(struct device *dev,
++			  struct mxs_platform_fb_entry *pentry)
++{
++	mxs_lcdif_notify_clients(MXS_LCDIF_PANEL_RELEASE, pentry);
++	release_dotclk_panel();
++	mxs_lcdif_dma_release();
++	clk_disable(lcd_clk);
++	clk_put(lcd_clk);
++}
++
++static int blank_panel(int blank)
++{
++	int ret = 0, count;
++
++	switch (blank) {
++	case FB_BLANK_NORMAL:
++	case FB_BLANK_VSYNC_SUSPEND:
++	case FB_BLANK_HSYNC_SUSPEND:
++	case FB_BLANK_POWERDOWN:
++		__raw_writel(BM_LCDIF_CTRL_BYPASS_COUNT,
++			     REGS_LCDIF_BASE + HW_LCDIF_CTRL_CLR);
++		for (count = 10000; count; count--) {
++			if (__raw_readl(REGS_LCDIF_BASE + HW_LCDIF_STAT) &
++			    BM_LCDIF_STAT_TXFIFO_EMPTY)
++				break;
++			udelay(1);
++		}
++		break;
++
++	case FB_BLANK_UNBLANK:
++		__raw_writel(BM_LCDIF_CTRL_BYPASS_COUNT,
++			     REGS_LCDIF_BASE + HW_LCDIF_CTRL_SET);
++		break;
++
++	default:
++		ret = -EINVAL;
++	}
++	return ret;
++}
++
++static struct mxs_platform_fb_entry fb_entry = {
++	.name = "LW700",
++	.x_res = 480,
++	.y_res = 800,
++	.bpp = LW700_BPP,
++	.cycle_time_ns = 30,
++	.lcd_type = MXS_LCD_PANEL_DOTCLK,
++	.init_panel = init_panel,
++	.release_panel = release_panel,
++	.blank_panel = blank_panel,
++	.run_panel = mxs_lcdif_run,
++	.stop_panel = mxs_lcdif_stop,
++	.pan_display = mxs_lcdif_pan_display,
++	.bl_data = &bl_data,
++};
++
++static struct clk *pwm_clk;
++
++static int init_bl(struct mxs_platform_bl_data *data)
++{
++	int ret = 0;
++
++	pwm_clk = clk_get(NULL, "pwm");
++	if (IS_ERR(pwm_clk)) {
++		ret = PTR_ERR(pwm_clk);
++		return ret;
++	}
++	clk_enable(pwm_clk);
++	mxs_reset_block(REGS_PWM_BASE, 1);
++
++	__raw_writel(BF_PWM_ACTIVEn_INACTIVE(0) |
++		     BF_PWM_ACTIVEn_ACTIVE(0),
++		     REGS_PWM_BASE + HW_PWM_ACTIVEn(3));
++	__raw_writel(BF_PWM_PERIODn_CDIV(3) |	/* divide by 8 */
++		     BF_PWM_PERIODn_INACTIVE_STATE(2) |	/* low */
++		     BF_PWM_PERIODn_ACTIVE_STATE(3) |	/* high */
++		     BF_PWM_PERIODn_PERIOD(99),
++		     REGS_PWM_BASE + HW_PWM_PERIODn(3));
++	__raw_writel(BM_PWM_CTRL_PWM3_ENABLE, REGS_PWM_BASE + HW_PWM_CTRL_SET);
++
++	return 0;
++}
++
++static void free_bl(struct mxs_platform_bl_data *data)
++{
++	__raw_writel(BF_PWM_ACTIVEn_INACTIVE(0) |
++		     BF_PWM_ACTIVEn_ACTIVE(0),
++		     REGS_PWM_BASE + HW_PWM_ACTIVEn(3));
++	__raw_writel(BF_PWM_PERIODn_CDIV(3) |	/* divide by 8 */
++		     BF_PWM_PERIODn_INACTIVE_STATE(2) |	/* low */
++		     BF_PWM_PERIODn_ACTIVE_STATE(3) |	/* high */
++		     BF_PWM_PERIODn_PERIOD(99),
++		     REGS_PWM_BASE + HW_PWM_PERIODn(3));
++	__raw_writel(BM_PWM_CTRL_PWM3_ENABLE, REGS_PWM_BASE + HW_PWM_CTRL_CLR);
++
++	clk_disable(pwm_clk);
++	clk_put(pwm_clk);
++}
++
++static int values[] = { 0, 4, 9, 14, 20, 27, 35, 45, 57, 75, 100 };
++
++static int power[] = {
++	0, 1500, 3600, 6100, 10300,
++	15500, 74200, 114200, 155200,
++	190100, 191000
++};
++
++static int bl_to_power(int br)
++{
++	int base;
++	int rem;
++
++	if (br > 100)
++		br = 100;
++	base = power[br / 10];
++	rem = br % 10;
++	if (!rem)
++		return base;
++	else
++		return base + (rem * (power[br / 10 + 1]) - base) / 10;
++}
++
++static int set_bl_intensity(struct mxs_platform_bl_data *data,
++			    struct backlight_device *bd, int suspended)
++{
++	int intensity = bd->props.brightness;
++	int scaled_int;
++
++	if (bd->props.power != FB_BLANK_UNBLANK)
++		intensity = 0;
++	if (bd->props.fb_blank != FB_BLANK_UNBLANK)
++		intensity = 0;
++	if (suspended)
++		intensity = 0;
++
++	/*
++	 * This is not too cool but what can we do?
++	 * Luminance changes non-linearly...
++	 */
++	if (regulator_set_current_limit
++	    (data->regulator, bl_to_power(intensity), bl_to_power(intensity)))
++		return -EBUSY;
++
++	scaled_int = values[intensity / 10];
++	if (scaled_int < 100) {
++		int rem = intensity - 10 * (intensity / 10);	/* r = i % 10; */
++		scaled_int += rem * (values[intensity / 10 + 1] -
++				     values[intensity / 10]) / 10;
++	}
++	__raw_writel(BF_PWM_ACTIVEn_INACTIVE(scaled_int) |
++		     BF_PWM_ACTIVEn_ACTIVE(0),
++		     REGS_PWM_BASE + HW_PWM_ACTIVEn(3));
++	__raw_writel(BF_PWM_PERIODn_CDIV(3) |	/* divide by 8 */
++		     BF_PWM_PERIODn_INACTIVE_STATE(2) |	/* low */
++		     BF_PWM_PERIODn_ACTIVE_STATE(3) |	/* high */
++		     BF_PWM_PERIODn_PERIOD(99),
++		     REGS_PWM_BASE + HW_PWM_PERIODn(3));
++	return 0;
++}
++
++static struct mxs_platform_bl_data bl_data = {
++	.bl_max_intensity = 100,
++	.bl_default_intensity = 50,
++	.bl_cons_intensity = 50,
++	.init_bl = init_bl,
++	.free_bl = free_bl,
++	.set_bl_intensity = set_bl_intensity,
++};
++
++static int __init register_devices(void)
++{
++	struct platform_device *pdev;
++	pdev = mxs_get_device("mxs-fb", 0);
++	if (pdev == NULL || IS_ERR(pdev))
++		return -ENODEV;
++
++	mxs_lcd_register_entry(&fb_entry, pdev->dev.platform_data);
++
++	return 0;
++}
++
++subsys_initcall(register_devices);
+Index: linux-2.6.35.3/arch/arm/mach-mx28/device.c
+===================================================================
+--- linux-2.6.35.3.orig/arch/arm/mach-mx28/device.c
++++ linux-2.6.35.3/arch/arm/mach-mx28/device.c
+@@ -421,12 +421,12 @@ static void mx28_init_gpmi_nfc(void)
+ #endif
+ 
+ #if defined(CONFIG_MMC_MXS) || defined(CONFIG_MMC_MXS_MODULE)
+-#if defined(CONFIG_MACH_MX28EVK)
++/*#if defined(CONFIG_MACH_MX28EVK)*/
+ #define MMC0_POWER	MXS_PIN_TO_GPIO(PINID_PWM3)
+ #define MMC1_POWER	MXS_PIN_TO_GPIO(PINID_PWM4)
+ #define MMC0_WP		MXS_PIN_TO_GPIO(PINID_SSP1_SCK)
+ #define MMC1_WP		MXS_PIN_TO_GPIO(PINID_GPMI_RESETN)
+-#endif
++/*#endif*/
+ 
+ static int mxs_mmc_get_wp_ssp0(void)
+ {

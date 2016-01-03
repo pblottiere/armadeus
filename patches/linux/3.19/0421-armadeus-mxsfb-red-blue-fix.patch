@@ -1,0 +1,43 @@
+Add option to handle red / blue inversion on apf28
+
+Signed-off-by: Sébastien Szymanski <sebastien.szymanski@armadeus.com>
+Index: linux-3.19.8/drivers/video/fbdev/mxsfb.c
+===================================================================
+--- linux-3.19.8.orig/drivers/video/fbdev/mxsfb.c
++++ linux-3.19.8/drivers/video/fbdev/mxsfb.c
+@@ -182,6 +182,7 @@ struct mxsfb_info {
+	const struct mxsfb_devdata *devdata;
+	u32 sync;
+	struct regulator *reg_lcd;
++	bool red_blue_fix;
+ };
+
+ #define mxsfb_is_v3(host) (host->devdata->ipversion == 3)
+@@ -308,9 +309,16 @@ static int mxsfb_check_var(struct fb_var
+	 * Copy the RGB parameters for this display
+	 * from the machine specific parameters.
+	 */
+-	var->red    = rgb[RED];
++
++	if (host->red_blue_fix) {
++		var->red    = rgb[BLUE];
++		var->blue   = rgb[RED];
++	} else {
++		var->red    = rgb[RED];
++		var->blue   = rgb[BLUE];
++	}
++
+	var->green  = rgb[GREEN];
+-	var->blue   = rgb[BLUE];
+	var->transp = rgb[TRANSP];
+
+	return 0;
+@@ -742,6 +750,8 @@ static int mxsfb_init_fbinfo_dt(struct m
+		goto put_display_node;
+	}
+
++	host->red_blue_fix = of_property_read_bool(display_np, "red-blue-fix");
++
+	ret = of_get_videomode(display_np, &vm, OF_USE_NATIVE_MODE);
+	if (ret) {
+		dev_err(dev, "failed to get videomode from DT\n");

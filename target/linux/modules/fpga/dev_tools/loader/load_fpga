@@ -1,0 +1,78 @@
+#!/bin/sh
+#
+# Loads APFxx's FPGA by using fpgaloader driver
+#
+PLATFORM=`cat /etc/machine`
+
+if [ "$1" == "" ]; then
+	echo "Usage: `basename $0` <filename>"
+	echo "    filename: bitfile to load in FPGA"
+	exit 1
+fi
+
+if [ ! -f "$1" ]; then
+	echo "can't find $1"
+	exit 1
+fi
+
+if [ "$PLATFORM" == "APF6" ]; then
+	modprobe fpgaloader
+	DEVLOADER=/dev/altera_cvp
+	major=`grep -w altera_cvp /proc/devices | cut -f1 -d" "`
+	if [ ! -e /dev/altera_cvp ]; then	
+		mknod /dev/altera_cvp c $major 0
+	fi
+else
+	DEVLOADER=/dev/fpgaloader
+fi
+
+if [ "$PLATFORM" == "APF51" ]; then
+	filename="$1"
+	ext=${filename/*./}
+	if [ "$ext" != "bin" ]; then
+		echo "Wrong bitstream format, binary file in *.bin format must be used."
+		exit 1
+	fi
+fi
+
+if [ ! -c $DEVLOADER ]; then
+	modprobe fpgaloader
+	if [ "$?" != 0 ]; then
+		echo "Failed to modprobe FPGA loader driver. Please check your config !"
+		exit 1
+	fi
+fi
+
+timeout=0
+while [ ! -c $DEVLOADER ]; do
+	usleep 1000
+	let timeout=timeout+1
+	if [ $timeout -gt 100 ]; then
+		echo "Timeout while waiting for FPGA loader driver readiness !"
+		exit 1
+	fi
+done
+
+if [ "$PLATFORM" == "APF51" ]; then
+	# On APF51 FPGA loading shares NAND bus so it's safer to load
+	# firmware from RAM
+	BITFILE=/tmp/tmp_bitfile
+	cp $1 $BITFILE
+	if [ "$?" != 0 ]; then
+		echo "Error while making bitfile copy in RAM !"
+		exit 1
+	fi
+	sync
+else
+	BITFILE=$1
+fi
+
+dd if=$BITFILE of=$DEVLOADER
+RES=$?
+
+if [ "$PLATFORM" == "APF51" ]; then
+	rm $BITFILE	# delete copy in RAM
+fi
+
+exit $RES
+

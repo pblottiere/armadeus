@@ -1,0 +1,21 @@
+i.MX27's usb needs three clocks (usb_ipg_gate, usb_ahb_gate and usb_misc)
+but the current chipidea driver implementation, and devicetree, provides 
+only ipg and ahb. Consequently, if the bootloader don't enable the last 
+one, the kernel will crash.
+
+This patch is an temporary solution to enable usb_div.
+
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+---
+Index: b/arch/arm/mach-imx/clk-imx27.c
+===================================================================
+--- a/arch/arm/mach-imx/clk-imx27.c
++++ b/arch/arm/mach-imx/clk-imx27.c
+@@ -157,6 +157,7 @@ static void __init _mx27_clocks_init(uns
+ 	clk_register_clkdev(clk[IMX27_CLK_CPU_DIV], NULL, "cpu0");
+ 
+ 	clk_prepare_enable(clk[IMX27_CLK_EMI_AHB_GATE]);
++	clk_prepare_enable(clk[IMX27_CLK_USB_DIV]);
+ 
+ 	imx_print_silicon_rev("i.MX27", mx27_revision());
+ }

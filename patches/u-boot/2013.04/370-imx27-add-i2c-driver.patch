@@ -1,0 +1,25 @@
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+diff -purN uboot/arch/arm/cpu/arm926ejs/mx27/generic.c uboot/arch/arm/cpu/arm926ejs/mx27/generic.c
+--- uboot/arch/arm/cpu/arm926ejs/mx27/generic.c
++++ uboot/arch/arm/cpu/arm926ejs/mx27/generic.c
+@@ -159,6 +159,8 @@ unsigned int mxc_get_clock(enum mxc_cloc
+ 	switch (clk) {
+ 	case MXC_ARM_CLK:
+ 		return imx_get_armclk();
++	case MXC_I2C_CLK:
++		return imx_get_ahbclk()/2;
+ 	case MXC_UART_CLK:
+ 		return imx_get_perclk1();
+ 	case MXC_FEC_CLK:
+diff -purN uboot/arch/arm/include/asm/arch-mx27/clock.h uboot/arch/arm/include/asm/arch-mx27/clock.h
+--- uboot/arch/arm/include/asm/arch-mx27/clock.h
++++ uboot/arch/arm/include/asm/arch-mx27/clock.h
+@@ -26,6 +26,7 @@
+ 
+ enum mxc_clock {
+ 	MXC_ARM_CLK,
++	MXC_I2C_CLK,
+ 	MXC_UART_CLK,
+ 	MXC_ESDHC_CLK,
+ 	MXC_FEC_CLK,

@@ -1,0 +1,747 @@
+Add APF28 module support to Freescale's 2.6.35 BSP.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+
+Index: linux-2.6.35.3/arch/arm/mach-mx28/Kconfig
+===================================================================
+--- linux-2.6.35.3.orig/arch/arm/mach-mx28/Kconfig	2012-01-31 14:27:22.000000000 +0100
++++ linux-2.6.35.3/arch/arm/mach-mx28/Kconfig	2012-02-03 17:42:26.000000000 +0100
+@@ -6,6 +6,14 @@
+ 	depends on ARCH_MX28
+ 	select USB_ARCH_HAS_EHCI
+ 
++config MACH_APF28
++	bool "Armadeus APF28 module"
++	depends on ARCH_MX28
++	select USB_ARCH_HAS_EHCI
++	help
++	  Include support for the Armadeus systems APF28 SOM. This includes
++	  specific configurations for the module and its peripherals.
++
+ endchoice
+ 
+ config VECTORS_PHY_ADDR
+Index: linux-2.6.35.3/arch/arm/mach-mx28/Makefile
+===================================================================
+--- linux-2.6.35.3.orig/arch/arm/mach-mx28/Makefile	2012-01-31 14:27:32.000000000 +0100
++++ linux-2.6.35.3/arch/arm/mach-mx28/Makefile	2012-02-03 17:42:26.000000000 +0100
+@@ -5,6 +5,7 @@
+ 
+ # Board select
+ obj-$(CONFIG_MACH_MX28EVK) += mx28evk.o mx28evk_pins.o
++obj-$(CONFIG_MACH_APF28)   += mach-apf28.o
+ obj-$(CONFIG_GENERIC_GPIO) += gpio.o
+ obj-$(CONFIG_MXS_RAM_FREQ_SCALING) +=emi.o emi_settings.o
+ 
+Index: linux-2.6.35.3/arch/arm/mach-mx28/mach-apf28.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.35.3/arch/arm/mach-mx28/mach-apf28.c	2012-02-03 17:39:56.000000000 +0100
+@@ -0,0 +1,629 @@
++/*
++ * Copyright (C) 2012 Armadeus systems
++ *
++ * Based on code which is:
++ * Copyright (C) 2009-2010 Freescale Semiconductor, Inc. All Rights Reserved.
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program; if not, write to the Free Software Foundation, Inc.,
++ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
++ */
++
++#include <linux/kernel.h>
++#include <linux/clk.h>
++#include <linux/delay.h>
++#include <linux/err.h>
++#include <linux/fec.h>
++#include <linux/gpmi-nfc.h>
++#include <linux/io.h>
++#include <linux/init.h>
++#include <linux/mtd/mtd.h>
++#include <linux/mtd/partitions.h>
++#include <linux/mtd/physmap.h>
++#include <linux/platform_device.h>
++
++#include <asm/setup.h>
++#include <asm/mach-types.h>
++#include <asm/mach/arch.h>
++
++#include <mach/apf28.h>
++#include <mach/device.h>
++#include <mach/dma.h>
++#include <mach/hardware.h>
++#include <mach/pinctrl.h>
++#include <mach/regs-ocotp.h>
++
++#include "device.h"
++#include "mx28_pins.h"
++
++static struct pin_desc apf28_fixed_pins[] = {
++	{
++		.name		= "DUART.RX",
++		.id		= PINID_PWM0,
++		.fun		= PIN_FUN3,
++	},
++	{
++		.name		= "DUART.TX",
++		.id		= PINID_PWM1,
++		.fun		= PIN_FUN3,
++	},
++#if defined(CONFIG_MTD_NAND_GPMI_NFC)
++	{
++		.name		= "GPMI D0",
++		.id		= PINID_GPMI_D00,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= !0
++	},
++	{
++		.name		= "GPMI D1",
++		.id		= PINID_GPMI_D01,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= !0
++	},
++	{
++		.name		= "GPMI D2",
++		.id		= PINID_GPMI_D02,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= !0
++	},
++	{
++		.name		= "GPMI D3",
++		.id		= PINID_GPMI_D03,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= !0
++	},
++	{
++		.name		= "GPMI D4",
++		.id		= PINID_GPMI_D04,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= !0
++	},
++	{
++		.name		= "GPMI D5",
++		.id		= PINID_GPMI_D05,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= !0
++	},
++	{
++		.name		= "GPMI D6",
++		.id		= PINID_GPMI_D06,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= !0
++	},
++	{
++		.name		= "GPMI D7",
++		.id		= PINID_GPMI_D07,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= !0
++	},
++	{
++		.name		= "GPMI CE0-",
++		.id		= PINID_GPMI_CE0N,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= !0
++	},
++	{
++		.name		= "GPMI RDY0",
++		.id		= PINID_GPMI_RDY0,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= !0
++	},
++	{
++		.name		= "GPMI RD-",
++		.id		= PINID_GPMI_RDN,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_8MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= !0
++	},
++	{
++		.name		= "GPMI WR-",
++		.id		= PINID_GPMI_WRN,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_8MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= !0
++	},
++	{
++		.name		= "GPMI ALE",
++		.id		= PINID_GPMI_ALE,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= !0
++	},
++	{
++		.name		= "GPMI CLE",
++		.id		= PINID_GPMI_CLE,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= !0
++	},
++	{
++		.name		= "GPMI RST-",
++		.id		= PINID_GPMI_RESETN,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= !0
++	},
++#endif /* defined(CONFIG_MTD_NAND_GPMI_NFC) */
++#if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)\
++	|| defined(CONFIG_FEC_L2SWITCH)
++	{
++		.name		= "ENET0_MDC",
++		.id		= PINID_ENET0_MDC,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.pull		= 1,
++		.pullup		= 1,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++	},
++	{
++		.name		= "ENET0_MDIO",
++		.id		= PINID_ENET0_MDIO,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.pull		= 1,
++		.pullup		= 1,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++	},
++	{
++		.name		= "ENET0_RX_EN",
++		.id		= PINID_ENET0_RX_EN,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.pull		= 1,
++		.pullup		= 1,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++	},
++	{
++		.name		= "ENET0_RXD0",
++		.id		= PINID_ENET0_RXD0,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.pull		= 1,
++		.pullup		= 1,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++	},
++	{
++		.name		= "ENET0_RXD1",
++		.id		= PINID_ENET0_RXD1,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.pull		= 1,
++		.pullup		= 1,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++	},
++	{
++		.name		= "ENET0_TX_EN",
++		.id		= PINID_ENET0_TX_EN,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.pull		= 1,
++		.pullup		= 1,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++	},
++	{
++		.name		= "ENET0_TXD0",
++		.id		= PINID_ENET0_TXD0,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.pull		= 1,
++		.pullup		= 1,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++	},
++	{
++		.name		= "ENET0_TXD1",
++		.id		= PINID_ENET0_TXD1,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.pull		= 1,
++		.pullup		= 1,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++	},
++	{
++		.name		= "ENET_CLK",
++		.id		= PINID_ENET_CLK,
++		.fun		= PIN_FUN1,
++		.strength	= PAD_4MA,
++		.pull		= 1,
++		.pullup		= 1,
++		.voltage	= PAD_3_3V,
++		.drive		= 1,
++	},
++	{
++		.name		= "ETH0_INT",
++		.id		= PINID_ENET0_TX_CLK,
++		.fun		= PIN_GPIO,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= 1,
++		.pull		= 0,
++		.output		= 0,
++	},
++	{
++		.name		= "PHY0_RESET",
++		.id		= PINID_ENET0_RX_CLK,
++		.fun		= PIN_GPIO,
++		.strength	= PAD_4MA,
++		.voltage	= PAD_3_3V,
++		.pullup		= 0,
++		.drive		= 1,
++		.pull		= 0,
++		.output		= 1,
++		.data		= 1,
++	},
++#endif /* defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE) */
++};
++
++#if defined(CONFIG_MTD_NAND_GPMI_NFC)
++
++static int apf28_gpmi_nfc_platform_init(unsigned int max_chip_count)
++{
++	return 0;
++}
++
++static void apf28_gpmi_nfc_platform_exit(unsigned int max_chip_count)
++{
++}
++
++static const char *apf28_gpmi_nfc_partition_source_types[] =
++	{ "cmdlinepart", 0 };
++
++static struct gpmi_nfc_platform_data  apf28_gpmi_nfc_platform_data = {
++	.nfc_version             = 1,
++	.boot_rom_version        = 1,
++	.clock_name              = "gpmi",
++	.platform_init           = apf28_gpmi_nfc_platform_init,
++	.platform_exit           = apf28_gpmi_nfc_platform_exit,
++	.min_prop_delay_in_ns    = 5,
++	.max_prop_delay_in_ns    = 9,
++	.max_chip_count          = 1,
++	.boot_area_size_in_bytes = 0 * SZ_1M,
++	.partition_source_types  = apf28_gpmi_nfc_partition_source_types,
++	.partitions              = 0,
++	.partition_count         = 0,
++};
++
++static struct resource gpmi_nfc_resources[] = {
++	{
++	 .name  = GPMI_NFC_GPMI_REGS_ADDR_RES_NAME,
++	 .flags = IORESOURCE_MEM,
++	 .start = GPMI_PHYS_ADDR,
++	 .end   = GPMI_PHYS_ADDR + SZ_8K - 1,
++	 },
++	{
++	 .name  = GPMI_NFC_GPMI_INTERRUPT_RES_NAME,
++	 .flags = IORESOURCE_IRQ,
++	 .start = IRQ_GPMI,
++	 .end   = IRQ_GPMI,
++	},
++	{
++	 .name  = GPMI_NFC_BCH_REGS_ADDR_RES_NAME,
++	 .flags = IORESOURCE_MEM,
++	 .start = BCH_PHYS_ADDR,
++	 .end   = BCH_PHYS_ADDR + SZ_8K - 1,
++	 },
++	{
++	 .name  = GPMI_NFC_BCH_INTERRUPT_RES_NAME,
++	 .flags = IORESOURCE_IRQ,
++	 .start = IRQ_BCH,
++	 .end   = IRQ_BCH,
++	 },
++	{
++	 .name  = GPMI_NFC_DMA_CHANNELS_RES_NAME,
++	 .flags = IORESOURCE_DMA,
++	 .start	= MXS_DMA_CHANNEL_AHB_APBH_GPMI0,
++	 .end	= MXS_DMA_CHANNEL_AHB_APBH_GPMI7,
++	 },
++	{
++	 .name  = GPMI_NFC_DMA_INTERRUPT_RES_NAME,
++	 .flags = IORESOURCE_IRQ,
++	 .start = IRQ_GPMI_DMA,
++	 .end   = IRQ_GPMI_DMA,
++	},
++};
++
++static void __init apf28_init_gpmi_nfc(void)
++{
++	struct platform_device  *pdev;
++
++	pdev = mxs_get_device(GPMI_NFC_DRIVER_NAME, 0);
++	if (pdev == NULL || IS_ERR(pdev))
++		return;
++	pdev->dev.platform_data = &apf28_gpmi_nfc_platform_data;
++	pdev->resource =  gpmi_nfc_resources;
++	pdev->num_resources = ARRAY_SIZE(gpmi_nfc_resources);
++	mxs_add_device(pdev, 1);
++	mxs_get_devices(GPMI_NFC_DRIVER_NAME);	/* to lock the ressource */
++}
++#else
++static void apf28_init_gpmi_nfc(void)
++{
++}
++#endif
++
++
++/*
++ * Stub implementations for mx287 FEC1 init to be overloaded in the baseboard
++ * source code.
++ */
++int __mx287_fec1_gpio_init(void)
++{
++	return 0;
++}
++
++int mx287_fec1_gpio_init(void)
++	__attribute__((weak, alias("__mx287_fec1_gpio_init")));
++
++/* Stub implementation used in FEC l2switch mode*/
++int mx28evk_enet_gpio_init(void)
++{
++	gpio_direction_output(MXS_PIN_TO_GPIO(PINID_ENET0_RX_CLK), 0);
++	mdelay(1);
++	gpio_direction_output(MXS_PIN_TO_GPIO(PINID_ENET0_RX_CLK), 1);
++	mx287_fec1_gpio_init();
++
++	return 0;
++}
++
++/*
++ * Power management calls these function when entering and leaving sleep modes.
++ * They can be overloaded in the baseboard source code.
++ */
++void __mx28evk_enet_io_lowerpower_enter(void) {; }
++void mx28evk_enet_io_lowerpower_enter(void)
++	__attribute__((weak, alias("__mx28evk_enet_io_lowerpower_enter")));
++
++void __mx28evk_enet_io_lowerpower_exit(void) { ; }
++void mx28evk_enet_io_lowerpower_exit(void)
++	__attribute__((weak, alias("__mx28evk_enet_io_lowerpower_exit")));
++
++
++#if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)\
++	|| defined(CONFIG_FEC2) || defined(CONFIG_FEC2_MODULE)
++int apf28_fec0_gpio_init(void)
++{
++	gpio_direction_output(MXS_PIN_TO_GPIO(PINID_ENET0_RX_CLK), 0);
++	mdelay(1);
++	gpio_direction_output(MXS_PIN_TO_GPIO(PINID_ENET0_RX_CLK), 1);
++
++	return 0;
++}
++
++#if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
++static struct resource fec0_resource[] = {
++	{
++		.start	= ENET_PHYS_ADDR,
++		.end	= ENET_PHYS_ADDR + 0x3fff,
++		.flags	= IORESOURCE_MEM
++	},
++	{
++		.start	= IRQ_ENET_MAC0,
++		.end	= IRQ_ENET_MAC0,
++		.flags	= IORESOURCE_IRQ
++	},
++};
++
++static struct fec_platform_data fec_pdata0 = {
++	.phy = PHY_INTERFACE_MODE_RMII,
++	.init = apf28_fec0_gpio_init,
++};
++#endif
++
++#if defined(CONFIG_FEC2) || defined(CONFIG_FEC2_MODULE)
++static struct resource fec1_resource[] = {
++	{
++		.start	= ENET_PHYS_ADDR + 0x4000,
++		.end	= ENET_PHYS_ADDR + 0x7fff,
++		.flags	= IORESOURCE_MEM
++	},
++	{
++		.start	= IRQ_ENET_MAC1,
++		.end	= IRQ_ENET_MAC1,
++		.flags	= IORESOURCE_IRQ
++	},
++};
++
++static struct fec_platform_data fec_pdata1 = {
++	.phy	= PHY_INTERFACE_MODE_RMII,
++	.init	= mx287_fec1_gpio_init,
++};
++#endif
++
++
++static void __init apf28_init_fec(void)
++{
++	struct platform_device *pdev;
++	struct mxs_dev_lookup *lookup;
++	struct fec_platform_data *pfec;
++	int i;
++	u32 val;
++
++	__raw_writel(BM_OCOTP_CTRL_RD_BANK_OPEN,
++			IO_ADDRESS(OCOTP_PHYS_ADDR) + HW_OCOTP_CTRL_SET);
++
++	while (BM_OCOTP_CTRL_BUSY &
++		__raw_readl(IO_ADDRESS(OCOTP_PHYS_ADDR) + HW_OCOTP_CTRL))
++		udelay(10);
++
++	lookup = mxs_get_devices("mxs-fec");
++	if (lookup == NULL || IS_ERR(lookup))
++		return;
++
++	for (i = 0; i < lookup->size; i++) {
++		pdev = lookup->pdev + i;
++		val =  __raw_readl(IO_ADDRESS(OCOTP_PHYS_ADDR) +
++						HW_OCOTP_CUSTn(pdev->id));
++		switch (pdev->id) {
++		case 0:
++#if defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE)
++			pdev->resource = fec0_resource;
++			pdev->num_resources = ARRAY_SIZE(fec0_resource);
++			pdev->dev.platform_data = &fec_pdata0;
++			break;
++		case 1:
++#endif
++#if defined(CONFIG_FEC2) || defined(CONFIG_FEC2_MODULE)
++			pdev->resource = fec1_resource;
++			pdev->num_resources = ARRAY_SIZE(fec1_resource);
++			pdev->dev.platform_data = &fec_pdata1;
++			break;
++#endif
++		default:
++			return;
++		}
++
++		pfec = (struct fec_platform_data *)pdev->dev.platform_data;
++		pfec->mac[0] = 0x00;
++		pfec->mac[1] = 0x1e;
++		pfec->mac[2] = (val >> 24) & 0xFF;
++		pfec->mac[3] = (val >> 16) & 0xFF;
++		pfec->mac[4] = (val >> 8) & 0xFF;
++		pfec->mac[5] = (val >> 0) & 0xFF;
++
++		mxs_add_device(pdev, 2);
++	}
++}
++
++#else
++static void __init apf28_init_fec(void) { ; }
++#endif /* defined(CONFIG_FEC) || defined(CONFIG_FEC_MODULE) 
++	|| defined(CONFIG_FEC2) || defined(CONFIG_FEC2_MODULE) */
++
++/* used by device.c (mx28evk makes it a bootcmd option) */
++int enable_gpmi = 1;
++
++
++static void __init fixup_board(struct machine_desc *desc, struct tag *tags,
++				char **cmdline, struct meminfo *mi)
++{
++	mx28_set_input_clk(24000000, 24000000, 32000, 50000000);
++}
++
++static void __init apf28_device_init(void)
++{
++	/* Add apf28 special device init code */
++	;
++}
++
++void __init apf28_init_pin_group(struct pin_desc *pins, unsigned count)
++{
++	int i;
++	struct pin_desc *pin;
++	for (i = 0; i < count; i++) {
++		pin = pins + i;
++		if (pin->fun == PIN_GPIO)
++			gpio_request(MXS_PIN_TO_GPIO(pin->id), pin->name);
++		else
++			mxs_request_pin(pin->id, pin->fun, pin->name);
++		if (pin->drive) {
++			mxs_set_strength(pin->id, pin->strength, pin->name);
++			mxs_set_voltage(pin->id, pin->voltage, pin->name);
++		}
++		if (pin->pull)
++			mxs_set_pullup(pin->id, pin->pullup, pin->name);
++		if (pin->fun == PIN_GPIO) {
++			if (pin->output)
++				gpio_direction_output(MXS_PIN_TO_GPIO(pin->id),
++						      pin->data);
++			else
++				gpio_direction_input(MXS_PIN_TO_GPIO(pin->id));
++		}
++	}
++}
++
++static void __init apf28_init_machine(void)
++{
++	mx28_pinctrl_init();
++	/* Init iram allocate */
++#ifdef CONFIG_VECTORS_PHY_ADDR
++	/* reserve the first page for irq vector table */
++	iram_init(MX28_OCRAM_PHBASE + PAGE_SIZE, MX28_OCRAM_SIZE - PAGE_SIZE);
++#else
++	iram_init(MX28_OCRAM_PHBASE, MX28_OCRAM_SIZE);
++#endif
++	mx28_gpio_init();
++	apf28_init_pin_group(apf28_fixed_pins, ARRAY_SIZE(apf28_fixed_pins));
++#ifdef CONFIG_MACH_APF28_HAS_BASEBOARD
++	apf28_baseboard_pins_init();
++#endif
++
++	apf28_init_fec();
++	apf28_init_gpmi_nfc();
++
++	mx28_device_init();
++	apf28_device_init();
++#ifdef CONFIG_MACH_APF28_HAS_BASEBOARD
++	apf28_baseboard_devices_init();
++#endif
++
++
++}
++
++MACHINE_START(APF28, "Armadeus APF28")
++	.phys_io	= 0x80000000,
++	.io_pg_offst	= ((0xf0000000) >> 18) & 0xfffc,
++	.boot_params	= 0x40000100,
++	.fixup		= fixup_board,
++	.map_io		= mx28_map_io,
++	.init_irq	= mx28_irq_init,
++	.init_machine	= apf28_init_machine,
++	.timer		= &mx28_timer.timer,
++MACHINE_END
+Index: linux-2.6.35.3.ref/arch/arm/mach-mx28/include/mach/apf28.h
+===================================================================
+--- linux-2.6.35.3.ref/arch/arm/mach-mx28/include/mach/apf28.h
++++ linux-2.6.35.3.ref/arch/arm/mach-mx28/include/mach/apf28.h
+@@ -0,0 +1,63 @@
++/*
++ * Copyright (C) 2012 Armadeus systems
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program; if not, write to the Free Software Foundation, Inc.,
++ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
++ */
++
++#ifndef __ASM_ARM_MACH_APF28_H
++#define __ASM_ARM_MACH_APF28_H
++
++#include <mach/pinctrl.h>
++
++/*
++ * This function initialize the CPU pins used on the base board and shall
++ * be implemented in the base board file (ex. apf28dev.c)
++ * It will be called at startup from mach-apf28.c.
++ */
++extern void __init apf28_baseboard_pins_init(void);
++
++/*
++ * This function initialize the base board specific devices connected to
++ * the board and shall be implemented in the base board file (ex. apf28dev.c)
++ * It will be called at startup from mach-apf28.c.
++ */
++extern void __init apf28_baseboard_devices_init(void);
++
++/*
++ * Base board function to initialize the ethernet FEC1 interface if needed.
++ * This function may be implemented in the base board file if a specific
++ * is required to initialize the FEC1
++ * It will be called at startup from mach-apf28.c.
++ * This function may not be implemented
++ */
++extern int mx287_fec1_gpio_init(void);
++
++/*
++ * Base board can use apf28_init_pin_group() to initialize a set of CPU pins
++ * from a description table.
++ */
++extern void __init apf28_init_pin_group(struct pin_desc *pins, unsigned count);
++
++/*
++ * Base board can implement these 2 functions to add any specific code to put
++ * the ethernet external hardware in low power mode and to wake up the
++ * interface on resume.
++ * These function may not be implemented
++ */
++extern void mx28evk_enet_io_lowerpower_enter(void);
++extern void mx28evk_enet_io_lowerpower_exit(void);
++
++
++#endif /* __ASM_ARM_MACH_APF28_H */
+Index: linux-2.6.35.3/arch/arm/tools/mach-types
+===================================================================
+--- linux-2.6.35.3.orig/arch/arm/tools/mach-types	2012-01-31 14:28:17.000000000 +0100
++++ linux-2.6.35.3/arch/arm/tools/mach-types	2012-02-01 11:03:29.000000000 +0100
+@@ -3257,3 +3257,4 @@
+ lq2			MACH_LQ2		LQ2			3271
+ sweda_tms2		MACH_SWEDA_TMS2		SWEDA_TMS2		3272
+ mx53_loco		MACH_MX53_LOCO		MX53_LOCO		3273
++apf28			MACH_APF28		APF28			3845

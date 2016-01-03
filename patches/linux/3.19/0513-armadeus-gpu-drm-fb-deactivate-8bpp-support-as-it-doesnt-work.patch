@@ -1,0 +1,24 @@
+Until i.MX6 framebuffer really supports 8bpp...
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: linux-3.19.8/drivers/gpu/drm/drm_fb_helper.c
+===================================================================
+--- linux-3.19.8.orig/drivers/gpu/drm/drm_fb_helper.c	2015-05-11 14:34:10.000000000 +0200
++++ linux-3.19.8/drivers/gpu/drm/drm_fb_helper.c	2015-06-17 14:00:03.895815385 +0200
+@@ -852,6 +852,7 @@
+ 	}
+ 
+ 	switch (depth) {
++/* Don't advertise 8bpp is supported as it's buggy
+ 	case 8:
+ 		var->red.offset = 0;
+ 		var->green.offset = 0;
+@@ -862,6 +863,7 @@
+ 		var->transp.length = 0;
+ 		var->transp.offset = 0;
+ 		break;
++*/
+ 	case 15:
+ 		var->red.offset = 10;
+ 		var->green.offset = 5;

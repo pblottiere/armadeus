@@ -1,0 +1,21 @@
+Add armadeus target specific menu to BR.
+
+Index: buildroot/target/generic/Config.in
+===================================================================
+--- buildroot.orig/target/generic/Config.in	2012-02-21 16:43:29.000000000 +0100
++++ buildroot/target/generic/Config.in	2012-02-21 16:43:48.000000000 +0100
+@@ -149,4 +149,5 @@
+ 	  only argument. Make sure the exit code of that script is 0,
+ 	  otherwise make will stop after calling it.
+ 
++source "target/device/armadeus/Config.in"
+ endmenu
+Index: buildroot/target/Makefile.in
+===================================================================
+--- buildroot.orig/target/Makefile.in	2012-02-21 16:43:29.000000000 +0100
++++ buildroot/target/Makefile.in	2012-02-21 16:43:48.000000000 +0100
+@@ -1,3 +1,4 @@
+ # make sure to put everything that is board-specific before the tarroot targets
+ include target/generic/Makefile.in
+ 
++include target/device/armadeus/Makefile.in

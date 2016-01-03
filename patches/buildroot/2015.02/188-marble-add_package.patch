@@ -1,0 +1,358 @@
+Add package Marble to Buildroot.
+
+Signed-off-by: Jérémie Scheer <jeremie.scheer@armadeus.com>
+
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in
++++ buildroot/package/Config.in
+@@ -235,6 +235,7 @@ source "package/sdl_water/Config.in"
+
+ comment "Other GUIs"
+	source "package/efl/Config.in"
++	source "package/marble/Config.in"
+	source "package/python-wx/Config.in"
+	source "package/qt/Config.in"
+	source "package/qt5/Config.in"
+Index: buildroot/package/marble/Config.in
+===================================================================
+--- /dev/null
++++ buildroot/package/marble/Config.in
+@@ -0,0 +1,133 @@
++comment "Marble needs Qt to be installed"
++	depends on !BR2_PACKAGE_QT
++
++menuconfig BR2_PACKAGE_MARBLE
++	bool "KDE Marble"
++	depends on BR2_PACKAGE_QT
++	select BR2_PACKAGE_QT_SCRIPT
++	select BR2_PACKAGE_QT_SVG
++	select BR2_PACKAGE_QT_WEBKIT
++	select BR2_PACKAGE_QT_XML
++	help
++	  Marble is a virtual globe and world atlas.
++	  It can also be used as a library for geolocalization applications.
++
++	  http://marble.kde.org/
++
++if BR2_PACKAGE_MARBLE
++
++config BR2_PACKAGE_MARBLE_BINARY
++	bool "Install Marble binary"
++
++config BR2_PACKAGE_MARBLE_AUDIO
++	bool "Install audio files"
++
++config BR2_PACKAGE_MARBLE_BITMAPS
++	bool "Install bitmaps"
++
++config BR2_PACKAGE_MARBLE_FLAGS
++	bool "Install country flags"
++
++menu "Maps"
++
++menu "Earth maps"
++
++config BR2_PACKAGE_MARBLE_BLUEMARBLE
++	bool "Bluemarble"
++	help
++	  Install Bluemarble map
++
++config BR2_PACKAGE_MARBLE_CITYLIGHTS
++	bool "Citylights"
++	help
++	  Install Citylights map
++
++config BR2_PACKAGE_MARBLE_CLOUDS
++	bool "Clouds"
++	help
++	  Install Clouds map
++
++config BR2_PACKAGE_MARBLE_HILLSHADING
++	bool "Hillshading"
++	help
++	  Install Hillshading map
++
++config BR2_PACKAGE_MARBLE_OPENSTREETMAP
++	bool "OpenStreetMap"
++	help
++	  Install Openstreetmap map
++
++config BR2_PACKAGE_MARBLE_PLAIN
++	bool "Plain"
++	help
++	  Install Plain map
++
++config BR2_PACKAGE_MARBLE_PRECIP_DEC
++	bool "December precipitations"
++	help
++	  Install December precipitation map
++
++config BR2_PACKAGE_MARBLE_PRECIP_JULY
++	bool "July precipitations"
++	help
++	  Install July precipitation map
++
++config BR2_PACKAGE_MARBLE_SCHAGEN
++	bool "Schagen 1689"
++	help
++	  Install Schagen 1689 map
++
++config BR2_PACKAGE_MARBLE_SRTM
++	bool "SRTM"
++	help
++	  Install SRTM map
++
++config BR2_PACKAGE_MARBLE_SRTM2
++	bool "SRTM 2"
++	help
++	  Install SRTM 2 map
++
++config BR2_PACKAGE_MARBLE_TEMP_DEC
++	bool "December temperatures"
++	help
++	  Install December temperature map
++
++config BR2_PACKAGE_MARBLE_TEMP_JULY
++	bool "July temperatures"
++	help
++	  Install July temperature map
++
++endmenu #Earth maps
++
++menu "Moon maps"
++
++config BR2_PACKAGE_MARBLE_CLEMENTINE
++	bool "Clementine"
++	help
++	  Install Clementine map
++
++endmenu #Moon maps
++
++endmenu #Maps
++
++config BR2_PACKAGE_MARBLE_MWDBII
++	bool "Install MWDBII files"
++	help
++	  Vector data files from Microworld II Database
++
++config BR2_PACKAGE_MARBLE_PLACEMARKS
++	bool "Install placemarks"
++	help
++	  Placemarks for remarkable points on maps or geometry placemarks
++
++config BR2_PACKAGE_MARBLE_STARS
++	bool "Install stars data"
++
++config BR2_PACKAGE_MARBLE_SVG
++	bool "Install SVG files"
++
++config BR2_PACKAGE_MARBLE_WEATHER
++	bool "Install weather data"
++
++endif #BR2_PACKAGE_MARBLE
++
+Index: buildroot/package/marble/marble.mk
+===================================================================
+--- /dev/null
++++ buildroot/package/marble/marble.mk
+@@ -0,0 +1,199 @@
++#############################################################
++#
++# KDE Marble
++#
++#############################################################
++MARBLE_VERSION = 0299004157ce00cf901b6113c4ac14fa0c323c00
++MARBLE_SOURCE = marble-$(MARBLE_VERSION)-source.tar.gz
++MARBLE_SITE = git://anongit.kde.org/marble.git
++
++MARBLE_DEPENDENCIES = qt
++
++MARBLE_CONF_OPTS += -DQTONLY=ON
++MARBLE_CONF_OPTS += -DTILES_AT_COMPILETIME=OFF
++
++MARBLE_INSTALL_STAGING = YES
++
++define MARBLE_CLEAN_TARGET_INSTALL
++	rm -rf $(TARGET_DIR)/usr/share/marble/data/*
++	rm -rf $(TARGET_DIR)/usr/include/marble
++	rm -rf $(TARGET_DIR)/usr/bin/marble
++endef
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_CLEAN_TARGET_INSTALL
++
++ifeq ($(BR2_PACKAGE_MARBLE_BINARY),y)
++define MARBLE_INSTALL_BINARY
++	cp -rf $(STAGING_DIR)/usr/bin/marble $(TARGET_DIR)/usr/bin
++endef
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_INSTALL_BINARY
++endif
++
++ifeq ($(BR2_PACKAGE_MARBLE_AUDIO),y)
++define MARBLE_INSTALL_AUDIO_FILES
++	cp -rf $(STAGING_DIR)/usr/share/marble/data/audio $(TARGET_DIR)/usr/share/marble/data
++endef
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_INSTALL_AUDIO_FILES
++endif
++
++ifeq ($(BR2_PACKAGE_MARBLE_BITMAPS),y)
++define MARBLE_INSTALL_BITMAPS
++	cp -rf $(STAGING_DIR)/usr/share/marble/data/bitmaps $(TARGET_DIR)/usr/share/marble/data
++endef
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_INSTALL_BITMAPS
++endif
++
++ifeq ($(BR2_PACKAGE_MARBLE_FLAGS),y)
++define MARBLE_INSTALL_FLAGS
++	cp -rf $(STAGING_DIR)/usr/share/marble/data/flags $(TARGET_DIR)/usr/share/marble/data
++endef
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_INSTALL_FLAGS
++endif
++
++ifeq ($(BR2_PACKAGE_MARBLE_BLUEMARBLE),y)
++define MARBLE_INSTALL_BLUEMARBLE_MAP
++	mkdir -p $(TARGET_DIR)/usr/share/marble/data/maps/earth
++	cp -rf $(STAGING_DIR)/usr/share/marble/data/maps/earth/bluemarble $(TARGET_DIR)/usr/share/marble/data/maps/earth
++endef
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_INSTALL_BLUEMARBLE_MAP
++endif
++
++ifeq ($(BR2_PACKAGE_MARBLE_CITYLIGHTS),y)
++define MARBLE_INSTALL_CITYLIGHTS_MAP
++	mkdir -p $(TARGET_DIR)/usr/share/marble/data/maps/earth
++	cp -rf $(STAGING_DIR)/usr/share/marble/data/maps/earth/citylights $(TARGET_DIR)/usr/share/marble/data/maps/earth
++endef
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_INSTALL_CITYLIGHTS_MAP
++endif
++
++ifeq ($(BR2_PACKAGE_MARBLE_CLOUDS),y)
++define MARBLE_INSTALL_CLOUDS_MAP
++	mkdir -p $(TARGET_DIR)/usr/share/marble/data/maps/earth
++	cp -rf $(STAGING_DIR)/usr/share/marble/data/maps/earth/clouds $(TARGET_DIR)/usr/share/marble/data/maps/earth
++endef
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_INSTALL_CLOUDS_MAP
++endif
++
++ifeq ($(BR2_PACKAGE_MARBLE_HILLSHADING),y)
++define MARBLE_INSTALL_HILLSHADING_MAP
++	mkdir -p $(TARGET_DIR)/usr/share/marble/data/maps/earth
++	cp -rf $(STAGING_DIR)/usr/share/marble/data/maps/earth/hillshading $(TARGET_DIR)/usr/share/marble/data/maps/earth
++endef
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_INSTALL_HILLSHADING_MAP
++endif
++
++ifeq ($(BR2_PACKAGE_MARBLE_OPENSTREETMAP),y)
++define MARBLE_INSTALL_OPENSTREETMAP_MAP
++	mkdir -p $(TARGET_DIR)/usr/share/marble/data/maps/earth
++	cp -rf $(STAGING_DIR)/usr/share/marble/data/maps/earth/openstreetmap $(TARGET_DIR)/usr/share/marble/data/maps/earth
++endef
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_INSTALL_OPENSTREETMAP_MAP
++endif
++
++ifeq ($(BR2_PACKAGE_MARBLE_PLAIN),y)
++define MARBLE_INSTALL_PLAIN_MAP
++	mkdir -p $(TARGET_DIR)/usr/share/marble/data/maps/earth
++	cp -rf $(STAGING_DIR)/usr/share/marble/data/maps/earth/plain $(TARGET_DIR)/usr/share/marble/data/maps/earth
++endef
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_INSTALL_PLAIN_MAP
++endif
++
++ifeq ($(BR2_PACKAGE_MARBLE_PRECIP_DEC),y)
++define MARBLE_INSTALL_PRECIP_DEC_MAP
++	mkdir -p $(TARGET_DIR)/usr/share/marble/data/maps/earth
++	cp -rf $(STAGING_DIR)/usr/share/marble/data/maps/earth/precip-dec $(TARGET_DIR)/usr/share/marble/data/maps/earth
++endef
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_INSTALL_PRECIP_DEC_MAP
++endif
++
++ifeq ($(BR2_PACKAGE_MARBLE_PRECIP_JULY),y)
++define MARBLE_INSTALL_PRECIP_JULY_MAP
++	mkdir -p $(TARGET_DIR)/usr/share/marble/data/maps/earth
++	cp -rf $(STAGING_DIR)/usr/share/marble/data/maps/earth/precip-july $(TARGET_DIR)/usr/share/marble/data/maps/earth
++endef
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_INSTALL_PRECIP_JULY_MAP
++endif
++
++ifeq ($(BR2_PACKAGE_MARBLE_SCHAGEN),y)
++define MARBLE_INSTALL_SCHAGEN_MAP
++	mkdir -p $(TARGET_DIR)/usr/share/marble/data/maps/earth
++	cp -rf $(STAGING_DIR)/usr/share/marble/data/maps/earth/schagen1689 $(TARGET_DIR)/usr/share/marble/data/maps/earth
++endef
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_INSTALL_SCHAGEN_MAP
++endif
++
++ifeq ($(BR2_PACKAGE_MARBLE_SRTM),y)
++define MARBLE_INSTALL_SRTM_MAP
++	mkdir -p $(TARGET_DIR)/usr/share/marble/data/maps/earth
++	cp -rf $(STAGING_DIR)/usr/share/marble/data/maps/earth/srtm $(TARGET_DIR)/usr/share/marble/data/maps/earth
++endef
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_INSTALL_SRTM_MAP
++endif
++
++ifeq ($(BR2_PACKAGE_MARBLE_SRTM2),y)
++define MARBLE_INSTALL_SRTM2_MAP
++	mkdir -p $(TARGET_DIR)/usr/share/marble/data/maps/earth
++	cp -rf $(STAGING_DIR)/usr/share/marble/data/maps/earth/srtm2 $(TARGET_DIR)/usr/share/marble/data/maps/earth
++endef
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_INSTALL_SRTM2_MAP
++endif
++
++ifeq ($(BR2_PACKAGE_MARBLE_TEMP_DEC),y)
++define MARBLE_INSTALL_TEMP_DEC_MAP
++	mkdir -p $(TARGET_DIR)/usr/share/marble/data/maps/earth
++	cp -rf $(STAGING_DIR)/usr/share/marble/data/maps/earth/temp-dec $(TARGET_DIR)/usr/share/marble/data/maps/earth
++endef
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_INSTALL_TEMP_DEC_MAP
++endif
++
++ifeq ($(BR2_PACKAGE_MARBLE_TEMP_JULY),y)
++define MARBLE_INSTALL_TEMP_JULY_MAP
++	mkdir -p $(TARGET_DIR)/usr/share/marble/data/maps/earth
++	cp -rf $(STAGING_DIR)/usr/share/marble/data/maps/earth/temp-july $(TARGET_DIR)/usr/share/marble/data/maps/earth
++endef
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_INSTALL_TEMP_JULY_MAP
++endif
++
++ifeq ($(BR2_PACKAGE_MARBLE_CLEMENTINE),y)
++define MARBLE_INSTALL_CLEMENTINE_MAP
++	mkdir -p $(TARGET_DIR)/usr/share/marble/data/maps/moon
++	cp -rf $(STAGING_DIR)/usr/share/marble/data/maps/moon/clementine $(TARGET_DIR)/usr/share/marble/data/maps/moon
++endef
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_INSTALL_CLEMENTINE_MAP
++endif
++
++ifeq ($(BR2_PACKAGE_MARBLE_MWDBII),y)
++define MARBLE_INSTALL_MWDBII_FILES
++	cp -rf $(STAGING_DIR)/usr/share/marble/data/mwdbii $(TARGET_DIR)/usr/share/marble/data
++endef
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_INSTALL_MWDBII_FILES
++endif
++
++ifeq ($(BR2_PACKAGE_MARBLE_PLACEMARKS),y)
++define MARBLE_INSTALL_PLACEMARKS
++	cp -rf $(STAGING_DIR)/usr/share/marble/data/placemarks $(TARGET_DIR)/usr/share/marble/data
++endef
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_INSTALL_PLACEMARKS
++endif
++
++ifeq ($(BR2_PACKAGE_MARBLE_STARS),y)
++define MARBLE_INSTALL_STARS_DATA
++	cp -rf $(STAGING_DIR)/usr/share/marble/data/stars $(TARGET_DIR)/usr/share/marble/data
++endef
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_INSTALL_STARS_DATA
++endif
++
++ifeq ($(BR2_PACKAGE_MARBLE_SVG),y)
++define MARBLE_INSTALL_SVG
++	cp -rf $(STAGING_DIR)/usr/share/marble/data/svg $(TARGET_DIR)/usr/share/marble/data
++endef
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_INSTALL_SVG
++endif
++
++ifeq ($(BR2_PACKAGE_MARBLE_WEATHER),y)
++define MARBLE_INSTALL_WEATHER_DATA
++	cp -rf $(STAGING_DIR)/usr/share/marble/data/weather $(TARGET_DIR)/usr/share/marble/data
++endef
++MARBLE_POST_INSTALL_TARGET_HOOKS += MARBLE_INSTALL_WEATHER_DATA
++endif
++
++$(eval $(cmake-package))

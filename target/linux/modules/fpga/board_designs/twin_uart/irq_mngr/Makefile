@@ -1,0 +1,2 @@
+
+obj-$(CONFIG_ARMADEUS_FPGA_BOARD_DESIGNS_TWIN_UARTS_IRQ_MNGR) += twin_uarts_irq_mng.o

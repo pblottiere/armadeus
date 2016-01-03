@@ -1,0 +1,23 @@
+Add apf51 basic support
+
+Signed-off-by: Laurent Cans <laurent.cans@gmail.com>
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+---
+Index: linux-3.9.1/arch/arm/boot/dts/imx51-apf51.dts
+===================================================================
+--- linux-3.9.1.orig/arch/arm/boot/dts/imx51-apf51.dts
++++ linux-3.9.1/arch/arm/boot/dts/imx51-apf51.dts
+@@ -36,6 +36,13 @@
+ 	};
+ };
+ 
++&nfc {
++	nand-bus-width = <8>;
++	nand-ecc-mode = "hw";
++	nand-on-flash-bbt;
++	status = "okay";
++};
++
+ &fec {
+ 	pinctrl-names = "default";
+ 	pinctrl-0 = <&pinctrl_fec_2>;

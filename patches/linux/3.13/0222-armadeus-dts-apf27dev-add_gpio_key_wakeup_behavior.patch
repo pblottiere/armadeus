@@ -1,0 +1,17 @@
+add wakeup capabilities to the apf27dev user button
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+
+Index: linux-3.13.1/arch/arm/boot/dts/imx27-apf27dev.dts
+===================================================================
+--- linux-3.13.1/arch/arm/boot/dts/imx27-apf27dev.dts
++++ linux-3.13.1/arch/arm/boot/dts/imx27-apf27dev.dts
+@@ -43,6 +43,7 @@
+ 			label = "user";
+ 			gpios = <&gpio6 13 0>;
+ 			linux,code = <276>; /* BTN_EXTRA */
++			gpio-key,wakeup;
+ 		};
+ 	};
+ 
+--

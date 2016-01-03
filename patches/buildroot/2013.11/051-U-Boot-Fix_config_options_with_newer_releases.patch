@@ -1,0 +1,53 @@
+U-Boot: Quick fix network options to work with recent versions of U-Boot.
+To be replaced ASAP by any better solution...
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+--- a/boot/uboot/uboot.mk
++++ b/boot/uboot/uboot.mk
+@@ -63,16 +63,16 @@ UBOOT_MAKE_OPTS += \
+ 	CROSS_COMPILE="$(CCACHE) $(TARGET_CROSS)" \
+ 	ARCH=$(UBOOT_ARCH)
+ 
+-# Helper function to fill the U-Boot config.h file.
++# Helper function to fill U-Boot configs/$(UBOOT_BOARD_NAME).h file.
+ # Argument 1: option name
+ # Argument 2: option value
+ # If the option value is empty, this function does nothing.
+ define insert_define
+ $(if $(call qstrip,$(2)),
+-	@echo "#ifdef $(strip $(1))" >> $(@D)/include/config.h
+-	@echo "#undef $(strip $(1))" >> $(@D)/include/config.h
+-	@echo "#endif" >> $(@D)/include/config.h
+-	@echo '#define $(strip $(1)) $(call qstrip,$(2))' >> $(@D)/include/config.h)
++	@echo "#ifdef $(strip $(1))" >> $(@D)/include/configs/$(UBOOT_BOARD_NAME).h
++	@echo "#undef $(strip $(1))" >> $(@D)/include/configs/$(UBOOT_BOARD_NAME).h
++	@echo "#endif" >> $(@D)/include/configs/$(UBOOT_BOARD_NAME).h
++	@echo '#define $(strip $(1)) $(call qstrip,$(2))' >> $(@D)/include/configs/$(UBOOT_BOARD_NAME).h)
+ endef
+ 
+ ifneq ($(call qstrip,$(BR2_TARGET_UBOOT_CUSTOM_PATCH_DIR)),)
+@@ -91,10 +91,10 @@ define UBOOT_CONFIGURE_CMDS
+ 	$(TARGET_CONFIGURE_OPTS) $(UBOOT_CONFIGURE_OPTS) 	\
+ 		$(MAKE) -C $(@D) $(UBOOT_MAKE_OPTS)		\
+ 		$(UBOOT_BOARD_NAME)_config
+-	@echo >> $(@D)/include/config.h
+-	@echo "/* Add a wrapper around the values Buildroot sets. */" >> $(@D)/include/config.h
+-	@echo "#ifndef __BR2_ADDED_CONFIG_H" >> $(@D)/include/config.h
+-	@echo "#define __BR2_ADDED_CONFIG_H" >> $(@D)/include/config.h
++	@echo >> $(@D)/include/configs/$(UBOOT_BOARD_NAME).h
++	@echo "/* Add a wrapper around the values Buildroot sets. */" >> $(@D)/include/configs/$(UBOOT_BOARD_NAME).h
++	@echo "#ifndef __BR2_ADDED_CONFIG_H" >> $(@D)/include/configs/$(UBOOT_BOARD_NAME).h
++	@echo "#define __BR2_ADDED_CONFIG_H" >> $(@D)/include/configs/$(UBOOT_BOARD_NAME).h
+ 	$(call insert_define,DATE,$(DATE))
+ 	$(call insert_define,CONFIG_LOAD_SCRIPTS,1)
+ 	$(call insert_define,CONFIG_IPADDR,$(BR2_TARGET_UBOOT_IPADDR))
+@@ -103,7 +103,7 @@ define UBOOT_CONFIGURE_CMDS
+ 	$(call insert_define,CONFIG_SERVERIP,$(BR2_TARGET_UBOOT_SERVERIP))
+ 	$(call insert_define,CONFIG_ETHADDR,$(BR2_TARGET_UBOOT_ETHADDR))
+ 	$(call insert_define,CONFIG_ETH1ADDR,$(BR2_TARGET_UBOOT_ETH1ADDR))
+-	@echo "#endif /* __BR2_ADDED_CONFIG_H */" >> $(@D)/include/config.h
++	@echo "#endif /* __BR2_ADDED_CONFIG_H */" >> $(@D)/include/configs/$(UBOOT_BOARD_NAME).h
+ endef
+ 
+ define UBOOT_BUILD_CMDS

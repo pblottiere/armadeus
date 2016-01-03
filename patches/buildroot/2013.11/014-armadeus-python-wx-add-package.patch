@@ -1,0 +1,115 @@
+Author: Edouard Tisserant
+Slightly modified by JB
+
+Index: buildroot/package/python-wx/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/python-wx/Config.in	2014-07-31 12:17:09.911327367 +0200
+@@ -0,0 +1,14 @@
++config BR2_PACKAGE_PYTHON_WX
++	bool "wxPython"
++	depends on BR2_PACKAGE_PYTHON
++	depends on BR2_PACKAGE_LIBGTK2
++
++	help
++	  The wxPython module is a blending of the wxWidgets C++ class library
++	  with the Python programming language.
++	  By default GTK backend is used (requires X.org).
++
++	  http://wxpython.org/
++
++comment "wxPython needs python, GTK"
++	depends on !BR2_PACKAGE_PYTHON || !BR2_PACKAGE_LIBGTK2
+Index: buildroot/package/python-wx/python-wx.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/python-wx/python-wx.mk	2014-08-01 20:33:43.245320800 +0200
+@@ -0,0 +1,59 @@
++################################################################################
++#
++# python-wx
++#
++################################################################################
++
++# 2.8 is the most used version (BR will prefer latest one)
++PYTHON_WX_VERSION = 2.8.12.1
++PYTHON_WX_SOURCE = wxPython-src-$(PYTHON_WX_VERSION).tar.bz2
++PYTHON_WX_SITE = http://downloads.sourceforge.net/project/wxpython/wxPython/$(PYTHON_WX_VERSION)
++PYTHON_WX_LICENSE = LGPL
++PYTHON_WX_LICENSE_FILES = docs/licence.txt
++PYTHON_WX_INSTALL_STAGING = YES
++PYTHON_WX_DEPENDENCIES = python libgtk2
++# Why ? ->
++PYTHON_WX_CONF_OPT = --enable-monolithic
++
++# Autotools are used to build wxGTK embedded in wxPython sources, and then we use
++# HOOKS to install Python wrappers.
++# However wxWidget/GTK has a lot of configure options not proposed here...
++
++define PYTHON_WX_PYSETUP
++	(cd $(@D)/wxPython; \
++		CC="$(TARGET_CC)" \
++		CFLAGS="$(TARGET_CFLAGS)" \
++		LDSHARED="$(TARGET_CROSS)gcc -shared" \
++		CROSS_COMPILING=yes \
++		_python_sysroot=$(STAGING_DIR) \
++		_python_srcdir=$(BUILD_DIR)/python$(PYTHON_VERSION) \
++		_python_prefix=/usr \
++		_python_exec_prefix=/usr \
++		$(HOST_DIR)/usr/bin/python setup.py build \
++		WX_CONFIG="$(STAGING_DIR)/usr/bin/wx-config \
++		--prefix=$(STAGING_DIR)/usr" \
++		BUILD_GLCANVAS=0 \
++		BUILD_STC=0 \
++		BUILD_GIZMOS=0 \
++	)
++endef
++PYTHON_WX_POST_INSTALL_STAGING_HOOKS += PYTHON_WX_PYSETUP
++
++# Useful ? ->
++define PYTHON_WX_PYTHON_WRAPPER_STAGING_INSTALL
++	(cd $(@D)/wxPython; \
++		$(HOST_DIR)/usr/bin/python setup.py install \
++		--prefix=$(STAGING_DIR)/usr)
++endef
++
++PYTHON_WX_POST_INSTALL_STAGING_HOOKS += PYTHON_WX_PYTHON_WRAPPER_STAGING_INSTALL
++
++define PYTHON_WX_PYTHON_WRAPPER_TARGET_INSTALL
++	(cd $(@D)/wxPython; \
++		$(HOST_DIR)/usr/bin/python setup.py install \
++		--prefix=$(TARGET_DIR)/usr)
++endef
++
++PYTHON_WX_POST_INSTALL_TARGET_HOOKS += PYTHON_WX_PYTHON_WRAPPER_TARGET_INSTALL
++
++$(eval $(autotools-package))
+Index: buildroot/package/python-wx/python-wx-001-fix_wxconfig.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/python-wx/python-wx-001-fix_wxconfig.patch	2014-07-31 12:26:52.102214295 +0200
+@@ -0,0 +1,12 @@
++diff -purN python-wxgtk-2.8.12.1.orig/Makefile.in python-wxgtk-2.8.12.1/Makefile.in
++--- python-wxgtk-2.8.12.1.orig/Makefile.in	2011-03-28 21:48:29.000000000 +0200
+++++ python-wxgtk-2.8.12.1/Makefile.in	2014-07-25 22:45:27.710057682 +0200
++@@ -12455,7 +12455,7 @@ install-wxconfig:
++ 	$(INSTALL_DIR) $(DESTDIR)$(bindir)
++ 	$(INSTALL_DIR) $(DESTDIR)$(libdir)/wx/config
++ 	$(INSTALL_PROGRAM) lib/wx/config/$(TOOLCHAIN_FULLNAME) $(DESTDIR)$(libdir)/wx/config
++-	(cd $(DESTDIR)$(bindir) && rm -f wx-config && $(LN_S) $(libdir)/wx/config/$(TOOLCHAIN_FULLNAME) wx-config)
+++	(cd $(DESTDIR)$(bindir) && rm -f wx-config && $(CP_P) $(DESTDIR)$(libdir)/wx/config/$(TOOLCHAIN_FULLNAME) wx-config)
++ 
++ locale_install: 
++ 	$(INSTALL_DIR) $(DESTDIR)$(datadir)/locale
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2014-07-31 11:16:22.805242344 +0200
++++ buildroot/package/Config.in	2014-07-31 12:28:38.678742781 +0200
+@@ -230,6 +230,7 @@
+ source "package/qwt/Config.in"
+ endif
+ 
++source "package/python-wx/Config.in"
+ source "package/qt5/Config.in"
+ source "package/x11r7/Config.in"
+ source "package/weston/Config.in"

@@ -1,0 +1,24 @@
+Index: linux-2.6.29.6/drivers/video/mxc/mxcfb_modedb.c
+===================================================================
+--- linux-2.6.29.6.orig/drivers/video/mxc/mxcfb_modedb.c	2009-10-11 19:43:47.000000000 +0200
++++ linux-2.6.29.6/drivers/video/mxc/mxcfb_modedb.c	2009-10-11 19:44:36.000000000 +0200
+@@ -88,6 +88,19 @@
+ 		.vmode = FB_VMODE_NONINTERLACED,
+ 		.flag = 0,
+ 		},
++        {
++		.name = "Sharp-LQ057",
++		.refresh = 60,
++		.xres = 320,
++		.yres = 240,
++		.pixclock = 158730, /* picoS -> 6,3MHz */
++		.left_margin = 52, .right_margin = 28, /* at least 3 & 1 */ /* 320 + 52 + 28 = 400 */
++		.upper_margin = 3, .lower_margin = 3, /* 240 + 5 + 3 + 3 = 251 */
++		.hsync_len = 96, .vsync_len = 5,
++		.sync = FB_SYNC_CLK_IDLE_EN | FB_SYNC_OE_ACT_HIGH | FB_SYNC_CLK_INVERT,
++		.vmode = FB_VMODE_NONINTERLACED,
++		.flag = 0,
++	},
+ };
+ 
+ int mxcfb_modedb_sz = ARRAY_SIZE(mxcfb_modedb);

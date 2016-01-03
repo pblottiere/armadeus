@@ -1,0 +1,65 @@
+From 1dcc1e25e2f0fd1eb9daf54385485d802aaa370d Mon Sep 17 00:00:00 2001
+From: Philippe Reynes <tremyfr@yahoo.fr>
+Date: Mon, 15 Jul 2013 12:31:14 +0200
+Subject: [PATCH] Pin contrast level is always high when LPCR PCD is equal to
+ 0. By setting per3clk_div to have a 134 MHz clock, PCD is
+ greater than 0 and the PWM is working.
+
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+---
+ drivers/video/imxfb.c |   10 ++++++++++
+ 1 files changed, 10 insertions(+), 0 deletions(-)
+
+Index: linux-3.11-rc3/drivers/video/imxfb.c
+===================================================================
+--- linux-3.11-rc3.orig/drivers/video/imxfb.c
++++ linux-3.11-rc3/drivers/video/imxfb.c
+@@ -137,6 +137,7 @@ struct imxfb_rgb {
+ enum imxfb_type {
+ 	IMX1_FB,
+ 	IMX21_FB,
++	IMX27_FB,
+ };
+ 
+ struct imxfb_info {
+@@ -189,6 +190,9 @@ static struct platform_device_id imxfb_d
+ 		.name = "imx21-fb",
+ 		.driver_data = IMX21_FB,
+ 	}, {
++		.name = "imx27-fb",
++		.driver_data = IMX27_FB,
++	}, {
+ 		/* sentinel */
+ 	}
+ };
+@@ -202,6 +206,9 @@ static struct of_device_id imxfb_of_dev_
+ 		.compatible = "fsl,imx21-fb",
+ 		.data = &imxfb_devtype[IMX21_FB],
+ 	}, {
++		.compatible = "fsl,imx27-fb",
++		.data = &imxfb_devtype[IMX27_FB],
++	}, {
+ 		/* sentinel */
+ 	}
+ };
+@@ -866,6 +873,7 @@ static int imxfb_probe(struct platform_d
+ 	const struct of_device_id *of_id;
+ 	int ret, i;
+ 	int bytes_per_pixel;
++	unsigned long per3clk;
+ 
+ 	dev_info(&pdev->dev, "i.MX Framebuffer driver\n");
+ 
+@@ -959,6 +967,12 @@ static int imxfb_probe(struct platform_d
+ 		goto failed_getclock;
+ 	}
+ 
++	if (fbi->devtype == IMX27_FB) {
++		per3clk = clk_round_rate(fbi->clk_per, 134000000);
++		if (clk_set_rate(fbi->clk_per, per3clk))
++			pr_debug("mx2fb: Unable to set clock to %lu\n", per3clk);
++	}
++
+ 	fbi->regs = ioremap(res->start, resource_size(res));
+ 	if (fbi->regs == NULL) {
+ 		dev_err(&pdev->dev, "Cannot map frame buffer registers\n");

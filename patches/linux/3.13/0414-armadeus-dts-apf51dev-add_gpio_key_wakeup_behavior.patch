@@ -1,0 +1,17 @@
+add wakeup capabilities to the apf51dev user button
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+
+Index: linux-3.13.1/arch/arm/boot/dts/imx51-apf51dev.dts
+===================================================================
+--- linux-3.13.1.ori/arch/arm/boot/dts/imx51-apf51dev.dts	2014-02-01 00:46:14.000000000 +0100
++++ linux-3.13.1/arch/arm/boot/dts/imx51-apf51dev.dts	2014-02-01 00:57:01.000000000 +0100
+@@ -50,6 +50,7 @@
+ 			label = "user";
+ 			gpios = <&gpio1 3 0>;
+ 			linux,code = <256>; /* BTN_0 */
++			gpio-key,wakeup;
+ 		};
+ 	};
+ 
+--

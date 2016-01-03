@@ -1,0 +1,57 @@
+Index: linux-2.6.35.3/drivers/mtd/nand/nand_device_info.c
+===================================================================
+--- linux-2.6.35.3/drivers/mtd/nand/nand_device_info.c	2013-01-31 18:15:38.000000000 +0100
++++ linux-2.6.35.3/drivers/mtd/nand/nand_device_info.c	2013-01-31 18:15:38.000000000 +0100
+@@ -174,25 +174,6 @@ static struct nand_device_info nand_devi
+ 	},
+ 	{
+ 	.end_of_table             = false,
+-	.manufacturer_code        = 0x2c,
+-	.device_code              = 0xda,
+-	.cell_technology          = NAND_DEVICE_CELL_TECH_SLC,
+-	.chip_size_in_bytes       = 256LL*SZ_1M,
+-	.block_size_in_pages      = 64,
+-	.page_total_size_in_bytes = 2*SZ_1K + 64,
+-	.ecc_strength_in_bits     = 4,
+-	.ecc_size_in_bytes        = 512,
+-	.data_setup_in_ns         = 20,
+-	.data_hold_in_ns          = 10,
+-	.address_setup_in_ns      = 10,
+-	.gpmi_sample_delay_in_ns  = 6,
+-	.tREA_in_ns               = -1,
+-	.tRLOH_in_ns              = -1,
+-	.tRHOH_in_ns              = -1,
+-	"MT29F2G08",
+-	},
+-	{
+-	.end_of_table             = false,
+ 	.manufacturer_code        = 0xec,
+ 	.device_code              = 0xda,
+ 	.cell_technology          = NAND_DEVICE_CELL_TECH_SLC,
+@@ -1046,6 +1027,26 @@ static struct nand_device_info nand_devi
+ 	.tRHOH_in_ns              = -1,
+ 	"K9F1F08",
+ 	},
++	{
++	.end_of_table             = false,
++	.manufacturer_code        = 0x2c,
++	.device_code              = 0xda,
++	.cell_technology          = NAND_DEVICE_CELL_TECH_SLC,
++	.chip_size_in_bytes       = 256LL*SZ_1M,
++	.block_size_in_pages      = 64,
++	.page_total_size_in_bytes = 2*SZ_1K + 64,
++	.ecc_strength_in_bits     = 4,
++	.ecc_size_in_bytes        = 512,
++	.data_setup_in_ns         = 20,
++	.data_hold_in_ns          = 10,
++	.address_setup_in_ns      = 10,
++	.gpmi_sample_delay_in_ns  = 6,
++	.tREA_in_ns               = -1,
++	.tRLOH_in_ns              = -1,
++	.tRHOH_in_ns              = -1,
++	"MT29F2G08",
++	},
++
+ 	{true}
+ };
+ 

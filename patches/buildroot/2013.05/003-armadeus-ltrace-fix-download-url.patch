@@ -1,0 +1,26 @@
+From 6cc3f1ef239c712e204960a7511d04e450bdf325 Mon Sep 17 00:00:00 2001
+From: Julien Boibessot <julien.boibessot@armadeus.com>
+Date: Thu, 13 Jun 2013 14:58:36 +0200
+Subject: [PATCH] ltrace: fix download URL
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+---
+ package/ltrace/ltrace.mk |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/package/ltrace/ltrace.mk b/package/ltrace/ltrace.mk
+index 78b5a9d..7b8d859 100644
+--- a/package/ltrace/ltrace.mk
++++ b/package/ltrace/ltrace.mk
+@@ -5,7 +5,7 @@
+ ################################################################################
+ 
+ LTRACE_VERSION = 0.7.2
+-LTRACE_SITE = http://alioth.debian.org/frs/download.php/3848
++LTRACE_SITE = http://alioth.debian.org/frs/download.php/file/3848
+ LTRACE_SOURCE = ltrace-$(LTRACE_VERSION).tar.bz2
+ LTRACE_DEPENDENCIES = libelf
+ LTRACE_AUTORECONF = YES
+-- 
+1.7.5.4
+

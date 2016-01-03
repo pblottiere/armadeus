@@ -1,0 +1,125 @@
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2013-06-27 12:16:04.215971392 +0200
++++ buildroot/package/Config.in	2013-06-27 18:05:38.433322781 +0200
+@@ -790,6 +790,7 @@
+ source "package/samba/Config.in"
+ source "package/sconeserver/Config.in"
+ source "package/ser2net/Config.in"
++source "package/smstools3/Config.in"
+ source "package/socat/Config.in"
+ source "package/socketcand/Config.in"
+ source "package/spawn-fcgi/Config.in"
+Index: buildroot/package/smstools3/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/smstools3/Config.in	2013-06-27 17:10:44.972991396 +0200
+@@ -0,0 +1,17 @@
++config BR2_PACKAGE_SMSTOOLS3
++	bool "smstools3"
++	help
++	  The SMS Server Tools 3 is a SMS Gateway software which can send and
++	  receive short messages through GSM modems and mobile phones.
++
++	  http://smstools3.kekekasvi.com/
++
++config BR2_PACKAGE_SMSTOOLS3_NB_MODEMS
++	depends on BR2_PACKAGE_SMSTOOLS3
++	string "Number of modems to support"
++	default 1
++
++config BR2_PACKAGE_SMSTOOLS3_START_AT_BOOT
++	depends on BR2_PACKAGE_SMSTOOLS3
++	bool "Start SMS Server Tools at system boot"
++	default y
+Index: buildroot/package/smstools3/smstools3.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/smstools3/smstools3.mk	2013-06-27 18:47:03.177643968 +0200
+@@ -0,0 +1,36 @@
++#############################################################
++#
++# SMS Server Tools 3
++#
++#############################################################
++
++SMSTOOLS3_VERSION = 3.1.15
++SMSTOOLS3_SITE = http://smstools3.kekekasvi.com/packages/
++
++SMSTOOLS3_NB_MODEMS = $(call qstrip,$(BR2_PACKAGE_SMSTOOLS3_NB_MODEMS))
++SMSTOOLS3_CFLAGS = $(TARGET_CFLAGS)
++SMSTOOLS3_CFLAGS += -D NUMBER_OF_MODEMS=$(SMSTOOLS3_NB_MODEMS)
++SMSTOOLS3_CFLAGS += -D NOSTATS
++ifeq ($(BR2_PACKAGE_SMSTOOLS3_START_AT_BOOT),y)
++SMSTOOLS3_INIT_SCRIPT_NAME = S50smsd
++else
++SMSTOOLS3_INIT_SCRIPT_NAME = 50smsd
++endif
++
++define SMSTOOLS3_BUILD_CMDS
++	$(MAKE) CC="$(TARGET_CC)" CFLAGS="$(SMSTOOLS3_CFLAGS)" -C $(@D)
++endef
++
++define SMSTOOLS3_INSTALL_TARGET_CMDS
++	mkdir -p $(TARGET_DIR)/usr/local/bin
++	cp $(@D)/src/smsd $(TARGET_DIR)/usr/local/bin
++	cp $(@D)/scripts/sendsms $(TARGET_DIR)/usr/local/bin
++	cp $(@D)/examples/smsd.conf.easy $(TARGET_DIR)/etc/
++	$(INSTALL) -m 0755 -D package/smstools3/S50smsd $(TARGET_DIR)/etc/init.d/$(SMSTOOLS3_INIT_SCRIPT_NAME)
++endef
++
++define SMSTOOLS3_CLEAN_CMDS
++	$(MAKE) -C $(@D) clean
++endef
++
++$(eval $(generic-package))
+Index: buildroot/package/smstools3/S50smsd
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/smstools3/S50smsd	2013-06-27 18:40:41.399750832 +0200
+@@ -0,0 +1,43 @@
++#!/bin/sh
++#
++# Starts the SMS Server Tools 3
++#
++
++NAME=smsd
++DAEMON=/usr/local/bin/$NAME
++PIDFILE=/var/run/$NAME.pid
++SPOOL=/var/spool/sms
++
++start()
++{
++	echo -n "Starting $NAME: "
++	mkdir -p $SPOOL/outgoing
++	mkdir -p $SPOOL/incoming
++	mkdir -p $SPOOL/checked
++	start-stop-daemon -S -q -p $PIDFILE --exec $DAEMON -- -c /etc/smsd.conf && echo "OK" || echo "Failed"
++}
++
++stop()
++{
++	echo -n "Stopping $NAME: "
++	start-stop-daemon -K -q -p $PIDFILE && echo "OK" || echo "Failed"
++	rm -f $PIDFILE
++}
++
++case "$1" in
++	start)
++		start
++		;;
++	stop)
++		stop
++		;;
++	restart|reload)
++		start
++		stop
++		;;
++	*)
++		echo "Usage: $0 {start|stop|restart}"
++		exit 1
++esac
++
++exit $?

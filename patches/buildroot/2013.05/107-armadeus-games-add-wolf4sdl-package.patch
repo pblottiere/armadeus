@@ -1,0 +1,74 @@
+Add Wolf4SDL to BR.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/wolf4sdl/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/wolf4sdl/Config.in	2013-08-31 18:01:30.675547815 +0200
+@@ -0,0 +1,11 @@
++config BR2_PACKAGE_WOLF4SDL
++	bool "Wolf4SDL"
++	select BR2_PACKAGE_SDL
++	select BR2_PACKAGE_SDL_MIXER
++	help
++	  Wolf4SDL is an open-source port of id Software's classic first-person
++	  shooter Wolfenstein 3D to the cross-plattform multimedia library
++	  "Simple DirectMedia Layer (SDL)". It is meant to keep the original
++	  feel while taking advantage of some improvements (see README).
++
++	  http://www.stud.uni-karlsruhe.de/~uvaue/chaos/main.html
+Index: buildroot/package/wolf4sdl/wolf4sdl.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/wolf4sdl/wolf4sdl.mk	2013-08-31 22:28:54.499104844 +0200
+@@ -0,0 +1,37 @@
++#############################################################
++#
++# Wolf4SDL
++#
++#############################################################
++
++WOLF4SDL_VERSION = 1.6
++WOLF4SDL_SOURCE = Wolf4SDL-$(WOLF4SDL_VERSION)-src.zip
++WOLF4SDL_SITE = http://www.alice-dsl.net/mkroll/bins/
++
++WOLF4SDL_DEPENDENCIES = sdl sdl_mixer
++
++define WOLF4SDL_EXTRACT_CMDS
++	unzip -d $(BUILD_DIR) $(DL_DIR)/$(WOLF4SDL_SOURCE)
++	mv $(BUILD_DIR)/Wolf4SDL-$(WOLF4SDL_VERSION)-src/* $(@D)
++	rmdir $(BUILD_DIR)/Wolf4SDL-$(WOLF4SDL_VERSION)-src
++endef
++
++define WOLF4SDL_BUILD_CMDS
++	$(MAKE) CC="$(TARGET_CC)" CXX="$(TARGET_CXX)" \
++		PREFIX="$(TARGET_DIR)/usr/local" \
++		SDL_CONFIG="$(STAGING_DIR)/usr/bin/sdl-config" \
++		-C $(@D)
++endef
++
++define WOLF4SDL_INSTALL_TARGET_CMDS
++	$(MAKE) PREFIX="$(TARGET_DIR)/usr/local" \
++		INSTALL="$(INSTALL)" \
++		INSTALL_PROGRAM="$(INSTALL) -m 775" \
++		install -C $(@D)
++endef
++
++define WOLF4SDL_CLEAN_CMDS
++	$(MAKE) -C $(@D) clean
++endef
++
++$(eval $(generic-package))
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2013-08-31 18:01:30.583547362 +0200
++++ buildroot/package/Config.in	2013-08-31 22:31:05.275753324 +0200
+@@ -108,6 +108,7 @@
+ source "package/doom-wad/Config.in"
+ source "package/rubix/Config.in"
+ source "package/sdlquake/Config.in"
++source "package/wolf4sdl/Config.in"
+ endmenu
+ 
+ menu "Graphic libraries and applications (graphic/text)"

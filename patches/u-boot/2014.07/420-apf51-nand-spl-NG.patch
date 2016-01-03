@@ -1,0 +1,361 @@
+Add APF51 new NAND SPL:
+- compliant with U-Boot regular SPL archictecture
+- Remove 256KiB limitation of the CPU internal SPL/IPL
+- run SPL from IRAM
+- intialize SDRAM from SPL instead of DCD: cf imx51 chip errata
+- use regular U-Boot mxc_nand driver
+- add nand loch/unlock feature
+- final binary may be launch from NAND, IRAM or SDRAM
+- use make u-boot-with-nand-spl.imx to build U-Boot with NAND SPL
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+
+--- a/arch/arm/imx-common/Makefile
++++ b/arch/arm/imx-common/Makefile
+@@ -73,7 +73,7 @@ u-boot-with-nand-spl.imx: spl/u-boot-nan
+ 	$(call if_changed,pad_cat)
+ 
+ quiet_cmd_u-boot-nand-spl_imx = GEN     $@
+-cmd_u-boot-nand-spl_imx = (echo -ne '\x00\x00\x00\x00\x46\x43\x42\x20\x01' && \
++cmd_u-boot-nand-spl_imx = (echo -ne '\xFE\x04\x00\xEA\xFD\x0F\x00\xEA\x01' && \
+ 	dd bs=1015 count=1 if=/dev/zero 2>/dev/null) | cat - $< > $@
+ 
+ spl/u-boot-nand-spl.imx: SPL FORCE
+--- a/board/armadeus/apf51/apf51_spl.c
++++ b/board/armadeus/apf51/apf51_spl.c
+@@ -0,0 +1,201 @@
++/*
++ * Copyright (C) 2013-2014 Eric Jarrige <eric.jarrige@armadeus.org>
++ *
++ * SPDX-License-Identifier:	GPL-2.0+
++ */
++
++#include <common.h>
++#include <config.h>
++#include <spl.h>
++#include <nand.h>
++#include <asm/arch/imx-regs.h>
++#include <asm/arch/iomux-mx51.h>
++#include <asm/arch/regs_esdctl.h>
++#include <asm/io.h>
++
++/* Pointer to as well as the global data structure for SPL */
++DECLARE_GLOBAL_DATA_PTR;
++
++static inline void init_dram(void)
++{
++	struct esdctl_regs *esdctl = (struct esdctl_regs *)ESDCTL_BASE_ADDR;
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_DRAM_RAS__DRAM_RAS,
++				ACFG_IOMUX_PAD_DRAM_RAS));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_DRAM_CAS__DRAM_CAS,
++				ACFG_IOMUX_PAD_DRAM_CAS));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_DRAM_SDWE__DRAM_SDWE,
++				ACFG_IOMUX_PAD_DRAM_SDWE));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_DRAM_SDCKE0__DRAM_SDCKE0,
++				ACFG_IOMUX_PAD_DRAM_SDCKE0));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_DRAM_SDCKE1__DRAM_SDCKE1,
++				ACFG_IOMUX_PAD_DRAM_SDCKE1));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_DRAM_SDCLK__DRAM_SDCLK,
++				ACFG_IOMUX_PAD_DRAM_SDCLK));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_DRAM_SDQS0__DRAM_SDQS0,
++				ACFG_IOMUX_PAD_DRAM_SDQS0));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_DRAM_SDQS1__DRAM_SDQS1,
++				ACFG_IOMUX_PAD_DRAM_SDQS1));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_DRAM_SDQS2__DRAM_SDQS2,
++				ACFG_IOMUX_PAD_DRAM_SDQS2));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_DRAM_SDQS3__DRAM_SDQS3,
++				ACFG_IOMUX_PAD_DRAM_SDQS3));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_DRAM_CS0__DRAM_CS0,
++				ACFG_IOMUX_PAD_DRAM_CS0));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_DRAM_CS1__DRAM_CS1,
++				ACFG_IOMUX_PAD_DRAM_CS1));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_DRAM_DQM0__DRAM_DQM0,
++				ACFG_IOMUX_PAD_DRAM_DQM0));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_DRAM_DQM1__DRAM_DQM1,
++				ACFG_IOMUX_PAD_DRAM_DQM1));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_DRAM_DQM2__DRAM_DQM2,
++				ACFG_IOMUX_PAD_DRAM_DQM2));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_DRAM_DQM3__DRAM_DQM3,
++				ACFG_IOMUX_PAD_DRAM_DQM3));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_SDBA2__EIM_SDBA2,
++				ACFG_IOMUX_PAD_EIM_SDBA2));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_SDODT1__EIM_SDODT1,
++				ACFG_IOMUX_PAD_EIM_SDODT1));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_EIM_SDODT0__EIM_SDODT0,
++				ACFG_IOMUX_PAD_EIM_SDODT0));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_DDRPKS,
++				ACFG_IOMUX_GRP_DDRPKS));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_DRAM_B4,
++				ACFG_IOMUX_GRP_DRAM_B4));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_INDDR,
++				ACFG_IOMUX_GRP_INDDR));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_PKEDDR,
++				ACFG_IOMUX_GRP_PKEDDR));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_DDR_A0,
++				ACFG_IOMUX_GRP_DDR_A0));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_DDR_A1,
++				ACFG_IOMUX_GRP_DDR_A1));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_DDRAPUS,
++				ACFG_IOMUX_GRP_DDRAPUS));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_HYSDDR0,
++				ACFG_IOMUX_GRP_HYSDDR0));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_HYSDDR1,
++				ACFG_IOMUX_GRP_HYSDDR1));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_HYSDDR2,
++				ACFG_IOMUX_GRP_HYSDDR2));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_HVDDR,
++				ACFG_IOMUX_GRP_HVDDR));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_HYSDDR3,
++				ACFG_IOMUX_GRP_HYSDDR3));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_DRAM_SR_B0,
++				ACFG_IOMUX_GRP_DDR_SR_B0));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_DDRAPKS,
++				ACFG_IOMUX_GRP_DDRAPKS));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_DRAM_SR_B1,
++				ACFG_IOMUX_GRP_DDR_SR_B1));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_DDRPUS,
++				ACFG_IOMUX_GRP_DDRPUS));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_DRAM_SR_B2,
++				ACFG_IOMUX_GRP_DDR_SR_B2));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_PKEADDR,
++				ACFG_IOMUX_GRP_PKEADDR));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_DRAM_SR_B4,
++				ACFG_IOMUX_GRP_DDR_SR_B4));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_INMODE1,
++				ACFG_IOMUX_GRP_INMODE1));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_DRAM_B0,
++				ACFG_IOMUX_GRP_DRAM_B0));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_DRAM_B1,
++				ACFG_IOMUX_GRP_DRAM_B1));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_DDR_SR_A0,
++				ACFG_IOMUX_GRP_DDR_SR_A0));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_DRAM_B2,
++				ACFG_IOMUX_GRP_DRAM_B2));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_GRP_DDR_SR_A1,
++				ACFG_IOMUX_GRP_DDR_SR_A1));
++
++/* DDR2/mDDR Configs */
++
++/* Init DDR on CS0 */
++	writel((ACFG_SDRAM_ESDCTL_REGISTER_VAL&0x8FFFFFFF), &esdctl->esdctl0);
++	writel(DRR_PRECHARGE_CMD(0, 0), &esdctl->esdscr);
++	writel(DRR_AUTOREFRESH_CMD(0), &esdctl->esdscr);
++	writel(DRR_AUTOREFRESH_CMD(0), &esdctl->esdscr);
++	writel(DRR_LMR_CMD(0, 0, ACFG_DRR_MR_VAL), &esdctl->esdscr);
++	writel(DRR_LMR_CMD(0, 2, ACFG_DRR_EMR_VAL), &esdctl->esdscr);
++	writel(DDR_NOP_CMD(0), &esdctl->esdscr);
++	writel(ACFG_SDRAM_ESDCTL_REGISTER_VAL, &esdctl->esdctl0);
++	writel(ACFG_SDRAM_ESDCFG_REGISTER_VAL, &esdctl->esdcfg0);
++/* Init DDR on CS1 */
++	writel((ACFG_SDRAM_ESDCTL_REGISTER_VAL&0x8FFFFFFF), &esdctl->esdctl1);
++	writel(DRR_PRECHARGE_CMD(1, 0), &esdctl->esdscr);
++	writel(DRR_AUTOREFRESH_CMD(1), &esdctl->esdscr);
++	writel(DRR_AUTOREFRESH_CMD(1), &esdctl->esdscr);
++	writel(DRR_LMR_CMD(1, 0, ACFG_DRR_MR_VAL), &esdctl->esdscr);
++	writel(DRR_LMR_CMD(1, 2, ACFG_DRR_EMR_VAL), &esdctl->esdscr);
++	writel(DDR_NOP_CMD(1), &esdctl->esdscr);
++	writel(ACFG_SDRAM_ESDCTL_REGISTER_VAL, &esdctl->esdctl1);
++	writel(ACFG_SDRAM_ESDCFG_REGISTER_VAL, &esdctl->esdcfg1);
++
++	writel(ACFG_SDRAM_ESDMISC_REGISTER_VAL, &esdctl->esdmisc);
++	writel(0x00000000, &esdctl->esdscr);
++
++	writel(ACFG_SDRAM_ESDGPR_REGISTER_VAL, &esdctl->esdgpr);
++	writel(ACFG_SDRAM_ESDCDLY1_REGISTER_VAL, &esdctl->esdcdly1);
++	writel(ACFG_SDRAM_ESDCDLY2_REGISTER_VAL, &esdctl->esdcdly2);
++	writel(ACFG_SDRAM_ESDCDLY3_REGISTER_VAL, &esdctl->esdcdly3);
++	writel(ACFG_SDRAM_ESDCDLY4_REGISTER_VAL, &esdctl->esdcdly4);
++	writel(ACFG_SDRAM_ESDCDLY5_REGISTER_VAL, &esdctl->esdcdly5);
++}
++
++void setup_nfc(void)
++{
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_WE_B__NANDF_WE_B,
++				PAD_CTL_PUS_47K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_RE_B__NANDF_RE_B,
++				PAD_CTL_PUS_47K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_CLE__NANDF_CLE,
++				PAD_CTL_PUS_47K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_ALE__NANDF_ALE,
++				PAD_CTL_PUS_47K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_WP_B__NANDF_WP_B,
++				PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_RB0__NANDF_RB0,
++				PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_D0__NANDF_D0,
++				PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_D1__NANDF_D1,
++				PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_D2__NANDF_D2,
++				PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_D3__NANDF_D3,
++				PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_D4__NANDF_D4,
++				PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_D5__NANDF_D5,
++				PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_D6__NANDF_D6,
++				PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH));
++	imx_iomux_v3_setup_pad(NEW_PAD_CTRL(MX51_PAD_NANDF_D7__NANDF_D7,
++				PAD_CTL_PUS_100K_UP | PAD_CTL_DSE_HIGH));
++}
++
++void spl_board_init(void)
++{
++	register ulong reg0;
++
++	asm volatile ("mov %0, pc" : "=r"(reg0));
++
++	if ((reg0 < (ulong)CSD0_BASE_ADDR) ||
++		(reg0 > (ulong)(CSD1_BASE_ADDR+PHYS_SDRAM_2_SIZE))) init_dram();
++
++	setup_nfc();
++}
++
++u32 spl_boot_device(void)
++{
++	register ulong reg0;
++	u32 boot_device = BOOT_DEVICE_NAND;
++
++	asm volatile ("mov %0, pc" : "=r"(reg0));
++
++	if ((reg0 < (ulong)CONFIG_SYS_INIT_RAM_ADDR) ||
++		(reg0 > (ulong)(CONFIG_SYS_INIT_RAM_ADDR+CONFIG_SYS_INIT_RAM_SIZE)))
++		boot_device = BOOT_DEVICE_RAM;
++
++	return boot_device;
++}
+--- a/board/armadeus/apf51/imximage.cfg
++++ b/board/armadeus/apf51/imximage.cfg
+@@ -0,0 +1,27 @@
++/*
++ * i.MX image header offset values
++ * Copyright (C) 2013 Marek Vasut <marex@denx.de>
++ *
++ * SPDX-License-Identifier:	GPL-2.0+
++ */
++#include <asm/imx-common/imximage.cfg>
++
++/* image version */
++IMAGE_VERSION 1
++
++ /* Boot Offset 0x400, valid for both SD and NAND boot. */
++BOOT_OFFSET	FLASH_OFFSET_STANDARD
++
++/*
++ * Device Configuration Data (DCD)
++ *
++ * Each entry must have the format:
++ * Addr-type           Address        Value
++ *
++ * where:
++ *	Addr-type register length (1,2 or 4 bytes)
++ *	Address	  absolute address of the register
++ *	value	  value to be stored in the register
++ */
++
++
+--- a/board/armadeus/apf51/Makefile
++++ b/board/armadeus/apf51/Makefile
+@@ -5,5 +5,9 @@
+ # SPDX-License-Identifier:	GPL-2.0+
+ #
+ 
++ifndef	CONFIG_SPL_BUILD
+ obj-y	:= apf51.o fpga.o
++else
++obj-y	:= apf51_spl.o
++endif
+ 
+--- a/drivers/mtd/nand/mxc_nand.c
++++ b/drivers/mtd/nand/mxc_nand.c
+@@ -1102,7 +1102,65 @@ void mxc_nand_command(struct mtd_info *m
+ 
+ 		break;
+ #ifdef CONFIG_CMD_NAND_LOCK_UNLOCK
+-   	case NAND_CMD_LOCK:
++#if defined(MXC_NFC_V3_2)
++	case NAND_CMD_LOCK:
++		/* Lock Block whole NAND only supported */
++		writenfc(NFC_V3_IPC_CREQ, &host->ip_regs->ipc);
++		while (!(readnfc(&host->ip_regs->ipc) & NFC_V3_IPC_CACK));
++		writenfc(NFC_V3_WRPROT_BLS_UNLOCK | NFC_V3_WRPROT_LOCK,
++			&host->ip_regs->wrprot);
++		writenfc(0, &host->ip_regs->ipc);
++		return;
++	case NAND_CMD_LOCK_TIGHT:
++		/* Lock Tight whole NAND only supported */
++		writenfc(NFC_V3_IPC_CREQ, &host->ip_regs->ipc);
++		while (!(readnfc(&host->ip_regs->ipc) & NFC_V3_IPC_CACK));
++		writenfc(NFC_V3_WRPROT_BLS_UNLOCK | NFC_V3_WRPROT_LOCKTIGHT,
++			&host->ip_regs->wrprot);
++		writenfc(0, &host->ip_regs->ipc);
++		return;
++	case NAND_CMD_UNLOCK1:
++		/*  64 pages per block only */
++		writenfc(NFC_V3_IPC_CREQ, &host->ip_regs->ipc);
++		while (!(readnfc(&host->ip_regs->ipc) & NFC_V3_IPC_CACK));
++		writenfc(page_addr>>7,
++				&host->ip_regs->wrprot_unlock_blkaddr);
++		writenfc(0, &host->ip_regs->ipc);
++		return;
++	case NAND_CMD_UNLOCK2:{
++		int temp;
++		writenfc(NFC_V3_IPC_CREQ, &host->ip_regs->ipc);
++		while (!(readnfc(&host->ip_regs->ipc) & NFC_V3_IPC_CACK));
++		temp = readnfc(&host->ip_regs->wrprot_unlock_blkaddr)
++			& 0x0000FFFF;
++		writenfc(((page_addr>>7)<<16) | temp ,
++				&host->ip_regs->wrprot_unlock_blkaddr);
++		/* Unlock Block Command for given address range */
++		writenfc(NFC_V3_WRPROT_BLS_UNLOCK | NFC_V3_WRPROT_UNLOCK,
++			&host->ip_regs->wrprot);
++		writenfc(0, &host->ip_regs->ipc);
++		}
++		return;
++	case NAND_CMD_LOCK_STATUS:{
++		void __iomem *main_buf = host->regs->main_area[0];
++		host->col_addr = 0;
++		host->spare_only = false;
++
++		if (((readnfc(&host->ip_regs->wrprot)>>8) & NFC_WRPR_US)
++			&& !((readnfc(&host->ip_regs->wrprot)>>8) & NFC_WRPR_LTS)
++			&& (((readnfc(&host->ip_regs->wrprot_unlock_blkaddr)>>16) >= page_addr>>7)
++			&& ((readnfc(&host->ip_regs->wrprot_unlock_blkaddr)& 0x0000FFFF) <= page_addr>>7))) {
++			writew(NFC_WRPR_US, main_buf);
++		} else if ((readnfc(&host->ip_regs->wrprot)>>8) & NFC_WRPR_LTS) {
++			writew((readnfc(&host->ip_regs->wrprot)>>8), main_buf);
++		} else {
++			writew((readnfc(&host->ip_regs->wrprot)>>8) & ~NFC_WRPR_US, main_buf);
++		}
++	}
++		return;
++
++#else /* not defined(MXC_NFC_V3_2) */
++	case NAND_CMD_LOCK:
+ 		/* Blocks to be unlocked */
+ 		writew(-1, &host->regs->unlockstart_blkaddr);
+ 		writew(-1, &host->regs->unlockend_blkaddr);
+@@ -1147,6 +1205,7 @@ void mxc_nand_command(struct mtd_info *m
+ 			writew(readw(&host->regs->nf_wrprst) & ~NFC_WRPR_US, main_buf);
+ 		}
+ 		return;
++#endif /* not defined(MXC_NFC_V3_2) */
+ #endif
+ 	}
+ 
+--- a/drivers/mtd/nand/mxc_nand.h
++++ b/drivers/mtd/nand/mxc_nand.h
+@@ -191,9 +191,12 @@ struct mxc_nand_ip_regs {
+ #define NFC_V3_CONFIG3_NO_SDMA		(1 << 20)
+ 
+ #define NFC_V3_WRPROT_UNLOCK		(1 << 2)
++#define NFC_V3_WRPROT_LOCK		(1 << 1)
++#define NFC_V3_WRPROT_LOCKTIGHT		(1 << 0)
+ #define NFC_V3_WRPROT_BLS_UNLOCK	(2 << 6)
+ 
+ #define NFC_V3_IPC_CREQ			(1 << 0)
++#define NFC_V3_IPC_CACK			(1 << 1)
+ #define NFC_V3_IPC_INT			(1 << 31)
+ 
+ #if defined(MXC_NFC_V1) || defined(MXC_NFC_V2_1)

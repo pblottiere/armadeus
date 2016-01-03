@@ -1,0 +1,74 @@
+Needed by Gnash.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/agg/Config.in
+===================================================================
+--- /dev/null
++++ buildroot/package/agg/Config.in
+@@ -0,0 +1,8 @@
++config BR2_PACKAGE_AGG
++	bool "agg"
++	help
++	  The Anti-Grain Geometry project. A High Quality 2D Graphics Rendering
++	  Engine for C++.
++	  We use the SDL backend by default.
++
++	  http://www.antigrain.com/index.html
+Index: buildroot/package/agg/agg.mk
+===================================================================
+--- /dev/null
++++ buildroot/package/agg/agg.mk
+@@ -0,0 +1,40 @@
++###############################################################################
++#
++# agg
++#
++###############################################################################
++
++AGG_VERSION = 2.5
++AGG_SITE = http://www.antigrain.com/
++AGG_LICENSE = GPLv3+
++AGG_LICENSE_FILES = COPYING
++AGG_INSTALL_STAGING = YES
++AGG_AUTORECONF = YES
++
++AGG_DEPENDENCIES = sdl
++
++AGG_CONF_OPTS = \
++        --with-sdl-prefix=$(STAGING_DIR)/usr \
++        --disable-sdltest
++
++ifeq ($(BR2_PACKAGE_SDL_X11),)
++AGG_CONF_OPTS += \
++	--with-x=NO \
++	--disable-examples # examples require X11
++endif
++
++ifeq ($(BR2_PACKAGE_FREETYPE),y)
++AGG_DEPENDENCIES += freetype
++AGG_CONF_OPTS += --enable-freetype
++else
++AGG_CONF_OPTS += --disable-freetype
++endif
++
++define AGG_CREATE_MISSING_FILES
++	touch $(@D)/NEWS $(@D)/AUTHORS $(@D)/README
++# Fixes reconfiguring with recent automake:
++	$(SED) 's/AM_C_PROTOTYPES//' $(@D)/configure.in
++endef
++AGG_POST_EXTRACT_HOOKS += AGG_CREATE_MISSING_FILES
++
++$(eval $(autotools-package))
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in
++++ buildroot/package/Config.in
+@@ -627,6 +627,7 @@ endmenu
+
+ menu "Graphics"
+	source "package/adwaita-icon-theme/Config.in"
++	source "package/agg/Config.in"
+	source "package/atk/Config.in"
+	source "package/cairo/Config.in"
+	source "package/fltk/Config.in"

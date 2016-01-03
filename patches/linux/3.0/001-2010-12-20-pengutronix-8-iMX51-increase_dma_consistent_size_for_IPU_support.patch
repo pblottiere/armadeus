@@ -1,0 +1,19 @@
+Signed-off-by: Sascha Hauer <s.hauer@pengutronix.de>
+---
+ arch/arm/plat-mxc/include/mach/memory.h |    3 ++-
+ 1 files changed, 2 insertions(+), 1 deletions(-)
+
+Index: linux-3.0.10/arch/arm/plat-mxc/include/mach/memory.h
+===================================================================
+--- linux-3.0.10.orig/arch/arm/plat-mxc/include/mach/memory.h	2011-11-21 23:37:44.000000000 +0100
++++ linux-3.0.10/arch/arm/plat-mxc/include/mach/memory.h	2011-11-30 17:07:40.000000000 +0100
+@@ -40,7 +40,8 @@
+ # endif
+ #endif
+ 
+-#if defined(CONFIG_MX3_VIDEO)
++#if defined(CONFIG_MX3_VIDEO) || defined(CONFIG_MFD_IMX_IPU_V3) || \
++	defined(CONFIG_MFD_IMX_IPU_V3_MODULE)
+ /*
+  * Increase size of DMA-consistent memory region.
+  * This is required for mx3 camera driver to capture at least two QXGA frames.

@@ -1,0 +1,124 @@
+From patchwork Tue Dec 17 08:16:31 2013
+Content-Type: text/plain; charset="utf-8"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Subject: [v2, 5/5] mmc: sdhci: calculate max_discard_to dynamically for
+	SDHCI_QUIRK_DATA_TIMEOUT_USES_SDCLK
+From: Aisheng Dong <b29396@freescale.com>
+X-Patchwork-Id: 3359691
+Message-Id: <1387268191-19859-6-git-send-email-b29396@freescale.com>
+To: <linux-mmc@vger.kernel.org>
+Cc: ulf.hansson@linaro.org, shawn.guo@linaro.org,
+	ed.sutter@alcatel-lucent.com,
+	s.hauer@pengutronix.de, adrian.hunter@intel.com,
+	vladimir_zapolskiy@mentor.com, cjb@laptop.org, b29396@freescale.com,
+	linux-arm-kernel@lists.infradead.org
+Date: Tue, 17 Dec 2013 16:16:31 +0800
+
+For host controllers using SDHCI_QUIRK_DATA_TIMEOUT_USES_SDCLK, since the card
+clock is changed dynamically for different cards, it does not make sense
+to use the maximum host clock to calculate max_discard_to which may lead
+the max_discard_to to be much smaller than its capbility and affect the card
+discard performance a lot.
+e.g. the host clock is 200Mhz, but the card is working on 50Mhz. Then the
+max_discard_to is only 1/4 of its real capbility.
+
+In this patch, it uses the actual_clock to calculate the max_discard_to
+dynamically as long as a new clock speed is set.
+
+Tested with a high speed SDHC card shows:
+Originally:
+mmc1: new high speed SDHC card at address aaaa
+mmc1: calculated max. discard sectors 49152 for timeout 1355 ms
+Now:
+mmc1: new high speed SDHC card at address aaaa
+mmc1: calculated max. discard sectors 712704 for timeout 5422 ms
+The max_discard_sectors will increase a lot which will also improve discard
+performance a lot.
+
+The one known limitation of this approach is that it does not cover the special
+case for user changes the clock via sysfs, since the max_discard_to is only
+initialised for one time during the mmc queue init.
+
+Signed-off-by: Dong Aisheng <b29396@freescale.com>
+
+---
+drivers/mmc/host/sdhci.c |   47 +++++++++++++++++++++++++++------------------
+ 1 files changed, 28 insertions(+), 19 deletions(-)
+
+Index: linux-3.15-rc1/drivers/mmc/host/sdhci.c
+===================================================================
+--- linux-3.15-rc1.orig/drivers/mmc/host/sdhci.c
++++ linux-3.15-rc1/drivers/mmc/host/sdhci.c
+@@ -1160,7 +1160,7 @@ static void sdhci_set_clock(struct sdhci
+ 	if (host->ops->set_clock) {
+ 		host->ops->set_clock(host, clock);
+ 		if (host->quirks & SDHCI_QUIRK_NONSTANDARD_CLOCK)
+-			return;
++			goto out;
+ 	}
+ 
+ 	sdhci_writew(host, 0, SDHCI_CLOCK_CONTROL);
+@@ -1254,6 +1254,16 @@ clock_set:
+ 
+ out:
+ 	host->clock = clock;
++
++	/* update timeout_clk and max_busy_timeout once the SDCLK is changed */
++	if (host->quirks & SDHCI_QUIRK_DATA_TIMEOUT_USES_SDCLK && clock) {
++		host->timeout_clk = host->mmc->actual_clock ?
++					host->mmc->actual_clock / 1000 :
++					host->clock / 1000;
++		host->mmc->max_busy_timeout = host->ops->get_max_timeout_count ?
++			host->ops->get_max_timeout_count(host) : 1 << 27;
++		host->mmc->max_busy_timeout /= host->timeout_clk;
++	}
+ }
+ 
+ static inline void sdhci_update_clock(struct sdhci_host *host)
+@@ -2929,27 +2939,27 @@ int sdhci_add_host(struct sdhci_host *ho
+ 	} else
+ 		mmc->f_min = host->max_clk / SDHCI_MAX_DIV_SPEC_200;
+ 
+-	host->timeout_clk =
+-		(caps[0] & SDHCI_TIMEOUT_CLK_MASK) >> SDHCI_TIMEOUT_CLK_SHIFT;
+-	if (host->timeout_clk == 0) {
+-		if (host->ops->get_timeout_clock) {
+-			host->timeout_clk = host->ops->get_timeout_clock(host);
+-		} else if (!(host->quirks &
+-				SDHCI_QUIRK_DATA_TIMEOUT_USES_SDCLK)) {
+-			pr_err("%s: Hardware doesn't specify timeout clock "
+-			       "frequency.\n", mmc_hostname(mmc));
+-			return -ENODEV;
++	if (!(host->quirks & SDHCI_QUIRK_DATA_TIMEOUT_USES_SDCLK)) {
++		host->timeout_clk = (caps[0] & SDHCI_TIMEOUT_CLK_MASK) >>
++			SDHCI_TIMEOUT_CLK_SHIFT;
++		if (host->timeout_clk == 0) {
++			if (host->ops->get_timeout_clock) {
++				host->timeout_clk =
++					host->ops->get_timeout_clock(host);
++			} else {
++				pr_err("%s: Hardware doesn't specify timeout"
++						"clock frequency.\n", mmc_hostname(mmc));
++				return -ENODEV;
++			}
+ 		}
+-	}
+-	if (caps[0] & SDHCI_TIMEOUT_CLK_UNIT)
+-		host->timeout_clk *= 1000;
++		if (caps[0] & SDHCI_TIMEOUT_CLK_UNIT)
++			host->timeout_clk *= 1000;
+ 
+-	if (host->quirks & SDHCI_QUIRK_DATA_TIMEOUT_USES_SDCLK)
+-		host->timeout_clk = mmc->f_max / 1000;
++		mmc->max_busy_timeout = host->ops->get_max_timeout_count ?
++			host->ops->get_max_timeout_count(host) : 1 << 27;
++		mmc->max_busy_timeout /= host->timeout_clk;
++	}
+ 
+-	mmc->max_busy_timeout = host->ops->get_max_timeout_count ?
+-		host->ops->get_max_timeout_count(host) : 1 << 27;
+-	mmc->max_busy_timeout /= host->timeout_clk;
+ 	mmc->caps |= MMC_CAP_SDIO_IRQ | MMC_CAP_ERASE | MMC_CAP_CMD23;
+ 
+ 	if (host->quirks & SDHCI_QUIRK_MULTIBLOCK_READ_ACMD12)

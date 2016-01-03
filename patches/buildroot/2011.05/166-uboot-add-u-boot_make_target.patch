@@ -1,0 +1,26 @@
+Add U-Boot compilation target option to support apf28
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+
+Index: buildroot/boot/u-boot/u-boot.mk
+===================================================================
+--- buildroot/boot/u-boot/u-boot.mk	2011-12-03 23:14:14.763758000 +0100
++++ buildroot/boot/u-boot/u-boot.mk	2011-12-04 13:57:35.800193155 +0100
+@@ -169,7 +169,7 @@ $(U_BOOT_DIR)/$(U_BOOT_BIN): $(U_BOOT_DI
+ 	$(TARGET_CONFIGURE_OPTS) \
+ 		$(U_BOOT_CONFIGURE_OPTS) \
+ 		$(MAKE) CROSS_COMPILE="$(CCACHE) $(TARGET_CROSS)" ARCH=$(U_BOOT_ARCH) \
+-		$(U_BOOT_MAKE_OPT) -C $(U_BOOT_DIR)
++		$(U_BOOT_MAKE_OPT) -C $(U_BOOT_DIR) $(U_BOOT_BIN)
+ 
+ # Copy the result to the images/ directory
+ $(BINARIES_DIR)/$(U_BOOT_TARGET_BIN): $(U_BOOT_DIR)/$(U_BOOT_BIN)
+@@ -186,7 +186,7 @@ endif
+ # the U-Boot build procedure, but mkimage may also be needed even if
+ # U-Boot isn't selected in the configuration, to generate a kernel
+ # uImage.
+-$(MKIMAGE): $(U_BOOT_DIR)/.patched
++$(MKIMAGE): $(U_BOOT_DIR)/.configured
+ 	mkdir -p $(@D)
+ 	$(MAKE) -C $(U_BOOT_DIR) CROSS_COMPILE="$(TARGET_CROSS)" ARCH=$(U_BOOT_ARCH) tools
+ 	cp -dpf $(U_BOOT_DIR)/tools/mkimage $(@D)

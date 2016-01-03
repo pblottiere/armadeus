@@ -1,0 +1,523 @@
+From 3eb9039c5392abaabd96d08c0006ea4066346a60 Mon Sep 17 00:00:00 2001
+From: Dinh Nguyen <Dinh.Nguyen@freescale.com>
+Date: Tue, 17 Aug 2010 16:46:40 -0500
+Subject: [PATCH] ENGR00126692-3: Upgrade kernel to 2.6.35
+
+This patch contains changes to /drivers files
+Contains all checkpatch and copyright fixes.
+
+Acked-by: Rob Herring <r.herring@freescale.com>
+Signed-off-by: Dinh Nguyen <Dinh.Nguyen@freescale.com>
+---
+ Changes by Armadeus systems:
+ - extract IIM stuff from original patch
+ - correctly register IIM resources
+
+ drivers/char/Kconfig                               |   23 +
+ drivers/char/Makefile                              |    5 +
+ drivers/char/mxc_iim.c                             |  161 +
+ drivers/char/mxs_viim.c                            |  175 +
+
+Index: linux-3.0.10/drivers/char/Kconfig
+===================================================================
+--- linux-3.0.10.orig/drivers/char/Kconfig	2011-11-30 18:43:31.000000000 +0100
++++ linux-3.0.10/drivers/char/Kconfig	2011-11-30 18:45:57.000000000 +0100
+@@ -49,6 +49,18 @@
+          If you have an SGI Altix with an attached SABrick
+          say Y or M here, otherwise say N.
+ 
++config MXC_IIM
++	tristate "MXC IIM device driver"
++	depends on ARCH_MXC
++	help
++	  Support for access to MXC IIM device, most people should say N here.
++
++config MXS_VIIM
++	tristate "MXS Virtual IIM device driver"
++	depends on (ARCH_STMP3XXX || ARCH_MXS || ARCH_MX5)
++	help
++	  Support for access to MXS Virtual IIM device, most people should say N here.
++
+ source "drivers/tty/serial/Kconfig"
+ 
+ config TTY_PRINTK
+Index: linux-3.0.10/drivers/char/Makefile
+===================================================================
+--- linux-3.0.10.orig/drivers/char/Makefile	2011-11-30 18:43:31.000000000 +0100
++++ linux-3.0.10/drivers/char/Makefile	2011-11-30 18:45:57.000000000 +0100
+@@ -50,6 +50,9 @@
+ obj-$(CONFIG_GPIO_TB0219)	+= tb0219.o
+ obj-$(CONFIG_TELCLOCK)		+= tlclk.o
+ 
++obj-$(CONFIG_MXC_IIM)		+= mxc_iim.o
++obj-$(CONFIG_MXS_VIIM)		+= mxs_viim.o
++
+ obj-$(CONFIG_MWAVE)		+= mwave/
+ obj-$(CONFIG_AGP)		+= agp/
+ obj-$(CONFIG_PCMCIA)		+= pcmcia/
+Index: linux-3.0.10/drivers/char/mxc_iim.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-3.0.10/drivers/char/mxc_iim.c	2011-11-30 18:45:57.000000000 +0100
+@@ -0,0 +1,161 @@
++/*
++ * Copyright 2009-2010 Freescale Semiconductor, Inc. All Rights Reserved.
++ */
++
++/*
++ * The code contained herein is licensed under the GNU General Public
++ * License. You may obtain a copy of the GNU General Public License
++ * Version 2 or later at the following locations:
++ *
++ * http://www.opensource.org/licenses/gpl-license.html
++ * http://www.gnu.org/copyleft/gpl.html
++ */
++
++#include <linux/fs.h>
++#include <linux/init.h>
++#include <linux/platform_device.h>
++#include <linux/err.h>
++#include <linux/mm.h>
++#include <linux/clk.h>
++#include <linux/miscdevice.h>
++
++static unsigned long iim_reg_base, iim_reg_end, iim_reg_size;
++static struct clk *iim_clk;
++static struct device *iim_dev;
++
++/*!
++ * MXC IIM interface - memory map function
++ * This function maps 4KB IIM registers from IIM base address.
++ *
++ * @param file	     struct file *
++ * @param vma	     structure vm_area_struct *
++ *
++ * @return	     Return 0 on success or negative error code on error
++ */
++static int mxc_iim_mmap(struct file *file, struct vm_area_struct *vma)
++{
++	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
++
++	/* Remap-pfn-range will mark the range VM_IO and VM_RESERVED */
++	if (remap_pfn_range(vma,
++			    vma->vm_start,
++			    iim_reg_base >> PAGE_SHIFT,
++			    iim_reg_size,
++			    vma->vm_page_prot))
++		return -EAGAIN;
++
++	return 0;
++}
++
++/*!
++ * MXC IIM interface - open function
++ *
++ * @param inode	     struct inode *
++ * @param filp	     struct file *
++ *
++ * @return	     Return 0 on success or negative error code on error
++ */
++static int mxc_iim_open(struct inode *inode, struct file *filp)
++{
++	iim_clk = clk_get(NULL, "iim_clk");
++	if (IS_ERR(iim_clk)) {
++		dev_err(iim_dev, "No IIM clock defined\n");
++		return -ENODEV;
++	}
++	clk_enable(iim_clk);
++
++	return 0;
++}
++
++/*!
++ * MXC IIM interface - release function
++ *
++ * @param inode	     struct inode *
++ * @param filp	     struct file *
++ *
++ * @return	     Return 0 on success or negative error code on error
++ */
++static int mxc_iim_release(struct inode *inode, struct file *filp)
++{
++	clk_disable(iim_clk);
++	clk_put(iim_clk);
++	return 0;
++}
++
++static const struct file_operations mxc_iim_fops = {
++	.mmap = mxc_iim_mmap,
++	.open = mxc_iim_open,
++	.release = mxc_iim_release,
++};
++
++static struct miscdevice mxc_iim_miscdev = {
++	.minor = MISC_DYNAMIC_MINOR,
++	.name = "mxc_iim",
++	.fops = &mxc_iim_fops,
++};
++
++/*!
++ * This function is called by the driver framework to get iim base/end address
++ * and register iim misc device.
++ *
++ * @param	dev	The device structure for IIM passed in by the driver
++ *			framework.
++ *
++ * @return      Returns 0 on success or negative error code on error
++ */
++static int mxc_iim_probe(struct platform_device *pdev)
++{
++	struct resource *res;
++	int ret;
++
++	iim_dev = &pdev->dev;
++
++	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	if (IS_ERR(res)) {
++		dev_err(iim_dev, "Unable to get IIM resource\n");
++		return -ENODEV;
++	}
++
++	iim_reg_base = res->start;
++	iim_reg_end = res->end;
++	iim_reg_size = iim_reg_end - iim_reg_base + 1;
++
++	ret = misc_register(&mxc_iim_miscdev);
++	if (ret)
++		return ret;
++
++	return 0;
++}
++
++static int mxc_iim_remove(struct platform_device *pdev)
++{
++	misc_deregister(&mxc_iim_miscdev);
++	return 0;
++}
++
++static struct platform_driver mxc_iim_driver = {
++	.driver = {
++		   .owner = THIS_MODULE,
++		   .name = "mxc_iim",
++		   },
++	.probe = mxc_iim_probe,
++	.remove = mxc_iim_remove,
++};
++
++static int __init mxc_iim_dev_init(void)
++{
++	return platform_driver_register(&mxc_iim_driver);
++}
++
++static void __exit mxc_iim_dev_cleanup(void)
++{
++	platform_driver_unregister(&mxc_iim_driver);
++}
++
++module_init(mxc_iim_dev_init);
++module_exit(mxc_iim_dev_cleanup);
++
++MODULE_AUTHOR("Freescale Semiconductor, Inc.");
++MODULE_DESCRIPTION("MXC IIM driver");
++MODULE_LICENSE("GPL");
++MODULE_ALIAS_MISCDEV(MISC_DYNAMIC_MINOR);
+Index: linux-3.0.10/drivers/char/mxs_viim.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-3.0.10/drivers/char/mxs_viim.c	2011-11-30 18:45:57.000000000 +0100
+@@ -0,0 +1,175 @@
++/*
++ * Copyright 2009-2010 Freescale Semiconductor, Inc. All Rights Reserved.
++ */
++
++/*
++ * The code contained herein is licensed under the GNU General Public
++ * License. You may obtain a copy of the GNU General Public License
++ * Version 2 or later at the following locations:
++ *
++ * http://www.opensource.org/licenses/gpl-license.html
++ * http://www.gnu.org/copyleft/gpl.html
++ */
++
++#include <linux/fs.h>
++#include <linux/init.h>
++#include <linux/platform_device.h>
++#include <linux/err.h>
++#include <linux/mm.h>
++#include <linux/miscdevice.h>
++
++static unsigned long iim_reg_base0, iim_reg_end0, iim_reg_size0;
++static unsigned long iim_reg_base1, iim_reg_end1, iim_reg_size1;
++static struct device *iim_dev;
++
++/*!
++ * MXS Virtual IIM interface - memory map function
++ * This function maps one page size VIIM registers from VIIM base address0
++ * if the size of the required virtual memory space is less than or equal to
++ * one page size, otherwise this function will also map one page size VIIM
++ * registers from VIIM base address1.
++ *
++ * @param file	     struct file *
++ * @param vma	     structure vm_area_struct *
++ *
++ * @return	     Return 0 on success or negative error code on error
++ */
++static int mxs_viim_mmap(struct file *file, struct vm_area_struct *vma)
++{
++	size_t size = vma->vm_end - vma->vm_start;
++
++	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
++
++	/* Remap-pfn-range will mark the range VM_IO and VM_RESERVED */
++	if (remap_pfn_range(vma,
++			    vma->vm_start,
++			    iim_reg_base0 >> PAGE_SHIFT,
++			    iim_reg_size0,
++			    vma->vm_page_prot))
++		return -EAGAIN;
++
++	if (size > iim_reg_size0) {
++		if (remap_pfn_range(vma,
++				    vma->vm_start + iim_reg_size0,
++				    iim_reg_base1 >> PAGE_SHIFT,
++				    iim_reg_size1,
++				    vma->vm_page_prot))
++			return -EAGAIN;
++	}
++
++	return 0;
++}
++
++/*!
++ * MXS Virtual IIM interface - open function
++ *
++ * @param inode	     struct inode *
++ * @param filp	     struct file *
++ *
++ * @return	     Return 0 on success or negative error code on error
++ */
++static int mxs_viim_open(struct inode *inode, struct file *filp)
++{
++	return 0;
++}
++
++/*!
++ * MXS Virtual IIM interface - release function
++ *
++ * @param inode	     struct inode *
++ * @param filp	     struct file *
++ *
++ * @return	     Return 0 on success or negative error code on error
++ */
++static int mxs_viim_release(struct inode *inode, struct file *filp)
++{
++	return 0;
++}
++
++static const struct file_operations mxs_viim_fops = {
++	.mmap = mxs_viim_mmap,
++	.open = mxs_viim_open,
++	.release = mxs_viim_release,
++};
++
++static struct miscdevice mxs_viim_miscdev = {
++	.minor = MISC_DYNAMIC_MINOR,
++	.name = "mxs_viim",
++	.fops = &mxs_viim_fops,
++};
++
++/*!
++ * This function is called by the driver framework to get virtual iim base/end
++ * address and register iim misc device.
++ *
++ * @param	dev	The device structure for Virtual IIM passed in by the
++ *			driver framework.
++ *
++ * @return      Returns 0 on success or negative error code on error
++ */
++static int mxs_viim_probe(struct platform_device *pdev)
++{
++	struct resource *res;
++	int ret;
++
++	iim_dev = &pdev->dev;
++
++	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	if (IS_ERR(res)) {
++		dev_err(iim_dev, "Unable to get Virtual IIM resource 0\n");
++		return -ENODEV;
++	}
++
++	iim_reg_base0 = res->start;
++	iim_reg_end0 = res->end;
++	iim_reg_size0 = iim_reg_end0 - iim_reg_base0 + 1;
++
++	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
++	if (IS_ERR(res)) {
++		dev_err(iim_dev, "Unable to get Virtual IIM resource 1\n");
++		return -ENODEV;
++	}
++
++	iim_reg_base1 = res->start;
++	iim_reg_end1 = res->end;
++	iim_reg_size1 = iim_reg_end1 - iim_reg_base1 + 1;
++
++	ret = misc_register(&mxs_viim_miscdev);
++	if (ret)
++		return ret;
++
++	return 0;
++}
++
++static int mxs_viim_remove(struct platform_device *pdev)
++{
++	misc_deregister(&mxs_viim_miscdev);
++	return 0;
++}
++
++static struct platform_driver mxs_viim_driver = {
++	.driver = {
++		   .owner = THIS_MODULE,
++		   .name = "mxs_viim",
++		   },
++	.probe = mxs_viim_probe,
++	.remove = mxs_viim_remove,
++};
++
++static int __init mxs_viim_dev_init(void)
++{
++	return platform_driver_register(&mxs_viim_driver);
++}
++
++static void __exit mxs_viim_dev_cleanup(void)
++{
++	platform_driver_unregister(&mxs_viim_driver);
++}
++
++module_init(mxs_viim_dev_init);
++module_exit(mxs_viim_dev_cleanup);
++
++MODULE_AUTHOR("Freescale Semiconductor, Inc.");
++MODULE_DESCRIPTION("MXS Virtual IIM driver");
++MODULE_LICENSE("GPL");
++MODULE_ALIAS_MISCDEV(MISC_DYNAMIC_MINOR);
+Index: linux-3.0.10/arch/arm/plat-mxc/devices/Makefile
+===================================================================
+--- linux-3.0.10.orig/arch/arm/plat-mxc/devices/Makefile	2011-11-30 18:43:31.000000000 +0100
++++ linux-3.0.10/arch/arm/plat-mxc/devices/Makefile	2011-11-30 18:45:57.000000000 +0100
+@@ -25,3 +25,4 @@
+ obj-$(CONFIG_IMX_HAVE_PLATFORM_SDHCI_ESDHC_IMX) += platform-sdhci-esdhc-imx.o
+ obj-$(CONFIG_IMX_HAVE_PLATFORM_SPI_IMX) +=  platform-spi_imx.o
+ obj-$(CONFIG_IMX_HAVE_PLATFORM_IMX_IPUV3) +=  platform-imx_ipuv3.o
++obj-$(CONFIG_IMX_HAVE_PLATFORM_MXC_IIM) +=  platform-mxc-iim.o
+Index: linux-3.0.10/arch/arm/plat-mxc/devices/Kconfig
+===================================================================
+--- linux-3.0.10.orig/arch/arm/plat-mxc/devices/Kconfig	2011-11-30 18:43:31.000000000 +0100
++++ linux-3.0.10/arch/arm/plat-mxc/devices/Kconfig	2011-11-30 18:45:57.000000000 +0100
+@@ -80,3 +80,6 @@
+ config IMX_HAVE_PLATFORM_IMX_IPUV3
+ 	bool
+ 
++config IMX_HAVE_PLATFORM_MXC_IIM
++	bool
++
+Index: linux-3.0.10/arch/arm/plat-mxc/devices/platform-mxc-iim.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-3.0.10/arch/arm/plat-mxc/devices/platform-mxc-iim.c	2011-11-30 18:45:57.000000000 +0100
+@@ -0,0 +1,66 @@
++/*
++ * Copyright (C) 2011 ARMadeus Systems
++ * Julien Boibessot <julien.boibessot@armadeus.com>
++ *
++ * Based on code which is:
++ * Copyright (C) 2010 Pengutronix
++ * Uwe Kleine-Koenig <u.kleine-koenig@pengutronix.de>
++ *
++ * This program is free software; you can redistribute it and/or modify it under
++ * the terms of the GNU General Public License version 2 as published by the
++ * Free Software Foundation.
++ */
++#include <asm/sizes.h>
++#include <mach/hardware.h>
++#include <mach/devices-common.h>
++
++#define imx_iim_data_entry(soc, _id, _hwid, _size)		\
++	{							\
++		.id = _id,					\
++		.iobase = soc ## _IIM ## _BASE_ADDR,		\
++		.iosize = _size,				\
++	}
++
++#ifdef CONFIG_SOC_IMX21
++const struct imx_iim_data imx21_iim_data __initconst =
++	imx_iim_data_entry(MX21, 0, , SZ_4K);
++#endif /* ifdef CONFIG_SOC_IMX21 */
++
++#ifdef CONFIG_SOC_IMX25
++const struct imx_iim_data imx25_iim_data __initconst =
++	imx_iim_data_entry(MX25, 0, , SZ_16K);
++#endif /* ifdef CONFIG_SOC_IMX25 */
++
++#ifdef CONFIG_SOC_IMX27
++const struct imx_iim_data imx27_iim_data __initconst =
++	imx_iim_data_entry(MX27, 0, , SZ_4K);
++#endif /* ifdef CONFIG_SOC_IMX27 */
++
++#ifdef CONFIG_SOC_IMX31
++const struct imx_iim_data imx31_iim_data __initconst =
++	imx_iim_data_entry(MX31, 0, , SZ_16K);
++#endif /* ifdef CONFIG_SOC_IMX31 */
++
++#ifdef CONFIG_SOC_IMX35
++const struct imx_iim_data imx35_iim_data __initconst =
++	imx_iim_data_entry(MX35, 0, , SZ_16K);
++#endif /* ifdef CONFIG_SOC_IMX35 */
++
++#ifdef CONFIG_SOC_IMX51
++const struct imx_iim_data imx51_iim_data[] __initconst = {
++	imx_iim_data_entry(MX51, 0, , SZ_4K)
++};
++#endif /* ifdef CONFIG_SOC_IMX51 */
++
++struct platform_device *__init imx_add_iim(const struct imx_iim_data *data)
++{
++	struct resource res[] = {
++		{
++			.start = data->iobase,
++			.end = data->iobase + data->iosize - 1,
++			.flags = IORESOURCE_MEM,
++		},
++	};
++	return imx_add_platform_device("mxc-iim", data->id,
++			res, ARRAY_SIZE(res), NULL, 0);
++}
+Index: linux-3.0.10/arch/arm/plat-mxc/include/mach/devices-common.h
+===================================================================
+--- linux-3.0.10.orig/arch/arm/plat-mxc/include/mach/devices-common.h	2011-11-30 18:43:32.000000000 +0100
++++ linux-3.0.10/arch/arm/plat-mxc/include/mach/devices-common.h	2011-11-30 18:45:57.000000000 +0100
+@@ -301,3 +301,12 @@
+ struct platform_device *__init imx_add_ipuv3(
+ 		const struct imx_ipuv3_data *data,
+ 		const struct imx_ipuv3_platform_data *pdata);
++
++struct imx_iim_data {
++	int id;
++	resource_size_t iobase;
++	resource_size_t iosize;
++};
++struct platform_device *__init imx_add_iim(
++		const struct imx_iim_data *data);
++
+Index: linux-3.0.10/arch/arm/mach-mx5/devices-imx51.h
+===================================================================
+--- linux-3.0.10.orig/arch/arm/mach-mx5/devices-imx51.h	2011-11-30 18:43:31.000000000 +0100
++++ linux-3.0.10/arch/arm/mach-mx5/devices-imx51.h	2011-11-30 18:45:57.000000000 +0100
+@@ -56,3 +56,7 @@
+ extern const struct imx_ipuv3_data imx51_ipuv3_data __initconst;
+ #define imx51_add_ipuv3(pdata)	\
+ 	imx_add_ipuv3(&imx51_ipuv3_data, pdata)
++
++extern const struct imx_iim_data imx51_iim_data __initconst;
++#define imx51_add_iim(pdata)	\
++	imx_add_iim(&imx51_iim_data)

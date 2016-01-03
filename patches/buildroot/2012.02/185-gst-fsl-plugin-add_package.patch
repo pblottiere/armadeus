@@ -1,0 +1,97 @@
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/multimedia/gst-fsl-plugin/gst-fsl-plugin.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/multimedia/gst-fsl-plugin/gst-fsl-plugin.mk	2012-04-05 12:37:49.000000000 +0200
+@@ -0,0 +1,41 @@
++#############################################################
++#
++# gst-fsl-plugin (Freescale's gstreamer custom plugins)
++#
++#############################################################
++GST_FSL_PLUGIN_VERSION = 2.0.3
++GST_FSL_PLUGIN_SITE = ftp://ftp2.armadeus.com/_downloads
++GST_FSL_PLUGIN_INSTALL_STAGING = YES
++
++# if gst-fsl-plugin was better configurable, fsl-mm-codeclib dep could be wiped out
++GST_FSL_PLUGIN_DEPENDENCIES = linux gst-plugins-base imx-lib fsl-mm-codeclib
++
++GST_FSL_PLUGIN_CONF_ENV = CPPFLAGS=-I$(LINUX_DIR)/include
++
++ifeq ($(BR2_CPU_NAME),"imx27")
++GST_FSL_PLUGIN_CONF_OPT = PLATFORM=MX27
++else
++GST_FSL_PLUGIN_CONF_OPT = PLATFORM=MX51
++endif
++GST_FSL_PLUGIN_CONF_OPT += --disable-aac_dec \
++	--disable-aacp_dec \
++	--disable-bsac_dec \
++	--disable-mp3_dec \
++	--disable-mp3_enc \
++	--disable-vorbis_dec \
++	--disable-wma10_dec \
++	--disable-downmix \
++	--disable-wma8_enc \
++	--disable-ac3_dec \
++	--disable-h264_dec \
++	--disable-mpeg4_dec \
++	--disable-mpeg2_dec \
++	--disable-wmv9mp_dec \
++	--disable-wmv78_dec \
++
++define GST_FSL_PLUGIN_NO_IPU_HOOK
++	$(SED) 's/$$(IPUDIRS)//' $(@D)/Makefile
++endef
++#GST_FSL_PLUGIN_POST_CONFIGURE_HOOKS += GST_FSL_PLUGIN_NO_IPU_HOOK
++
++$(eval $(call AUTOTARGETS))
+Index: buildroot/package/multimedia/gst-fsl-plugin/gst-fsl-plugin-gst_snapshot_stdio.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/multimedia/gst-fsl-plugin/gst-fsl-plugin-gst_snapshot_stdio.patch	2012-04-05 12:36:53.000000000 +0200
+@@ -0,0 +1,19 @@
++Otherwise build fails with:
++
++gst_snapshot.c: In function 'gst_save_bmp':
++gst_snapshot.c:241:2: error: 'FILE' undeclared (first use in this function)
++gst_snapshot.c:241:2: note: each undeclared identifier is reported only once for each function it appears in
++gst_snapshot.c:241:9: error: 'fp' undeclared (first use in this function)
++gst_snapshot.c:269:2: warning: incompatible implicit declaration of built-in function 'fwrite'
++
++diff -urN -X linux-2.6.38.8/Documentation/dontdiff gst-fsl-plugin-2.0.3/tools/gplay/gst_snapshot.c gst-fsl-plugin-2.0.3.mod/tools/gplay/gst_snapshot.c
++--- gst-fsl-plugin-2.0.3/tools/gplay/gst_snapshot.c	2011-12-02 07:31:40.000000000 +0100
+++++ gst-fsl-plugin-2.0.3.mod/tools/gplay/gst_snapshot.c	2012-04-03 17:29:35.000000000 +0200
++@@ -21,6 +21,7 @@
++  */
++ 
++ #include <gst/gst.h>
+++#include <stdio.h>
++ #include <string.h>
++ #include "gst_snapshot.h"
++ 
+Index: buildroot/package/multimedia/gst-fsl-plugin/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/multimedia/gst-fsl-plugin/Config.in	2012-04-05 12:36:53.000000000 +0200
+@@ -0,0 +1,8 @@
++config BR2_PACKAGE_GST_FSL_PLUGIN
++	bool "gst-fsl-plugin"
++	depends on BR2_PACKAGE_GSTREAMER
++	select BR2_PACKAGE_FSL_MM_CODECLIB
++	select BR2_PACKAGE_GST_PLUGINS_BASE
++	select BR2_PACKAGE_IMX_LIB
++	help
++	  Freescale's i.MX specific gstreamer plugins.
+Index: buildroot/package/multimedia/Config.in
+===================================================================
+--- buildroot.orig/package/multimedia/Config.in	2012-04-05 12:36:28.000000000 +0200
++++ buildroot/package/multimedia/Config.in	2012-04-05 12:36:53.000000000 +0200
+@@ -8,6 +8,7 @@
+ source "package/multimedia/ffmpeg/Config.in"
+ source "package/multimedia/gstreamer/Config.in"
+ source "package/multimedia/gst-ffmpeg/Config.in"
++source "package/multimedia/gst-fsl-plugin/Config.in"
+ source "package/multimedia/gst-dsp/Config.in"
+ source "package/multimedia/gst-omapfb/Config.in"
+ source "package/multimedia/gst-plugins-base/Config.in"

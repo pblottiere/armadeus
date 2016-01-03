@@ -1,0 +1,356 @@
+BusyBox coreutils stty: Add RS485 config options
+
+Armadeus Buildroot 2012.02 version.
+Patch only for BusyBox v1.19.4
+
+
+Signed-off-by: Janos Angeli <angelo@angelo.hu>
+---
+
+Index: buildroot/package/busybox/busybox-1.19.4/001_busybox-1.19.4_stty_add_rs485_config.patch
+===================================================================
+--- /dev/null
++++ buildroot/package/busybox/busybox-1.19.4/001_busybox-1.19.4_stty_add_rs485_config.patch
+@@ -0,0 +1,342 @@
++BusyBox coreutils stty: Add RS485 config options
++
++The patch adds RS485 config options for serial devices/drivers
++which are supporting the ioctl based configurations documented in:
++https://www.kernel.org/doc/Documentation/serial/serial-rs485.txt
++
++New config parameters:
++rs485              - Switch on/off the RS485 mode
++rs485rtsonsend     - Set logical level for RTS pin when sending
++rs485rtsaftersend  - Set logical level for RTS pin after sent
++rs485rxduringtx    - Switch on/off Rx enable during packet transmit
++rs485delaybefore 0 - Set delay between RTS signaling and the
++                     transmission of the first bit
++rs485delayafter 0  - Set delay between the transmission of the last
++                     bit and the RTS state change
++
++New read only parameter:
++rs485delaylastchartx 0 - Shows the automatically calculated delay
++                         between the serial port Tx FIFO empty
++                         state and the last bit transmission
++
++Currently the following serial drivers supports the RS485 options:
++- crisv10.c ETRAX 100LX
++- atmel_serial.c Atmel AT91 / AT32
++- mxs-auart.c Freescale STMP37XX/STMP378X iMX28
++
++Signed-off-by: Janos Angeli <angelo@angelo.hu>
++---
++Index: busybox-1.19.4/coreutils/stty.c
++===================================================================
++--- busybox-1.19.4.orig/coreutils/stty.c
+++++ busybox-1.19.4/coreutils/stty.c
++@@ -19,6 +19,8 @@
++ 
++    Special for busybox ported by Vladimir Oleynik <dzo@simtreas.ru> 2001
++ 
+++   RS485 options added by Janos Angeli <angelo@angelo.hu> 2013
+++
++    */
++ 
++ //usage:#define stty_trivial_usage
++@@ -33,6 +35,33 @@
++ 
++ #include "libbb.h"
++ 
+++//#include <asm/ioctls.h>
+++//We don't include <asm/ioctls.h> now, because older Linux kernels are missing the
+++//required RS485 definitions. We need only the TIOCGRS485 and TIOCSRS485 definition.
+++//In later versions we will be able to switch back to the original include.
+++#define	TIOCGRS485	0x542E
+++#define	TIOCSRS485	0x542F
+++//End of temporally include <asm/ioctls.h>
+++
+++//#include <linux/serial.h>
+++//We don't include <linux/serial.h> now, because it is missing some RS485 definitions.
+++//We need only the serial_rs485 struct from it and the __u32 def from <linux/types.h>
+++//In later versions we will be able to switch back to the original include.
+++#include <linux/types.h>
+++struct serial_rs485 {
+++	__u32	flags;			/* RS485 feature flags */
+++#define SER_RS485_ENABLED		(1 << 0)	/* If enabled */
+++#define SER_RS485_RTS_ON_SEND		(1 << 1)	/* Logical level for RTS pin when sending */
+++#define SER_RS485_RTS_AFTER_SEND	(1 << 2)	/* Logical level for RTS pin after sent */
+++#define SER_RS485_RX_DURING_TX		(1 << 4)
+++	__u32	delay_rts_before_send;	/* Delay before send */
+++	__u32	delay_rts_after_send;	/* Delay after send */
+++	__u32	delay_rts_last_char_tx;	/* Delay for last char Tx from FIFO (microseconds)
+++					   This delay is automatically calculated from baudrate */
+++	__u32	padding[4];		/* Memory is cheap, new structs are a royal PITA .. */
+++};
+++//End of temporally include <linux/serial.h>
+++
++ #ifndef _POSIX_VDISABLE
++ # define _POSIX_VDISABLE ((unsigned char) 0)
++ #endif
++@@ -966,11 +995,27 @@ static int find_param(const char *name)
++ 	return i;
++ }
++ 
++-static int recover_mode(const char *arg, struct termios *mode)
+++static int find_rs485config(const char *name)
+++{
+++	static const char params[] ALIGN1 =
+++		"rs485\0"		/* 1 */
+++		"rs485rtsonsend\0"	/* 2 */
+++		"rs485rtsaftersend\0"	/* 3 */
+++		"rs485rxduringtx\0"	/* 4 */
+++		"rs485delaybefore\0"	/* 5 */
+++		"rs485delayafter\0";	/* 6 */
+++	int i = index_in_strings(params, name) + 1;
+++	if ((i == 5) || (i == 6))
+++		i |= 0x80;
+++	return i;
+++}
+++
+++static int recover_mode(const char *arg, struct termios *mode, struct serial_rs485 *rs485conf, int paramcheck, int rs485)
++ {
++ 	int i, n;
++ 	unsigned chr;
++ 	unsigned long iflag, oflag, cflag, lflag;
+++	unsigned long rsflags, rsdelaybefore, rsdelayafter;
++ 
++ 	/* Scan into temporaries since it is too much trouble to figure out
++ 	   the right format for 'tcflag_t' */
++@@ -989,15 +1034,28 @@ static int recover_mode(const char *arg,
++ 		arg += n;
++ 	}
++ 
+++	if (rs485 >= 0) {
+++		if (sscanf(arg, ":%lx:%lx:%lx%n", &rsflags, &rsdelaybefore, &rsdelayafter, &n) != 3)
+++			return 0;
+++		rs485conf->flags = rsflags;
+++		rs485conf->delay_rts_before_send = rsdelaybefore;
+++		rs485conf->delay_rts_after_send = rsdelayafter;
+++		arg += n;
+++	}
+++
++ 	/* Fail if there are too many fields */
++-	if (*arg != '\0')
+++	if (*arg != '\0') {
+++		/* In the first pass of params verify we don't know the port device
+++		   have RS485 support or not, so give a try for the extra RS485 params */
+++		if ((paramcheck) && (sscanf(arg, ":%lx:%lx:%lx%n", &rsflags, &rsdelaybefore, &rsdelayafter, &n) == 3))
+++			return 1;
++ 		return 0;
++-
+++	}
++ 	return 1;
++ }
++ 
++-static void display_recoverable(const struct termios *mode,
++-				int UNUSED_PARAM dummy)
+++static void display_recoverable(const struct termios *mode, const struct serial_rs485 *rs485conf,
+++				int UNUSED_PARAM dummy, int rs485)
++ {
++ 	int i;
++ 	printf("%lx:%lx:%lx:%lx",
++@@ -1005,6 +1063,12 @@ static void display_recoverable(const st
++ 		   (unsigned long) mode->c_cflag, (unsigned long) mode->c_lflag);
++ 	for (i = 0; i < NCCS; ++i)
++ 		printf(":%x", (unsigned int) mode->c_cc[i]);
+++	if (rs485 >= 0) {
+++		printf(":%lx:%lx:%lx",
+++			(unsigned long) rs485conf->flags,
+++			(unsigned long) rs485conf->delay_rts_before_send,
+++			(unsigned long) rs485conf->delay_rts_after_send);
+++	}
++ 	bb_putchar('\n');
++ }
++ 
++@@ -1025,7 +1089,7 @@ static void display_speed(const struct t
++ 	wrapf(fmt_str, tty_baud_to_value(ispeed), tty_baud_to_value(ospeed));
++ }
++ 
++-static void do_display(const struct termios *mode, int all)
+++static void do_display(const struct termios *mode, const struct serial_rs485 *rs485conf, int all, int rs485)
++ {
++ 	int i;
++ 	tcflag_t *bitsp;
++@@ -1086,6 +1150,25 @@ static void do_display(const struct term
++ 		}
++ 	}
++ 	newline();
+++
+++	if (rs485 < 0) {
+++		if (all) {
+++			wrapf("RS485 not supported");
+++			newline();
+++		}
+++	} else {
+++		wrapf("%srs485 %srs485rtsonsend %srs485rtsaftersend %srs485rxduringtx",
+++			(rs485conf->flags & SER_RS485_ENABLED) ? "" : "-",
+++			(rs485conf->flags & SER_RS485_RTS_ON_SEND) ? "" : "-",
+++			(rs485conf->flags & SER_RS485_RTS_AFTER_SEND) ? "" : "-",
+++			(rs485conf->flags & SER_RS485_RX_DURING_TX) ? "" : "-");
+++		newline();
+++		wrapf("rs485delaybefore = %d; rs485delayafter = %d; rs485delaylastchartx = %d;\n",
+++			rs485conf->delay_rts_before_send,
+++			rs485conf->delay_rts_after_send,
+++			rs485conf->delay_rts_last_char_tx);
+++		newline();
+++	}
++ }
++ 
++ static void sane_mode(struct termios *mode)
++@@ -1277,11 +1360,14 @@ int stty_main(int argc, char **argv) MAI
++ int stty_main(int argc UNUSED_PARAM, char **argv)
++ {
++ 	struct termios mode;
++-	void (*output_func)(const struct termios *, int);
+++	struct serial_rs485 rs485conf;
+++	void (*output_func)(const struct termios *, const struct serial_rs485 *, int, int);
++ 	const char *file_name = NULL;
++ 	int display_all = 0;
++ 	int stty_state;
++ 	int k;
+++	int rs485_supported;
+++	int rs485_setconfig;
++ 
++ 	INIT_G();
++ 
++@@ -1306,6 +1392,11 @@ int stty_main(int argc UNUSED_PARAM, cha
++ 				stty_state &= ~STTY_noargs;
++ 				continue;
++ 			}
+++			param = find_rs485config(arg+1);
+++			if ((param) && ((param & param_need_arg) == 0)) {
+++				stty_state &= ~STTY_noargs;
+++				continue;
+++			}
++ 			/* It is an option - parse it */
++ 			i = 0;
++ 			while (arg[++i]) {
++@@ -1360,6 +1451,17 @@ int stty_main(int argc UNUSED_PARAM, cha
++ 			continue;
++ 		}
++ 
+++		param = find_rs485config(arg);
+++		if (param & param_need_arg) {
+++			if (!argnext)
+++				bb_error_msg_and_die(bb_msg_requires_arg, arg);
+++			++k;
+++		}
+++		if (param) {
+++			stty_state &= ~STTY_noargs;
+++			continue;
+++		}
+++
++ 		param = find_param(arg);
++ 		if (param & param_need_arg) {
++ 			if (!argnext)
++@@ -1394,7 +1496,7 @@ int stty_main(int argc UNUSED_PARAM, cha
++ 			set_speed_or_die(output_speed, argnext, &mode);
++ 			break;
++ 		default:
++-			if (recover_mode(arg, &mode) == 1) break;
+++			if (recover_mode(arg, &mode, &rs485conf, 1, -1) == 1) break;
++ 			if (tty_value_to_baud(xatou(arg)) != (speed_t) -1) break;
++  invalid_argument:
++ 			bb_error_msg_and_die("invalid argument '%s'", arg);
++@@ -1425,15 +1527,17 @@ int stty_main(int argc UNUSED_PARAM, cha
++ 	memset(&mode, 0, sizeof(mode));
++ 	if (tcgetattr(STDIN_FILENO, &mode))
++ 		perror_on_device_and_die("%s");
+++	rs485_supported = ioctl(STDIN_FILENO, TIOCGRS485, &rs485conf);
++ 
++ 	if (stty_state & (STTY_verbose_output | STTY_recoverable_output | STTY_noargs)) {
++ 		get_terminal_width_height(STDOUT_FILENO, &G.max_col, NULL);
++-		output_func(&mode, display_all);
+++		output_func(&mode, &rs485conf, display_all, rs485_supported);
++ 		return EXIT_SUCCESS;
++ 	}
++ 
++ 	/* Second pass: perform actions */
++ 	k = 0;
+++	rs485_setconfig = 0;
++ 	while (argv[++k]) {
++ 		const struct mode_info *mp;
++ 		const struct control_info *cp;
++@@ -1447,6 +1551,23 @@ int stty_main(int argc UNUSED_PARAM, cha
++ 				set_mode(mp, 1 /* reversed */, &mode);
++ 				stty_state |= STTY_require_set_attr;
++ 			}
+++			param = find_rs485config(arg+1);
+++			if ((param) && ((param & param_need_arg) == 0)) {
+++				rs485_setconfig = 1;
+++				switch (param) {
+++					case 1:
+++						rs485conf.flags &= ~SER_RS485_ENABLED;
+++						break;
+++					case 2:
+++						rs485conf.flags &= ~SER_RS485_RTS_ON_SEND;
+++						break;
+++					case 3:
+++						rs485conf.flags &= ~SER_RS485_RTS_AFTER_SEND;
+++						break;
+++					case 4:
+++						rs485conf.flags &= ~SER_RS485_RX_DURING_TX;
+++				}
+++			}
++ 			/* It is an option - already parsed. Skip it */
++ 			continue;
++ 		}
++@@ -1466,6 +1587,33 @@ int stty_main(int argc UNUSED_PARAM, cha
++ 			continue;
++ 		}
++ 
+++		param = find_rs485config(arg);
+++		if (param) {
+++			rs485_setconfig = 1;
+++			if (param & param_need_arg)
+++				++k;
+++			switch (param & 0x7F) {
+++				case 1:
+++					rs485conf.flags |= SER_RS485_ENABLED;
+++					break;
+++				case 2:
+++					rs485conf.flags |= SER_RS485_RTS_ON_SEND;
+++					break;
+++				case 3:
+++					rs485conf.flags |= SER_RS485_RTS_AFTER_SEND;
+++					break;
+++				case 4:
+++					rs485conf.flags |= SER_RS485_RX_DURING_TX;
+++					break;
+++				case 5:
+++					rs485conf.delay_rts_before_send = xatoul_sfx(argnext, stty_suffixes);
+++					break;
+++				case 6:
+++					rs485conf.delay_rts_after_send = xatoul_sfx(argnext, stty_suffixes);
+++			}
+++			continue;
+++		}
+++
++ 		param = find_param(arg);
++ 		if (param & param_need_arg) {
++ 			++k;
++@@ -1502,9 +1650,11 @@ int stty_main(int argc UNUSED_PARAM, cha
++ 			stty_state |= (STTY_require_set_attr | STTY_speed_was_set);
++ 			break;
++ 		default:
++-			if (recover_mode(arg, &mode) == 1)
+++			if (recover_mode(arg, &mode, &rs485conf, 0, rs485_supported) == 1) {
++ 				stty_state |= STTY_require_set_attr;
++-			else /* true: if (tty_value_to_baud(xatou(arg)) != (speed_t) -1) */{
+++				if (rs485_supported >= 0)
+++					rs485_setconfig = 1;
+++			} else /* true: if (tty_value_to_baud(xatou(arg)) != (speed_t) -1) */{
++ 				set_speed_or_die(both_speeds, arg, &mode);
++ 				stty_state |= (STTY_require_set_attr | STTY_speed_was_set);
++ 			} /* else - impossible (caught in the first pass):
++@@ -1550,5 +1700,10 @@ int stty_main(int argc UNUSED_PARAM, cha
++ 		}
++ 	}
++ 
+++	if (rs485_setconfig) {
+++		if (ioctl (STDIN_FILENO, TIOCSRS485, &rs485conf) < 0)
+++			perror_on_device_and_die("%s: cannot set RS485 options");
+++	}
+++
++ 	return EXIT_SUCCESS;
++ }

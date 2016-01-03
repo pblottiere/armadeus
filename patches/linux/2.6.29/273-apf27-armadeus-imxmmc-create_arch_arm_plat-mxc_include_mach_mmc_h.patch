@@ -1,0 +1,20 @@
+
+This patch adds some missing functions to arch/arm/plat-mxc/include/mach/mmc.h
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+---
+
+Index: linux-2.6.29/arch/arm/plat-mxc/include/mach/mmc.h
+===================================================================
+--- linux-2.6.29.orig/arch/arm/plat-mxc/include/mach/mmc.h	2009-03-24 00:12:14.000000000 +0100
++++ linux-2.6.29/arch/arm/plat-mxc/include/mach/mmc.h	2009-03-31 10:50:01.000000000 +0200
+@@ -31,6 +31,9 @@
+ 
+ 	/* adjust slot voltage */
+ 	void (*setpower)(struct device *, unsigned int vdd);
++
++	int (*card_present)(struct device *);
++	void (*set_bus_width)(struct device *, int width);
+ };
+ 
+ #endif

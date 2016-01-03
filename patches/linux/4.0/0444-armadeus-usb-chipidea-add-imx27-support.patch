@@ -1,0 +1,143 @@
+Add i.MX27 and i.MX31 to the usbmisc driver. (based on Alexexander Shiyan patches)
+
+TODO: add control to external USB VBUS power supply
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+Index: linux-3.16/arch/arm/boot/dts/imx27.dtsi
+===================================================================
+--- linux-3.16.orig/arch/arm/boot/dts/imx27.dtsi
++++ linux-3.16/arch/arm/boot/dts/imx27.dtsi
+@@ -35,6 +35,9 @@
+ 		spi0 = &cspi1;
+ 		spi1 = &cspi2;
+ 		spi2 = &cspi3;
++		usb0 = &usbotg;
++		usb1 = &usbh1;
++		usb2 = &usbh2;
+ 	};
+ 
+ 	aitc: aitc-interrupt-controller@e0000000 {
+Index: linux-3.16/drivers/usb/chipidea/ci_hdrc_imx.c
+===================================================================
+--- linux-3.16.orig/drivers/usb/chipidea/ci_hdrc_imx.c
++++ linux-3.16/drivers/usb/chipidea/ci_hdrc_imx.c
+@@ -57,6 +57,7 @@ static struct imx_usbmisc_data *usbmisc_
+ 	struct device_node *np = dev->of_node;
+ 	struct of_phandle_args args;
+ 	struct imx_usbmisc_data *data;
++	u32 sic;
+ 	int ret;
+ 
+ 	/*
+@@ -90,6 +91,14 @@ static struct imx_usbmisc_data *usbmisc_
+ 	if (!of_find_property(np, "ext-clk-en", NULL))
+ 		data->ext_clk_en = 1;
+ 
++	if (of_find_property(np, "disable-tll", NULL))
++		data->disable_tll = 1;
++
++	if (!of_property_read_u32(np, "sic", &sic)) {
++		data->enable_sic = 1;
++		data->sic = sic & 0x3;
++	}
++
+ 	return data;
+ }
+ 
+Index: linux-3.16/drivers/usb/chipidea/ci_hdrc_imx.h
+===================================================================
+--- linux-3.16.orig/drivers/usb/chipidea/ci_hdrc_imx.h
++++ linux-3.16/drivers/usb/chipidea/ci_hdrc_imx.h
+@@ -18,6 +18,9 @@ struct imx_usbmisc_data {
+ 	unsigned int disable_oc:1; /* over current detect disabled */
+ 	unsigned int evdo:1; /* set external vbus divider option */
+ 	unsigned int ext_clk_en:1; /* select the clock from external PHY*/
++	unsigned int disable_tll:1; /* disable transceiver-less link logic */
++	unsigned int enable_sic:1; /* enable serial interface configuration */
++	unsigned int sic:2; /* serial interface configuration */
+ };
+ 
+ int imx_usbmisc_init(struct imx_usbmisc_data *);
+Index: linux-3.16/drivers/usb/chipidea/usbmisc_imx.c
+===================================================================
+--- linux-3.16.orig/drivers/usb/chipidea/usbmisc_imx.c
++++ linux-3.16/drivers/usb/chipidea/usbmisc_imx.c
+@@ -42,8 +42,18 @@
+ #define MX25_H1_OCPOL_BIT		BIT(2)
+ 
+ #define MX27_H1_PM_BIT			BIT(8)
++#define MX27_H1_SIC_OFFSET     13
++#define MX27_H1_SIC_MASK       0x00006000
++#define MX27_H1_TLL_BIT            BIT(4)
+ #define MX27_H2_PM_BIT			BIT(16)
++#define USBCTRL_UIE_BIT			BIT(26)
++#define USBCTRL_WIE_BIT			BIT(27)
++#define MX27_H2_SIC_OFFSET     21
++#define MX27_H2_SIC_MASK       0x00600000
++#define MX27_H2_TLL_BIT            BIT(5)
+ #define MX27_OTG_PM_BIT			BIT(24)
++#define MX27_OTG_SIC_OFFSET        29
++#define MX27_OTG_SIC_MASK      0x60000000
+ 
+ #define MX51_USB_OTG_PHY_CTRL_OFFSET	0x00
+ #define MX51_USB_OTG_PHY_CTRL_0_OFFSET	0x08
+@@ -148,28 +158,50 @@ static int usbmisc_imx25_post(struct imx
+ static int usbmisc_imx27_init(struct imx_usbmisc_data *data)
+ {
+ 	unsigned long flags;
+-	u32 val;
++	u32 val = 0;
++	u32 mask;
++	u32 reg;
+ 
+ 	switch (data->index) {
+ 	case 0:
+ 		val = MX27_OTG_PM_BIT;
+ 		break;
+ 	case 1:
+-		val = MX27_H1_PM_BIT;
++		mask = MX27_H1_PM_BIT;
++		if (data->disable_oc)
++			val |= MX27_H1_PM_BIT;
++
++		if (data->enable_sic) {
++			mask |= MX27_H1_SIC_MASK;
++			val |= data->sic << MX27_H1_SIC_OFFSET;
++		}
++
++		if (data->disable_tll)
++			val |= MX27_H1_TLL_BIT;
++
+ 		break;
+ 	case 2:
+-		val = MX27_H2_PM_BIT;
++		mask = MX27_H2_PM_BIT;
++		if (data->disable_oc)
++			val |= MX27_H2_PM_BIT;
++
++		if (data->enable_sic) {
++			mask |= MX27_H2_SIC_MASK;
++			val |= data->sic << MX27_H2_SIC_OFFSET;
++		}
++
++		if (data->disable_tll)
++			val |= MX27_H2_TLL_BIT;
++
+ 		break;
+ 	default:
+ 		return -EINVAL;
+ 	};
+ 
+ 	spin_lock_irqsave(&usbmisc->lock, flags);
+-	if (data->disable_oc)
+-		val = readl(usbmisc->base) | val;
+-	else
+-		val = readl(usbmisc->base) & ~val;
+-	writel(val, usbmisc->base);
++	reg = readl(usbmisc->base);
++	reg = (reg  & ~mask) | val;
++	writel(reg, usbmisc->base);
+ 	spin_unlock_irqrestore(&usbmisc->lock, flags);
+ 
+ 	return 0;

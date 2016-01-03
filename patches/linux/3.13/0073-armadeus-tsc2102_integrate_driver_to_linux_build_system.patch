@@ -1,0 +1,31 @@
+Index: linux-3.8-rc1/drivers/spi/Kconfig
+===================================================================
+--- linux-3.8-rc1.orig/drivers/spi/Kconfig	2012-12-22 02:19:00.000000000 +0100
++++ linux-3.8-rc1/drivers/spi/Kconfig	2013-01-01 21:19:56.000000000 +0100
+@@ -494,6 +494,14 @@
+ 	  sysfs interface, with each line presented as a kind of GPIO
+ 	  exposing both switch control and diagnostic feedback.
+ 
++config SPI_TSC2102
++	depends on SPI_MASTER
++	depends on HWMON = n || HWMON
++	tristate "TSC2102 codec support"
++	---help---
++	  Say Y here if you want support for the TSC2102 chip.  It
++	  will be needed for the touchscreen driver on some boards.
++
+ #
+ # Add new SPI protocol masters in alphabetical order above this line
+ #
+Index: linux-3.8-rc1/drivers/spi/Makefile
+===================================================================
+--- linux-3.8-rc1.orig/drivers/spi/Makefile	2012-12-22 02:19:00.000000000 +0100
++++ linux-3.8-rc1/drivers/spi/Makefile	2013-01-01 21:19:56.000000000 +0100
+@@ -64,6 +64,7 @@
+ obj-$(CONFIG_SPI_TEGRA20_SLINK)		+= spi-tegra20-slink.o
+ obj-$(CONFIG_SPI_TI_SSP)		+= spi-ti-ssp.o
+ obj-$(CONFIG_SPI_TLE62X0)		+= spi-tle62x0.o
++obj-$(CONFIG_SPI_TSC2102)		+= tsc2102.o
+ obj-$(CONFIG_SPI_TOPCLIFF_PCH)		+= spi-topcliff-pch.o
+ obj-$(CONFIG_SPI_TXX9)			+= spi-txx9.o
+ obj-$(CONFIG_SPI_XCOMM)		+= spi-xcomm.o

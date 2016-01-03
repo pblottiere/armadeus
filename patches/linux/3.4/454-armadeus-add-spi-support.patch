@@ -1,0 +1,19 @@
+Activate clock for SPI
+
+Signed-off-by: Fabien Marteau <fabien.marteau@armadeus.com>
+---
+Index: linux-3.4.28/arch/arm/mach-mxs/clock-mx28.c
+===================================================================
+--- linux-3.4.28.orig/arch/arm/mach-mxs/clock-mx28.c	2013-03-01 14:39:38.000000000 +0100
++++ linux-3.4.28/arch/arm/mach-mxs/clock-mx28.c	2013-03-05 09:38:51.000000000 +0100
+@@ -629,8 +629,8 @@
+ 	_REGISTER_CLOCK("mxs-dma-apbx", NULL, xbus_clk)
+ 	_REGISTER_CLOCK("mxs-mmc.0", NULL, ssp0_clk)
+ 	_REGISTER_CLOCK("mxs-mmc.1", NULL, ssp1_clk)
+-	_REGISTER_CLOCK("mxs-mmc.2", NULL, ssp2_clk)
+-	_REGISTER_CLOCK("mxs-mmc.3", NULL, ssp3_clk)
++	_REGISTER_CLOCK("mxs-spi.2", NULL, ssp2_clk)
++	_REGISTER_CLOCK("mxs-spi.3", NULL, ssp3_clk)
+ 	_REGISTER_CLOCK("flexcan.0", NULL, can0_clk)
+ 	_REGISTER_CLOCK("flexcan.1", NULL, can1_clk)
+ 	_REGISTER_CLOCK(NULL, "usb0", usb0_clk)

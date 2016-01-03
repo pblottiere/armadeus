@@ -1,0 +1,1186 @@
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+---
+ board/armadeus/apf28/Makefile    |   50 ++++
+ board/armadeus/apf28/apf28.c     |  191 +++++++++++++
+ board/armadeus/apf28/cmd_ocotp.c |  269 ++++++++++++++++++
+ board/armadeus/apf28/mx28_bcb.c  |  559 ++++++++++++++++++++++++++++++++++++++
+ board/armadeus/apf28/spl_boot.c  |  206 ++++++++++++++
+ boards.cfg                       |    1 +
+ 6 files changed, 1276 insertions(+), 0 deletions(-)
+ create mode 100644 board/armadeus/apf28/Makefile
+ create mode 100644 board/armadeus/apf28/apf28.c
+ create mode 100644 board/armadeus/apf28/cmd_ocotp.c
+ create mode 100644 board/armadeus/apf28/mx28_bcb.c
+ create mode 100644 board/armadeus/apf28/spl_boot.c
+
+diff --git a/board/armadeus/apf28/Makefile b/board/armadeus/apf28/Makefile
+new file mode 100644
+index 0000000..029e58d
+--- /dev/null
++++ b/board/armadeus/apf28/Makefile
+@@ -0,0 +1,13 @@
++#
++# (C) Copyright 2000-2006
++# Wolfgang Denk, DENX Software Engineering, wd@denx.de.
++#
++# SPDX-License-Identifier:	GPL-2.0+
++#
++
++ifndef	CONFIG_SPL_BUILD
++obj-y	:= mx28_bcb.o apf28.o
++obj-$(CONFIG_IMX_OCOTP) += cmd_ocotp.o
++else
++obj-y	:= spl_boot.o
++endif
+diff --git a/board/armadeus/apf28/apf28.c b/board/armadeus/apf28/apf28.c
+new file mode 100644
+index 0000000..7f75494
+--- /dev/null
++++ b/board/armadeus/apf28/apf28.c
+@@ -0,0 +1,130 @@
++/*
++ * APF28 motherboard based on DENX M28 module
++ *
++ * Copyright (C) 2012-2014 Eric Jarrige <eric.jarrige@armadeus.org>
++ * Copyright (C) 2011 Marek Vasut <marek.vasut@gmail.com>
++ * on behalf of DENX Software Engineering GmbH
++ *
++ * SPDX-License-Identifier:	GPL-2.0+
++ */
++
++#include <common.h>
++#include <environment.h>
++#include <asm/gpio.h>
++#include <asm/io.h>
++#include <asm/arch/imx-regs.h>
++#include <asm/arch/iomux-mx28.h>
++#include <asm/arch/clock.h>
++#include <asm/arch/sys_proto.h>
++#include <linux/mii.h>
++#include <miiphy.h>
++#include <netdev.h>
++#include <errno.h>
++
++DECLARE_GLOBAL_DATA_PTR;
++
++/*
++ * Functions
++ */
++int board_early_init_f(void)
++{
++	/* IO0 clock at 480MHz */
++	mxs_set_ioclk(MXC_IOCLK0, 480000);
++	/* IO1 clock at 480MHz */
++	mxs_set_ioclk(MXC_IOCLK1, 480000);
++
++	/* SSP0 clock at 96MHz */
++	mxs_set_sspclk(MXC_SSPCLK0, 96000, 0);
++	/* SSP2 clock at 160MHz */
++	mxs_set_sspclk(MXC_SSPCLK2, 160000, 0);
++
++#ifdef	CONFIG_CMD_USB
++	mxs_iomux_setup_pad(MX28_PAD_LCD_D23__GPIO_1_23 |
++			MXS_PAD_4MA | MXS_PAD_3V3 | MXS_PAD_NOPULL);
++	gpio_direction_output(MX28_PAD_LCD_D23__GPIO_1_23, 0);
++#endif
++
++	return 0;
++}
++
++int board_init(void)
++{
++	/* Adress of boot parameters */
++	gd->bd->bi_boot_params = PHYS_SDRAM_1 + 0x100;
++
++	return 0;
++}
++
++int dram_init(void)
++{
++	return mxs_dram_init();
++}
++
++#ifdef	CONFIG_CMD_MMC
++static int m28_mmc_wp(int id)
++{
++	if (id != 0) {
++		printf("MXS MMC: Invalid card selected (card id = %d)\n", id);
++		return 1;
++	}
++
++	return 0;
++}
++
++int board_mmc_init(bd_t *bis)
++{
++	return mxsmmc_initialize(bis, 0, m28_mmc_wp, NULL);
++}
++#endif
++
++#ifdef	CONFIG_CMD_NET
++int board_eth_init(bd_t *bis)
++{
++	struct mxs_clkctrl_regs *clkctrl_regs =
++		(struct mxs_clkctrl_regs *)MXS_CLKCTRL_BASE;
++	struct eth_device *dev;
++	int ret;
++
++	ret = cpu_eth_init(bis);
++	if (ret)
++		return ret;
++
++	/* uses ENET_CLK PAD to drive FEC clock */
++	writel(CLKCTRL_ENET_TIME_SEL_RMII_CLK | CLKCTRL_ENET_CLK_OUT_EN,
++					&clkctrl_regs->hw_clkctrl_enet);
++
++	gpio_direction_output(MX28_PAD_ENET0_RX_CLK__GPIO_4_13, 0);
++	udelay(200);
++	gpio_set_value(MX28_PAD_ENET0_RX_CLK__GPIO_4_13, 1);
++
++	ret = fecmxc_initialize_multi(bis, 0, 0, MXS_ENET0_BASE);
++	if (ret) {
++		printf("FEC MXS: Unable to init FEC0\n");
++		return ret;
++	}
++
++	dev = eth_get_dev_by_name("FEC0");
++	if (!dev) {
++		printf("FEC MXS: Unable to get FEC0 device entry\n");
++		return -EINVAL;
++	}
++
++	return ret;
++}
++
++#ifdef	CONFIG_MX28_FEC_MAC_IN_OCOTP
++void mx28_adjust_mac(int dev_id, unsigned char *mac)
++{
++	struct mxs_ocotp_regs *ocotp_regs =
++		(struct mxs_ocotp_regs *)MXS_OCOTP_BASE;
++
++	writel(OCOTP_CTRL_RD_BANK_OPEN, &ocotp_regs->hw_ocotp_ctrl_clr);
++
++	mac[0] = (ACFG_OUI >> 16) & 0xff;
++	mac[1] = (ACFG_OUI >> 8) & 0xff;
++
++	if (dev_id == 1) /* Let MAC1 be MAC0 + 1 by default */
++		mac[5] += 1;
++}
++#endif
++#endif
+diff --git a/board/armadeus/apf28/cmd_ocotp.c b/board/armadeus/apf28/cmd_ocotp.c
+new file mode 100644
+index 0000000..2efae8d
+--- /dev/null
++++ b/board/armadeus/apf28/cmd_ocotp.c
+@@ -0,0 +1,253 @@
++/*
++ * Copyright (C) 2012-2014 Eric Jarrige <eric.jarrige@armadeus.org>
++ *
++ * SPDX-License-Identifier:	GPL-2.0+
++ */
++
++#include <linux/types.h>
++#include <asm/io.h>
++#include <command.h>
++#include <common.h>
++#include <asm/arch/imx-regs.h>
++#include <asm/arch/sys_proto.h>
++
++#define	MXS_OCOTP_MAX_TIMEOUT	1000000
++
++static struct mxs_ocotp_regs *ocotp_regs =
++		(struct mxs_ocotp_regs *)MXS_OCOTP_BASE;
++
++int otp_error(void)
++{
++	u32 otpctrl;
++
++	if (mxs_wait_mask_clr(&ocotp_regs->hw_ocotp_ctrl_reg, OCOTP_CTRL_BUSY,
++				MXS_OCOTP_MAX_TIMEOUT)) {
++		printf("OCOTP still busy after timeout\n");
++		return -1;
++	}
++
++	otpctrl = readl(&ocotp_regs->hw_ocotp_ctrl_reg);
++
++	if (otpctrl & OCOTP_CTRL_ERROR) {
++		printf("OCOTP error: CTRL register value: 0x%x\n", otpctrl);
++		return -1;
++	}
++
++	return 0;
++}
++
++int otp_read(int addr)
++{
++	u32 val = 0, otpctrl;
++
++	if ((addr < 0) || (addr > 0x27)) {
++		printf("Invalid address! (should be between 0 and 0x27)\n");
++		return val;
++	}
++
++	if (otp_error())
++		return val;
++
++	otpctrl = readl(&ocotp_regs->hw_ocotp_ctrl_reg);
++
++	if (otpctrl & OCOTP_CTRL_ERROR) {
++		printf("OCOTP in error: CTRL register value: 0x%x\n", otpctrl);
++		return val;
++	}
++
++	writel(OCOTP_CTRL_RD_BANK_OPEN, &ocotp_regs->hw_ocotp_ctrl_set);
++
++	if (mxs_wait_mask_clr(&ocotp_regs->hw_ocotp_ctrl_reg, OCOTP_CTRL_BUSY,
++				MXS_OCOTP_MAX_TIMEOUT)) {
++		printf("OCOTP Busy: Can't open OCOTP bank\n");
++		return val;
++	}
++
++	val = readl(&ocotp_regs->hw_ocotp_cust0 + (addr * 4));
++
++	writel(OCOTP_CTRL_RD_BANK_OPEN, &ocotp_regs->hw_ocotp_ctrl_clr);
++
++	return val;
++}
++
++int otp_blow(unsigned int addr, unsigned int data)
++{
++	u32 hbus, clkseq, vddio;
++	int err = 0;
++	struct mxs_clkctrl_regs *clkctrl_regs =
++		(struct mxs_clkctrl_regs *)MXS_CLKCTRL_BASE;
++	struct mxs_power_regs *power_regs =
++		(struct mxs_power_regs *)MXS_POWER_BASE;
++
++	if ((addr < 0) || (addr > 0x27)) {
++		printf("Invalid address! (should be between 0 and 0x27)\n");
++		return -1;
++	}
++
++	/* Save HBUS, CLKSEQ and VDDIO */
++	hbus = readl(&clkctrl_regs->hw_clkctrl_hbus_reg);
++	clkseq = readl(&clkctrl_regs->hw_clkctrl_clkseq_reg);
++	vddio = readl(&power_regs->hw_power_vddioctrl);
++
++	/* Force HBUS and CPU down to 24 MHz */
++	writel(CLKCTRL_CLKSEQ_BYPASS_CPU, &clkctrl_regs->hw_clkctrl_clkseq_set);
++	writel(1 << CLKCTRL_HBUS_DIV_OFFSET,
++		&clkctrl_regs->hw_clkctrl_hbus_set);
++	writel(CLKCTRL_HBUS_DIV_MASK - 1, &clkctrl_regs->hw_clkctrl_hbus_clr);
++
++	/* Change VDDIO to 2.8V while burning the fuses */
++	writel(POWER_VDDIOCTRL_TRG_MASK, &clkctrl_regs->hw_clkctrl_hbus_clr);
++
++	/* Disable read bank */
++	writel(OCOTP_CTRL_RD_BANK_OPEN, &ocotp_regs->hw_ocotp_ctrl_clr);
++
++	/* Check ocotp status busy and error */
++	if (!otp_error()) {
++		/* initiate fuse blow at addr.. */
++		writel(OCOTP_CTRL_WR_UNLOCK_KEY | (addr & OCOTP_CTRL_ADDR_MASK),
++		&ocotp_regs->hw_ocotp_ctrl);
++
++		/* Start writing data */
++		writel(data, &ocotp_regs->hw_ocotp_data);
++
++		/* wait end of blowing process + 2us wrtie postamble*/
++		if (otp_error()) {
++			printf("OCOTP blow failed!\n");
++			err = -1;
++		}
++		udelay(2);
++
++	} else
++		err = -1;
++
++
++	/* restore HBUS, CLKSEQ and VDDIO */
++	writel(vddio, &power_regs->hw_power_vddioctrl);
++	writel(hbus, &clkctrl_regs->hw_clkctrl_hbus);
++	writel(clkseq, &clkctrl_regs->hw_clkctrl_clkseq);
++
++	return err;
++}
++
++int otp_read_func(char *func_name)
++{
++	s32 err = 0;
++
++	if (0 == strncmp(func_name, "fecmac", 6)) {
++		s32 addr = func_name[6] - '0';
++
++		if ((addr >= 0) && (addr < 2)) {
++			/* Read the Mac address and print it */
++			u32 val = otp_read(addr);
++
++			printf("%s address: ", func_name);
++			printf("0x%02x:0x%02x:0x%02x:0x%02x:0x%02x:0x%02x\n\n",
++				(ACFG_OUI >> 16) & 0xff, (ACFG_OUI >> 8) & 0xff,
++				(val >> 24) & 0xff, (val >> 16) & 0xff,
++				(val >> 8) & 0xff, val & 0xff);
++		} else {
++			printf("%s is not supported\n", func_name);
++			err = -1;
++		}
++	} else {
++		printf("%s is not supported\n", func_name);
++		err = -1;
++	}
++
++	return err;
++}
++
++int otp_blow_func(char *func_name, char *func_val)
++{
++	s32 err = 0;
++
++	if (0 == strncmp(func_name, "fecmac", 6)) {
++		s32 addr  = func_name[6] - '0';
++
++		if ((addr >= 0) && (addr < 2)) {
++			u8 ea[6] = { 0 };
++			u32 macaddr;
++
++			eth_parse_enetaddr(func_val, ea);
++			if (!is_valid_ether_addr(ea)) {
++				printf("Error: invalid mac address!\n");
++				return -1;
++			}
++
++			macaddr = (ea[2] << 24) | (ea[3] << 16) |
++				(ea[4] << 8) | ea[5];
++
++			err = otp_blow(addr, macaddr);
++
++		} else {
++			printf("%s is not supported\n", func_name);
++			err = -1;
++		}
++	} else {
++		printf("%s is not supported\n", func_name);
++		err = -1;
++	}
++
++	return err;
++}
++
++
++int do_otpops(cmd_tbl_t *cmdtp, int flag, int argc, char *const argv[])
++{
++	int addr = 0, val = 0;
++
++	if (argc < 2 || argc > 4)
++		goto err_rtn;
++
++	if (strcmp(argv[1], "read") == 0) {
++		if (strncmp(argv[2], "fecmac", 6) == 0) {
++			if (3 == argc)
++				otp_read_func(argv[2]);
++			else
++				goto err_rtn;
++		} else {
++			if (3 == argc) {
++				addr = simple_strtoul(argv[2], NULL, 16);
++
++				printf("Read fuse at add: 0x%02x\n", addr);
++				val = otp_read(addr);
++				printf("fuses at (addr:0x%02x) = 0x%08x\n",
++					addr, val);
++			} else
++				goto err_rtn;
++		}
++	} else if (strcmp(argv[1], "blow") == 0) {
++		if (strncmp(argv[2], "fecmac", 6) == 0) {
++			if (4 == argc)
++				otp_blow_func(argv[2], argv[3]);
++			else
++				goto err_rtn;
++		} else {
++			if (4 == argc) {
++				addr = simple_strtoul(argv[2], NULL, 16);
++				val = simple_strtoul(argv[3], NULL, 16);
++
++				otp_blow(addr, val);
++			} else
++				goto err_rtn;
++		}
++	} else
++		goto err_rtn;
++
++	return 0;
++err_rtn:
++	printf("Invalid parameters!\n");
++	printf("It is too dangeous for you to use ocotp command.\n");
++	return 1;
++}
++
++U_BOOT_CMD(
++	ocotp, 4, 1, do_otpops,
++	"OCOTP sub system",
++	"Warning: all numbers in parameter are in hex format!\n"
++	"ocotp read <addr>		- Read some fuses\n"
++	"ocotp read fecmac<n>		- Read fecmac<n> MAC address\n"
++	"ocotp blow <addr> <value>	- Blow some fuses\n"
++	"ocotp blow fecmac<n> <0x##:0x##:0x##:0x##:0x##:0x##> "
++	"- Blow fecmac<n> MAC address");
++
+diff --git a/board/armadeus/apf28/mx28_bcb.c b/board/armadeus/apf28/mx28_bcb.c
+new file mode 100644
+index 0000000..2be032c
+--- /dev/null
++++ b/board/armadeus/apf28/mx28_bcb.c
+@@ -0,0 +1,540 @@
++/*
++ * i.MX28 NAND Boot Control Blocks generator
++ *
++ * Copyright (C) 2012-2014 Eric Jarrige <eric.jarrige@armadeus.org>
++ *
++ * Based on code from mxsboot:
++ * Freescale i.MX28 image generator
++ *
++ * SPDX-License-Identifier:	GPL-2.0+
++ */
++
++#include <asm/io.h>
++#include <common.h>
++#include <malloc.h>
++#include <nand.h>
++#include <asm/arch/imx-regs.h>
++
++/*
++ * BCB layout Read from OCOTP fuses.
++ */
++static uint32_t stride_pages;
++static uint32_t stride_count;
++
++/*
++ * Sector on which the SigmaTel boot partition (0x53) starts.
++ */
++uint32_t sd_sector = 2048;
++
++/* i.MX28 NAND controller-specific constants. DO NOT TWEAK! */
++#define	MXS_NAND_DMA_DESCRIPTOR_COUNT		4
++#define	MXS_NAND_CHUNK_DATA_CHUNK_SIZE		512
++#define	MXS_NAND_METADATA_SIZE			10
++#define	MXS_NAND_COMMAND_BUFFER_SIZE		32
++
++struct mx28_nand_fcb {
++	uint32_t		checksum;
++	uint32_t		fingerprint;
++	uint32_t		version;
++	struct {
++		uint8_t			data_setup;
++		uint8_t			data_hold;
++		uint8_t			address_setup;
++		uint8_t			dsample_time;
++		uint8_t			nand_timing_state;
++		uint8_t			rea;
++		uint8_t			rloh;
++		uint8_t			rhoh;
++	}			timing;
++	uint32_t		page_data_size;
++	uint32_t		total_page_size;
++	uint32_t		sectors_per_block;
++	uint32_t		number_of_nands;		/* Ignored */
++	uint32_t		total_internal_die;		/* Ignored */
++	uint32_t		cell_type;			/* Ignored */
++	uint32_t		ecc_block_n_ecc_type;
++	uint32_t		ecc_block_0_size;
++	uint32_t		ecc_block_n_size;
++	uint32_t		ecc_block_0_ecc_type;
++	uint32_t		metadata_bytes;
++	uint32_t		num_ecc_blocks_per_page;
++	uint32_t		ecc_block_n_ecc_level_sdk;	/* Ignored */
++	uint32_t		ecc_block_0_size_sdk;		/* Ignored */
++	uint32_t		ecc_block_n_size_sdk;		/* Ignored */
++	uint32_t		ecc_block_0_ecc_level_sdk;	/* Ignored */
++	uint32_t		num_ecc_blocks_per_page_sdk;	/* Ignored */
++	uint32_t		metadata_bytes_sdk;		/* Ignored */
++	uint32_t		erase_threshold;
++	uint32_t		boot_patch;
++	uint32_t		patch_sectors;
++	uint32_t		firmware1_starting_sector;
++	uint32_t		firmware2_starting_sector;
++	uint32_t		sectors_in_firmware1;
++	uint32_t		sectors_in_firmware2;
++	uint32_t		dbbt_search_area_start_address;
++	uint32_t		badblock_marker_byte;
++	uint32_t		badblock_marker_start_bit;
++	uint32_t		bb_marker_physical_offset;
++};
++
++struct mx28_nand_dbbt {
++	uint32_t		checksum;
++	uint32_t		fingerprint;
++	uint32_t		version;
++	uint32_t		number_bb;
++	uint32_t		number_2k_pages_bb;
++};
++
++struct mx28_nand_bbt {
++	uint32_t		nand;
++	uint32_t		number_bb;
++	uint32_t		badblock[510];
++};
++
++struct mx28_sd_drive_info {
++	uint32_t		chip_num;
++	uint32_t		drive_type;
++	uint32_t		tag;
++	uint32_t		first_sector_number;
++	uint32_t		sector_count;
++};
++
++struct mx28_sd_config_block {
++	uint32_t			signature;
++	uint32_t			primary_boot_tag;
++	uint32_t			secondary_boot_tag;
++	uint32_t			num_copies;
++	struct mx28_sd_drive_info	drv_info[1];
++};
++
++static inline uint32_t mx28_nand_ecc_size_in_bits(uint32_t ecc_strength)
++{
++	return ecc_strength * 13;
++}
++
++static inline uint32_t mx28_nand_get_ecc_strength(uint32_t page_data_size,
++						uint32_t page_oob_size)
++{
++	if (page_data_size == 2048)
++		return 8;
++
++	if (page_data_size == 4096) {
++		if (page_oob_size == 128)
++			return 8;
++
++		if (page_oob_size == 218)
++			return 16;
++	}
++
++	return 0;
++}
++
++static inline uint32_t mx28_nand_get_mark_offset(uint32_t page_data_size,
++						uint32_t ecc_strength)
++{
++	uint32_t chunk_data_size_in_bits;
++	uint32_t chunk_ecc_size_in_bits;
++	uint32_t chunk_total_size_in_bits;
++	uint32_t block_mark_chunk_number;
++	uint32_t block_mark_chunk_bit_offset;
++	uint32_t block_mark_bit_offset;
++
++	chunk_data_size_in_bits = MXS_NAND_CHUNK_DATA_CHUNK_SIZE * 8;
++	chunk_ecc_size_in_bits  = mx28_nand_ecc_size_in_bits(ecc_strength);
++
++	chunk_total_size_in_bits =
++			chunk_data_size_in_bits + chunk_ecc_size_in_bits;
++
++	/* Compute the bit offset of the block mark within the physical page. */
++	block_mark_bit_offset = page_data_size * 8;
++
++	/* Subtract the metadata bits. */
++	block_mark_bit_offset -= MXS_NAND_METADATA_SIZE * 8;
++
++	/*
++	 * Compute the chunk number (starting at zero) in which the block mark
++	 * appears.
++	 */
++	block_mark_chunk_number =
++			block_mark_bit_offset / chunk_total_size_in_bits;
++
++	/*
++	 * Compute the bit offset of the block mark within its chunk, and
++	 * validate it.
++	 */
++	block_mark_chunk_bit_offset = block_mark_bit_offset -
++			(block_mark_chunk_number * chunk_total_size_in_bits);
++
++	if (block_mark_chunk_bit_offset > chunk_data_size_in_bits)
++		return 1;
++
++	/*
++	 * Now that we know the chunk number in which the block mark appears,
++	 * we can subtract all the ECC bits that appear before it.
++	 */
++	block_mark_bit_offset -=
++		block_mark_chunk_number * chunk_ecc_size_in_bits;
++
++	return block_mark_bit_offset;
++}
++
++static inline uint32_t mx28_nand_mark_byte_offset(nand_info_t *nand)
++{
++	uint32_t ecc_strength;
++	ecc_strength =
++		mx28_nand_get_ecc_strength(nand->writesize, nand->oobsize);
++	return mx28_nand_get_mark_offset(nand->writesize, ecc_strength) >> 3;
++}
++
++static inline uint32_t mx28_nand_mark_bit_offset(nand_info_t *nand)
++{
++	uint32_t ecc_strength;
++	ecc_strength =
++		mx28_nand_get_ecc_strength(nand->writesize, nand->oobsize);
++	return mx28_nand_get_mark_offset(nand->writesize, ecc_strength) & 0x7;
++}
++
++static uint32_t mx28_nand_block_csum(uint8_t *block, uint32_t size)
++{
++	uint32_t csum = 0;
++	int i;
++
++	for (i = 0; i < size; i++)
++		csum += block[i];
++
++	return csum ^ 0xffffffff;
++}
++
++static struct mx28_nand_fcb *mx28_nand_get_fcb(nand_info_t *nand, uint32_t size)
++{
++	struct mx28_nand_fcb *fcb;
++	uint32_t bcb_size_bytes;
++	uint32_t stride_size_bytes;
++	uint32_t bootstream_size_pages;
++	uint32_t fw1_start_page;
++	uint32_t fw2_start_page;
++
++	fcb = malloc(nand->writesize);
++	if (!fcb) {
++		printf("MX28 NAND: Unable to allocate FCB\n");
++		return NULL;
++	}
++
++	memset(fcb, 0, nand->writesize);
++
++	fcb->fingerprint =			0x20424346;
++	fcb->version =				0x01000000;
++
++	/*
++	 * FIXME: These here are default values as found in kobs-ng. We should
++	 * probably retrieve the data from NAND or something.
++	 */
++	fcb->timing.data_setup =		80;
++	fcb->timing.data_hold =			60;
++	fcb->timing.address_setup =		25;
++	fcb->timing.dsample_time =		6;
++
++	fcb->page_data_size =		nand->writesize;
++	fcb->total_page_size =		nand->writesize + nand->oobsize;
++	fcb->sectors_per_block =	nand->erasesize / nand->writesize;
++
++	fcb->num_ecc_blocks_per_page =	(nand->writesize / 512) - 1;
++	fcb->ecc_block_0_size =		512;
++	fcb->ecc_block_n_size =		512;
++	fcb->metadata_bytes =		10;
++
++	if (nand->writesize == 2048) {
++		fcb->ecc_block_n_ecc_type =		4;
++		fcb->ecc_block_0_ecc_type =		4;
++	} else if (nand->writesize == 4096) {
++		if (nand->oobsize == 128) {
++			fcb->ecc_block_n_ecc_type =	4;
++			fcb->ecc_block_0_ecc_type =	4;
++		} else if (nand->oobsize == 218) {
++			fcb->ecc_block_n_ecc_type =	8;
++			fcb->ecc_block_0_ecc_type =	8;
++		}
++	}
++
++	if (fcb->ecc_block_n_ecc_type == 0) {
++		printf("MX28 NAND: Unsupported NAND geometry\n");
++		goto err;
++	}
++
++	fcb->boot_patch =			0;
++	fcb->patch_sectors =			0;
++
++	fcb->badblock_marker_byte =	mx28_nand_mark_byte_offset(nand);
++	fcb->badblock_marker_start_bit = mx28_nand_mark_bit_offset(nand);
++	fcb->bb_marker_physical_offset = nand->writesize;
++
++	stride_size_bytes = stride_pages * nand->writesize;
++	bcb_size_bytes = stride_size_bytes * stride_count;
++
++	bootstream_size_pages = (size + (nand->writesize - 1)) /
++					nand->writesize;
++
++	fw1_start_page = 2 * bcb_size_bytes / nand->writesize;
++	fw2_start_page = (2 * bcb_size_bytes + size) /
++				nand->writesize;
++
++	fcb->firmware1_starting_sector =	fw1_start_page;
++	fcb->firmware2_starting_sector =	fw2_start_page;
++	fcb->sectors_in_firmware1 =		bootstream_size_pages;
++	fcb->sectors_in_firmware2 =		bootstream_size_pages;
++
++	fcb->dbbt_search_area_start_address =	stride_pages * stride_count;
++
++	return fcb;
++
++err:
++	free(fcb);
++	return NULL;
++}
++
++static struct mx28_nand_dbbt *mx28_nand_get_dbbt(nand_info_t *nand)
++{
++	struct mx28_nand_dbbt *dbbt;
++
++	dbbt = malloc(nand->writesize);
++	if (!dbbt) {
++		printf("MX28 NAND: Unable to allocate DBBT\n");
++		return NULL;
++	}
++
++	memset(dbbt, 0, nand->writesize);
++
++	dbbt->fingerprint	= 0x54424244;
++	dbbt->version		= 0x1;
++
++	return dbbt;
++}
++
++static inline uint8_t mx28_nand_parity_13_8(const uint8_t b)
++{
++	uint32_t parity = 0, tmp;
++
++	tmp = ((b >> 6) ^ (b >> 5) ^ (b >> 3) ^ (b >> 2)) & 1;
++	parity |= tmp << 0;
++
++	tmp = ((b >> 7) ^ (b >> 5) ^ (b >> 4) ^ (b >> 2) ^ (b >> 1)) & 1;
++	parity |= tmp << 1;
++
++	tmp = ((b >> 7) ^ (b >> 6) ^ (b >> 5) ^ (b >> 1) ^ (b >> 0)) & 1;
++	parity |= tmp << 2;
++
++	tmp = ((b >> 7) ^ (b >> 4) ^ (b >> 3) ^ (b >> 0)) & 1;
++	parity |= tmp << 3;
++
++	tmp = ((b >> 6) ^ (b >> 4) ^ (b >> 3) ^
++		(b >> 2) ^ (b >> 1) ^ (b >> 0)) & 1;
++	parity |= tmp << 4;
++
++	return parity;
++}
++
++static uint8_t *mx28_nand_fcb_block
++		(nand_info_t *nand, struct mx28_nand_fcb *fcb)
++{
++	uint8_t *block;
++	uint8_t *ecc;
++	int i;
++
++	block = malloc(nand->writesize + nand->oobsize);
++	if (!block) {
++		printf("MX28 NAND: Unable to allocate FCB block\n");
++		return NULL;
++	}
++
++	memset(block, 0, nand->writesize + nand->oobsize);
++
++	/* Update the FCB checksum */
++	fcb->checksum = mx28_nand_block_csum(((uint8_t *)fcb) + 4, 508);
++
++	/* Figure 12-11. in iMX28RM, rev. 1, says FCB is at offset 12 */
++	memcpy(block + 12, fcb, sizeof(struct mx28_nand_fcb));
++
++	/* ECC is at offset 12 + 512 */
++	ecc = block + 12 + 512;
++
++	/* Compute the ECC parity */
++	for (i = 0; i < sizeof(struct mx28_nand_fcb); i++)
++		ecc[i] = mx28_nand_parity_13_8(block[i + 12]);
++
++	return block;
++}
++
++
++static int mx28_nand_write_fcb(nand_info_t *nand, struct mx28_nand_fcb *fcb)
++{
++	uint32_t offset;
++	uint8_t *fcbblock;
++	int ret = 0;
++	int i;
++	nand_erase_options_t opts;
++
++	fcbblock = mx28_nand_fcb_block(nand, fcb);
++	if (!fcbblock)
++		return -1;
++
++	memset(&opts, 0, sizeof(opts));
++	opts.offset = 0;
++	opts.length = stride_pages * stride_count * nand->writesize;
++	opts.jffs2  = 0;
++	opts.quiet  = 1;
++	opts.spread = 0;
++	opts.scrub = 1;
++
++	printf("Erasing FCB...\n");
++	if (!nand_erase_opts(nand, &opts)) {
++		mtd_oob_ops_t ops = {
++			.datbuf = (u8 *)fcbblock,
++			.oobbuf = (u8 *)fcbblock + nand->writesize,
++			.len = nand->writesize,
++			.ooblen = nand->oobsize,
++			.mode = MTD_OPS_RAW
++		};
++
++		printf("Writing FCB...\n");
++
++		for (i = 0; i < stride_pages * stride_count;
++				i += stride_pages) {
++			offset = i * nand->writesize;
++			ret = nand->_write_oob(nand, offset, &ops);
++		}
++	}
++	free(fcbblock);
++	return ret;
++}
++
++static int mx28_nand_write_dbbt(nand_info_t *nand, struct mx28_nand_dbbt *dbbt)
++{
++	uint32_t offset;
++	int i = stride_pages * stride_count, ret = 0;
++
++	nand_erase_options_t opts;
++
++	memset(&opts, 0, sizeof(opts));
++	opts.offset = stride_pages * stride_count * nand->writesize;
++	opts.length = stride_pages * stride_count * nand->writesize;
++	opts.jffs2  = 0;
++	opts.quiet  = 1;
++	opts.spread = 0;
++	opts.scrub = 1;
++
++	printf("Erasing DBBT...\n");
++	if (!nand_erase_opts(nand, &opts)) {
++		mtd_oob_ops_t ops = {
++			.datbuf = (u8 *)dbbt,
++			.oobbuf = (u8 *)dbbt + nand->writesize,
++			.len = nand->writesize,
++			.ooblen = nand->oobsize,
++			.mode = MTD_OPS_RAW
++		};
++
++		printf("Writing DBBT...\n");
++
++		for (; i < 2 * stride_pages * stride_count; i += stride_pages) {
++			offset = i * nand->writesize;
++			ret = nand->_write_oob(nand, offset, &ops);
++		}
++
++	}
++
++	return ret;
++}
++
++
++static int mx28_update_nand_bcb(int firmware_max_size)
++{
++	struct mx28_nand_fcb *fcb;
++	struct mx28_nand_dbbt *dbbt;
++	int ret = -1;
++	nand_info_t *nand = &nand_info[0];
++	struct mxs_ocotp_regs *ocotp_regs =
++		(struct mxs_ocotp_regs *)MXS_OCOTP_BASE;
++	char buf[12];
++
++	stride_pages = ((readl(&ocotp_regs->hw_ocotp_rom1) >> 4) & 0x0f) * 64;
++	if (stride_pages < 64)
++		stride_pages = 64;
++
++	stride_count = 1 << ((readl(&ocotp_regs->hw_ocotp_rom1) >> 8) & 0x0f);
++	if (stride_count < 2)
++		stride_count = 4;
++
++	if (firmware_max_size <= nand->erasesize)
++		firmware_max_size = 1 * 1024 * 1024;
++
++	debug("stride_pages= %d\n", stride_pages);
++	debug("stride_count= %d\n", stride_count);
++	debug("firmware_max_size= %x\n", firmware_max_size);
++
++	fcb = mx28_nand_get_fcb(nand, firmware_max_size);
++	if (!fcb) {
++		printf("Unable to build FCB\n");
++		goto err0;
++	}
++
++	dbbt = mx28_nand_get_dbbt(nand);
++	if (!dbbt) {
++		printf("Unable to build DBBT\n");
++		goto err1;
++	}
++
++	ret = mx28_nand_write_fcb(nand, fcb);
++	if (ret) {
++		printf("Unable to write FCB to NAND\n");
++		goto err2;
++	}
++
++
++	ret = mx28_nand_write_dbbt(nand, dbbt);
++	if (ret) {
++		printf("Unable to write DBBT to NAND\n");
++		goto err2;
++	}
++
++	sprintf(buf, "0x%08x",
++		fcb->firmware1_starting_sector * nand->writesize);
++	setenv("u-boot_addr", buf);
++	sprintf(buf, "0x%08x",
++		fcb->firmware2_starting_sector * nand->writesize);
++	setenv("u-boot2_addr", buf);
++
++	printf("NAND BCB tables updated\n");
++	ret = 0;
++
++err2:
++	free(dbbt);
++err1:
++	free(fcb);
++err0:
++	return ret;
++}
++
++int do_bcb(cmd_tbl_t *cmdtp, int flag, int argc, char *const argv[])
++{
++	int err = 0;
++	int arg = (1 * 1024 * 1024);
++
++	if (argc < 2 || argc > 3)
++		goto usage;
++
++	if (strcmp(argv[1], "nand.write") == 0) {
++		if (argc == 3)
++			arg = simple_strtoul(argv[2], NULL, 16);
++		err = mx28_update_nand_bcb(arg);
++	} else
++		goto usage;
++
++	return err;
++usage:
++	return cmd_usage(cmdtp);
++}
++
++U_BOOT_CMD(
++	bcb, 2, 1, do_bcb,
++	"mx28 Boot Control Block sub system",
++	"nand.write [Firmware max size]	- Update NAND BCB tables\n"
++	"	default firmware max size is 1MiB");
+diff --git a/board/armadeus/apf28/spl_boot.c b/board/armadeus/apf28/spl_boot.c
+new file mode 100644
+index 0000000..9854cda
+--- /dev/null
++++ b/board/armadeus/apf28/spl_boot.c
+@@ -0,0 +1,190 @@
++/*
++ * Freescale i.MX28 Boot setup for the APF28 board
++ *
++ * Copyright (C) 2012-2014 Eric Jarrige <eric.jarrige@armadeus.org>
++ * Copyright (C) 2011 Marek Vasut <marek.vasut@gmail.com>
++ * on behalf of DENX Software Engineering GmbH
++ *
++ * SPDX-License-Identifier:	GPL-2.0+
++ */
++
++#include <common.h>
++#include <config.h>
++#include <asm/io.h>
++#include <asm/arch/iomux-mx28.h>
++#include <asm/arch/imx-regs.h>
++#include <asm/arch/sys_proto.h>
++
++#define	MUX_CONFIG_LED	(MXS_PAD_3V3 | MXS_PAD_4MA | MXS_PAD_NOPULL)
++#define	MUX_CONFIG_SSP0	(MXS_PAD_3V3 | MXS_PAD_8MA | MXS_PAD_PULLUP)
++#define	MUX_CONFIG_GPMI	(MXS_PAD_3V3 | MXS_PAD_4MA | MXS_PAD_NOPULL)
++#define	MUX_CONFIG_ENET	(MXS_PAD_3V3 | MXS_PAD_4MA | MXS_PAD_PULLUP)
++#define	MUX_CONFIG_EMI	(MXS_PAD_1V8 | MXS_PAD_8MA | MXS_PAD_NOPULL)
++
++const iomux_cfg_t iomux_setup[] = {
++	/* LED */
++	MX28_PAD_GPMI_RDY1__GPIO_0_21 | MUX_CONFIG_LED,
++
++	/* DEBUG UART (console) */
++	MX28_PAD_PWM0__DUART_RX | (MXS_PAD_3V3 | MXS_PAD_4MA),
++	MX28_PAD_PWM1__DUART_TX | (MXS_PAD_3V3 | MXS_PAD_4MA),
++
++	/* MMC0 */
++	MX28_PAD_SSP0_DATA0__SSP0_D0 | MUX_CONFIG_SSP0,
++	MX28_PAD_SSP0_DATA1__SSP0_D1 | MUX_CONFIG_SSP0,
++	MX28_PAD_SSP0_DATA2__SSP0_D2 | MUX_CONFIG_SSP0,
++	MX28_PAD_SSP0_DATA3__SSP0_D3 | MUX_CONFIG_SSP0,
++	MX28_PAD_SSP0_CMD__SSP0_CMD | MUX_CONFIG_SSP0,
++	MX28_PAD_SSP0_DETECT__SSP0_CARD_DETECT |
++		(MXS_PAD_3V3 | MXS_PAD_8MA | MXS_PAD_NOPULL),
++	MX28_PAD_SSP0_SCK__SSP0_SCK |
++		(MXS_PAD_3V3 | MXS_PAD_12MA | MXS_PAD_NOPULL),
++
++	/* GPMI NAND */
++	MX28_PAD_GPMI_D00__GPMI_D0 | MUX_CONFIG_GPMI,
++	MX28_PAD_GPMI_D01__GPMI_D1 | MUX_CONFIG_GPMI,
++	MX28_PAD_GPMI_D02__GPMI_D2 | MUX_CONFIG_GPMI,
++	MX28_PAD_GPMI_D03__GPMI_D3 | MUX_CONFIG_GPMI,
++	MX28_PAD_GPMI_D04__GPMI_D4 | MUX_CONFIG_GPMI,
++	MX28_PAD_GPMI_D05__GPMI_D5 | MUX_CONFIG_GPMI,
++	MX28_PAD_GPMI_D06__GPMI_D6 | MUX_CONFIG_GPMI,
++	MX28_PAD_GPMI_D07__GPMI_D7 | MUX_CONFIG_GPMI,
++	MX28_PAD_GPMI_CE0N__GPMI_CE0N | MUX_CONFIG_GPMI,
++	MX28_PAD_GPMI_RDY0__GPMI_READY0 | MUX_CONFIG_GPMI,
++	/* see mx28 reference manual 9.2.2.1 notes for RD/WR 8mA reason */
++	MX28_PAD_GPMI_RDN__GPMI_RDN |
++		(MXS_PAD_3V3 | MXS_PAD_8MA | MXS_PAD_NOPULL),
++	/* see mx28 reference manual 9.4.36 pullup bit description */
++	MX28_PAD_GPMI_WRN__GPMI_WRN |
++		(MXS_PAD_3V3 | MXS_PAD_8MA | MXS_PAD_PULLUP),
++	MX28_PAD_GPMI_ALE__GPMI_ALE | MUX_CONFIG_GPMI,
++	MX28_PAD_GPMI_CLE__GPMI_CLE | MUX_CONFIG_GPMI,
++	MX28_PAD_GPMI_RESETN__GPMI_RESETN | MUX_CONFIG_GPMI,
++
++	/* FEC Ethernet */
++	MX28_PAD_ENET0_MDC__ENET0_MDC | MUX_CONFIG_ENET,
++	MX28_PAD_ENET0_MDIO__ENET0_MDIO | MUX_CONFIG_ENET,
++	MX28_PAD_ENET0_RX_EN__ENET0_RX_EN | MUX_CONFIG_ENET,
++	MX28_PAD_ENET0_TX_EN__ENET0_TX_EN | MUX_CONFIG_ENET,
++	MX28_PAD_ENET0_RXD0__ENET0_RXD0 | MUX_CONFIG_ENET,
++	MX28_PAD_ENET0_RXD1__ENET0_RXD1 | MUX_CONFIG_ENET,
++	MX28_PAD_ENET0_TXD0__ENET0_TXD0 | MUX_CONFIG_ENET,
++	MX28_PAD_ENET0_TXD1__ENET0_TXD1 | MUX_CONFIG_ENET,
++	MX28_PAD_ENET_CLK__CLKCTRL_ENET | MUX_CONFIG_ENET,
++	MX28_PAD_ENET0_TX_CLK__GPIO_4_5
++		| MXS_PAD_3V3 | MXS_PAD_4MA | MXS_PAD_NOPULL,
++	MX28_PAD_ENET0_RX_CLK__GPIO_4_13
++		| MXS_PAD_3V3 | MXS_PAD_4MA | MXS_PAD_NOPULL,
++
++	/* EMI */
++	MX28_PAD_EMI_D00__EMI_DATA0 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_D01__EMI_DATA1 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_D02__EMI_DATA2 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_D03__EMI_DATA3 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_D04__EMI_DATA4 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_D05__EMI_DATA5 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_D06__EMI_DATA6 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_D07__EMI_DATA7 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_D08__EMI_DATA8 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_D09__EMI_DATA9 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_D10__EMI_DATA10 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_D11__EMI_DATA11 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_D12__EMI_DATA12 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_D13__EMI_DATA13 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_D14__EMI_DATA14 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_D15__EMI_DATA15 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_ODT0__EMI_ODT0 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_DQM0__EMI_DQM0 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_DDR_OPEN_FB__EMI_DDR_OPEN_FEEDBACK | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_CLK__EMI_CLK | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_DQS0__EMI_DQS0 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_DQS1__EMI_DQS1 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_DDR_OPEN__EMI_DDR_OPEN | MUX_CONFIG_EMI,
++
++	MX28_PAD_EMI_A00__EMI_ADDR0 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_A01__EMI_ADDR1 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_A02__EMI_ADDR2 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_A03__EMI_ADDR3 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_A04__EMI_ADDR4 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_A05__EMI_ADDR5 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_A06__EMI_ADDR6 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_A07__EMI_ADDR7 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_A08__EMI_ADDR8 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_A09__EMI_ADDR9 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_A10__EMI_ADDR10 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_A11__EMI_ADDR11 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_A12__EMI_ADDR12 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_A13__EMI_ADDR13 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_A14__EMI_ADDR14 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_BA0__EMI_BA0 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_BA1__EMI_BA1 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_BA2__EMI_BA2 | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_CASN__EMI_CASN | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_RASN__EMI_RASN | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_WEN__EMI_WEN | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_CE0N__EMI_CE0N | MUX_CONFIG_EMI,
++	MX28_PAD_EMI_CKE__EMI_CKE | MUX_CONFIG_EMI,
++};
++
++uint32_t apf28_dram_vals[] = {
++	0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++	0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++	0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++	0x00000000, 0x00000000, 0x00000100, 0x00000000, 0x00000000,
++	0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++	0x00000000, 0x00010101, 0x01010101, 0x000f0f01, 0x0f02020a,
++	0x00000000, 0x00010101, 0x00000100, 0x00000100, 0x00000000,
++	0x00000002, 0x01010000, 0x07080403, 0x06005003, 0x0a0000c8,
++	0x02009c40, 0x0002030c, 0x0036a609, 0x031a0612, 0x02030202,
++	0x00c8001c, 0x00000000, 0x00000000, 0x00012100, 0xffff0303,
++	0x00012100, 0xffff0303, 0x00012100, 0xffff0303, 0x00012100,
++	0xffff0303, 0x00000003, 0x00000000, 0x00000000, 0x00000000,
++	0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++	0x00000000, 0x00000612, 0x01000f02, 0x06120612, 0x00000200,
++	0x00020007, 0xf4004a27, 0xf4004a27, 0xf4004a27, 0xf4004a27,
++	0x07000300, 0x07000300, 0x07400300, 0x07400300, 0x00000005,
++	0x00000000, 0x00000000, 0x01000000, 0x01020408, 0x08040201,
++	0x000f1133, 0x00000000, 0x00001f04, 0x00001f04, 0x00001f04,
++	0x00001f04, 0x00001f04, 0x00001f04, 0x00001f04, 0x00001f04,
++	0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++	0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++	0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++	0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++	0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++	0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++	0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++	0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++	0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++	0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++	0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++	0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++	0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++	0x00000000, 0x00000000, 0x00010000, 0x00030404, 0x00000003,
++	0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++	0x00000000, 0x01010000, 0x01000000, 0x03030000, 0x00010303,
++	0x01020202, 0x00000000, 0x02040303, 0x21002103, 0x00061200,
++	0x06120612, 0x04420442, 0x04420442, 0x00040004, 0x00040004,
++	0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xffffffff
++};
++
++void mxs_adjust_memory_params(uint32_t *dram_vals)
++{
++	int i;
++
++	for (i = 0; i < ARRAY_SIZE(apf28_dram_vals); i++)
++		*dram_vals++ = apf28_dram_vals[i];
++}
++
++void board_init_ll(const uint32_t arg, const uint32_t *resptr)
++{
++	struct mxs_clkctrl_regs *clkctrl_regs =
++		(struct mxs_clkctrl_regs *)MXS_CLKCTRL_BASE;
++
++	/* Avoid watchdog to perform a complete POR...
++	A logic reset is more appropriate */
++	setbits_le32(&clkctrl_regs->hw_clkctrl_reset,
++			CLKCTRL_RESET_WDOG_POR_DISABLE);
++
++	mxs_common_spl_init(arg, resptr, iomux_setup, ARRAY_SIZE(iomux_setup));
++}
++
+diff --git a/boards.cfg b/boards.cfg
+index 1aa7e95..f3c8b40 100644
+--- a/boards.cfg
++++ b/boards.cfg
+@@ -210,6 +210,7 @@ Active  arm         arm926ejs      mx27
+ Active  arm         arm926ejs      mx27        logicpd         imx27lite           magnesium                             -                                                                                                                                 Heiko Schocher <hs@denx.de>
+ Active  arm         arm926ejs      mxs         bluegiga        apx4devkit          apx4devkit                            -                                                                                                                                 Lauri Hintsala <lauri.hintsala@bluegiga.com>
+ Active  arm         arm926ejs      mxs         creative        xfi3                xfi3                                  -                                                                                                                                 Marek Vasut <marek.vasut@gmail.com>
++Active  arm         arm926ejs      mxs         armadeus        apf28               apf28                               -                                                                                                                                 Eric Jarrige <eric.jarrige@armadeus.org>
+ Active  arm         arm926ejs      mxs         denx            m28evk              m28evk                                -                                                                                                                                 Marek Vasut <marek.vasut@gmail.com>
+ Active  arm         arm926ejs      mxs         freescale       mx23evk             mx23evk                               -                                                                                                                                 Otavio Salvador <otavio@ossystems.com.br>
+ Active  arm         arm926ejs      mxs         freescale       mx28evk             mx28evk                               mx28evk:ENV_IS_IN_MMC                                                                                                             Fabio Estevam <fabio.estevam@freescale.com>
+1.7.2.5
+

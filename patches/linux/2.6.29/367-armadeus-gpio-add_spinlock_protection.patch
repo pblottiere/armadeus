@@ -1,0 +1,71 @@
+arm/imx/gpio: add spinlock protection
+  
+The GPIO registers need protection from concurrent access for operations that
+are not atomic.
+
+Signed-off-by: Cedric Grimault <cedric.grimault@eolane.com> 
+---
+Index: linux-2.6.29.6/arch/arm/plat-mxc/gpio.c
+===================================================================
+--- linux-2.6.29.6.orig/arch/arm/plat-mxc/gpio.c	2013-10-02 18:17:01.677641997 +0200
++++ linux-2.6.29.6/arch/arm/plat-mxc/gpio.c	2013-10-02 18:33:30.973612766 +0200
+@@ -216,13 +216,16 @@
+ 	struct mxc_gpio_port *port =
+ 		container_of(chip, struct mxc_gpio_port, chip);
+ 	u32 l;
++	unsigned long flags;
+ 
++	spin_lock_irqsave(&port->lock, flags);
+ 	l = __raw_readl(port->base + GPIO_GDIR);
+ 	if (dir)
+ 		l |= 1 << offset;
+ 	else
+ 		l &= ~(1 << offset);
+ 	__raw_writel(l, port->base + GPIO_GDIR);
++	spin_unlock_irqrestore(&port->lock, flags);
+ }
+ 
+ static void mxc_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
+@@ -231,9 +234,12 @@
+ 		container_of(chip, struct mxc_gpio_port, chip);
+ 	void __iomem *reg = port->base + GPIO_DR;
+ 	u32 l;
++	unsigned long flags;
+ 
++	spin_lock_irqsave(&port->lock, flags);
+ 	l = (__raw_readl(reg) & (~(1 << offset))) | ((value?1:0) << offset);
+ 	__raw_writel(l, reg);
++	spin_unlock_irqrestore(&port->lock, flags);
+ }
+ 
+ static int mxc_gpio_get(struct gpio_chip *chip, unsigned offset)
+@@ -311,6 +317,9 @@
+ 		port[i].chip.base = i * 32;
+ 		port[i].chip.ngpio = 32;
+ 
++		/* Init the port lock */
++		spin_lock_init(&port[i].lock);
++
+ 		/* its a serious configuration bug when it fails */
+ 		BUG_ON( gpiochip_add(&port[i].chip) < 0 );
+ 
+Index: linux-2.6.29.6/arch/arm/plat-mxc/include/mach/gpio.h
+===================================================================
+--- linux-2.6.29.6.orig/arch/arm/plat-mxc/include/mach/gpio.h	2013-10-02 18:17:00.829642022 +0200
++++ linux-2.6.29.6/arch/arm/plat-mxc/include/mach/gpio.h	2013-10-02 18:34:28.109611079 +0200
+@@ -21,6 +21,7 @@
+ 
+ #include <mach/hardware.h>
+ #include <asm-generic/gpio.h>
++#include <linux/spinlock.h>
+ 
+ /* use gpiolib dispatchers */
+ #define gpio_get_value		__gpio_get_value
+@@ -36,6 +37,7 @@
+ 	int virtual_irq_start;
+ 	struct gpio_chip chip;
+ 	u32 both_edges;
++	spinlock_t lock;
+ };
+ 
+ int mxc_gpio_init(struct mxc_gpio_port*, int);

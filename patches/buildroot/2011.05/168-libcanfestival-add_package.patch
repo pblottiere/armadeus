@@ -1,0 +1,149 @@
+Index: buildroot/package/libcanfestival/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/libcanfestival/Config.in	2012-01-04 09:39:30.000000000 +0100
+@@ -0,0 +1,83 @@
++config BR2_PACKAGE_LIBCANFESTIVAL
++	bool "CanFestival"
++	help
++	  CanFestival is an OpenSource CANOpen framework, licensed with GPLv2
++	  and LGPLv2.
++
++	  http://www.canfestival.org
++
++if BR2_PACKAGE_LIBCANFESTIVAL
++menu "CanFestival configuration options"
++	config BR2_PACKAGE_LIBCANFESTIVAL_NBMMAXCAN
++		string "Number of can bus to use"
++		default "4"
++
++	choice
++		prompt "Driver to use"
++		default BR2_PACKAGE_LIBCANFESTIVAL_SOCKET
++
++	config	BR2_PACKAGE_LIBCANFESTIVAL_ANAGATE_LINUX
++		bool "anagate_linux"
++		help
++		  AnaGate CAN(duo) driver for linux
++
++	config	BR2_PACKAGE_LIBCANFESTIVAL_PEAK_LINUX
++		bool "peak_linux"
++		help
++		  Linux build host installed Peak driver and library
++		  http://www.peak-system.com/linux/
++
++	config	BR2_PACKAGE_LIBCANFESTIVAL_VIRTUAL
++		bool "virtual"
++		help
++		  Unix pipe based virtual can driver
++
++	config	BR2_PACKAGE_LIBCANFESTIVAL_VIRTUAL_KERNEL
++		bool "virtual_kernel"
++		help
++		  Kernel module virtual can driver
++
++	config	BR2_PACKAGE_LIBCANFESTIVAL_SOCKET
++		bool "socket"
++		help
++		  Socket-can
++		  http://developer.berlios.de/projects/socketcan/
++
++	config	BR2_PACKAGE_LIBCANFESTIVAL_LINCAN
++		bool "lincan"
++		help
++		  Lincan driver
++		  http://www.ocera.org/download/components/WP7/lincan-0.3.3.html
++
++	config	BR2_PACKAGE_LIBCANFESTIVAL_CAN4LINUX
++		bool "can4linux"
++		help
++		  Can4linux driver
++		  http://www.port.de/engl/canprod/hw_can4linux.html
++
++	config	BR2_PACKAGE_LIBCANFESTIVAL_COPCICAN_LINUX
++		bool "copcican_linux"
++		help
++		  User space driver interface for CO-PCICAN card
++		  http://www.cosateq.com/
++
++	config	BR2_PACKAGE_LIBCANFESTIVAL_COPCICAN_COMEDI
++		bool "copcican_comedi"
++		help
++		  COMEDI driver interface for CO-PCICAN card
++		  http://www.cosateq.com/
++	endchoice
++
++	config BR2_PACKAGE_LIBCANFESTIVAL_DRIVER
++		string
++		default "anagate_linux"   if BR2_PACKAGE_LIBCANFESTIVAL_ANAGATE_LINUX
++		default "peak_linux" 	  if BR2_PACKAGE_LIBCANFESTIVAL_PEAK_LINUX
++		default "virtual" 	  if BR2_PACKAGE_LIBCANFESTIVAL_VIRTUAL
++		default "virtual_kernel"  if BR2_PACKAGE_LIBCANFESTIVAL_VIRTUAL_KERNEL
++		default "socket" 	  if BR2_PACKAGE_LIBCANFESTIVAL_SOCKET
++		default "lincan" 	  if BR2_PACKAGE_LIBCANFESTIVAL_LINCAN
++		default "can4linux" 	  if BR2_PACKAGE_LIBCANFESTIVAL_CAN4LINUX
++		default "copcican_linux"  if BR2_PACKAGE_LIBCANFESTIVAL_COCPICAN_LINUX
++		default "copcican_comedi" if BR2_PACKAGE_LIBCANFESTIVAL_COPCICAN_COMEDI
++endmenu
++endif
+Index: buildroot/package/libcanfestival/libcanfestival.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/libcanfestival/libcanfestival.mk	2012-01-04 09:41:43.000000000 +0100
+@@ -0,0 +1,44 @@
++#############################################################
++#
++# libcanfestival
++#
++#############################################################
++# Revision 705:
++LIBCANFESTIVAL_VERSION = 3bbc9aeba925
++LIBCANFESTIVAL_SITE_METHOD = hg
++LIBCANFESTIVAL_SITE = http://dev.automforge.net/CanFestival-3
++LIBCANFESTIVAL_INSTALL_STAGING = YES
++
++define LIBCANFESTIVAL_CONFIGURE_CMDS
++	cd $(@D) && \
++	./configure --binutils=$(TARGET_CROSS) --cc="$(TARGET_CC)" \
++	--cxx="$(TARGET_CC)" --ld="$(TARGET_CC)" --prefix=$(TARGET_DIR)/usr \
++	--can=$(BR2_PACKAGE_LIBCANFESTIVAL_DRIVER) \
++	--MAX_CAN_BUS_ID=$(BR2_PACKAGE_LIBCANFESTIVAL_NBMMAXCAN)
++endef
++
++define LIBCANFESTIVAL_BUILD_CMDS
++	$(MAKE) -C $(@D) all
++endef
++
++define LIBCANFESTIVAL_INSTALL_TARGET_CMDS
++	$(MAKE) -C $(@D)/src install
++	$(MAKE) -C $(@D)/drivers install
++	$(MAKE) -C $(@D)/examples install
++endef
++
++define LIBCANFESTIVAL_INSTALL_STAGING_CMDS
++	$(MAKE) -C $(@D)/src install PREFIX=$(STAGING_DIR)
++	$(MAKE) -C $(@D)/drivers install PREFIX=$(STAGING_DIR)
++	$(MAKE) -C $(@D)/examples install PREFIX=$(STAGING_DIR)
++endef
++
++define LIBCANFESTIVAL_CLEAN_CMDS
++	$(MAKE) -C $(@D) mrproper
++endef
++
++define LIBCANFESTIVAL_UNINSTALL_TARGET_CMDS
++	$(MAKE) -C $(@D) uninstall
++endef
++
++$(eval $(call GENTARGETS,package,libcanfestival))
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2012-01-04 09:12:44.000000000 +0100
++++ buildroot/package/Config.in	2012-01-04 09:14:15.000000000 +0100
+@@ -339,6 +339,7 @@
+ #endif
+ 
+ menu "Networking"
++source "package/libcanfestival/Config.in"
+ source "package/libcgi/Config.in"
+ source "package/libcgicc/Config.in"
+ source "package/libcurl/Config.in"

@@ -1,0 +1,15 @@
+Fix memory alignement excpetion at runtime when bulding with recent gcc versions
+ since 4.7. seems to be specific to imx51/cortex A8
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+
+--- linux-2.6.38.8/arch/arm/Makefile.ori	2013-07-17 00:11:02.000000000 +0200
++++ linux-2.6.38.8/arch/arm/Makefile	2013-07-17 00:17:32.000000000 +0200
+@@ -20,6 +20,7 @@ GZFLAGS		:=-9
+ #KBUILD_CFLAGS	+=-pipe
+ # Explicitly specifiy 32-bit ARM ISA since toolchain default can be -mthumb:
+ KBUILD_CFLAGS	+=$(call cc-option,-marm,)
++KBUILD_CFLAGS	+=$(call cc-option,-mno-unaligned-access)
+ 
+ # Never generate .eh_frame
+ KBUILD_CFLAGS	+= $(call cc-option,-fno-dwarf2-cfi-asm)

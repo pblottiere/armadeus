@@ -1,0 +1,49 @@
+Add CUnit package.
+
+Signed-off-by: Jérémie Scheer <jeremie.scheer@armadeus.com>
+
+===================================================================
+Index: buildroot/package/cunit/Config.in
+===================================================================
+--- /dev/null
++++ buildroot/package/cunit/Config.in
+@@ -0,0 +1,4 @@
++config BR2_PACKAGE_CUNIT
++	bool "CUnit library"
++	help
++	  Compile & install CUnit library.
+Index: buildroot/package/cunit/cunit.mk
+===================================================================
+--- /dev/null
++++ buildroot/package/cunit/cunit.mk
+@@ -0,0 +1,18 @@
++#############################################################
++#
++# CUnit
++#
++#############################################################
++
++CUNIT_VERSION = 156
++CUNIT_SITE = svn://svn.code.sf.net/p/cunit/code/trunk
++#CUNIT_SITE_METHOD = svn
++CUNIT_INSTALL_STAGING = YES
++
++define CUNIT_BOOTSTRAP_CMD
++	(cd $(@D); ./bootstrap)
++endef
++
++CUNIT_PRE_CONFIGURE_HOOKS += CUNIT_BOOTSTRAP_CMD
++
++$(eval $(generic-package))
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in
++++ buildroot/package/Config.in
+@@ -947,6 +947,7 @@ menu "Other"
+	source "package/clapack/Config.in"
+	source "package/classpath/Config.in"
+	source "package/cppcms/Config.in"
++	source "package/cunit/Config.in"
+	source "package/ding-libs/Config.in"
+	source "package/eigen/Config.in"
+	source "package/elfutils/Config.in"

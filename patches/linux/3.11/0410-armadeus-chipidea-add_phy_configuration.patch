@@ -1,0 +1,17 @@
+hw_phymode_configure is needed to enable phy
+
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+---
+Index: linux-3.11-rc1/drivers/usb/chipidea/core.c
+===================================================================
+--- linux-3.11-rc1.orig/drivers/usb/chipidea/core.c
++++ linux-3.11-rc1/drivers/usb/chipidea/core.c
+@@ -510,6 +510,8 @@ static int ci_hdrc_probe(struct platform
+ 	if (ci->is_otg)
+ 		hw_write(ci, OP_OTGSC, OTGSC_IDIE, OTGSC_IDIE);
+ 
++	hw_phymode_configure(ci);
++
+ 	ret = dbg_create_files(ci);
+ 	if (!ret)
+ 		return 0;

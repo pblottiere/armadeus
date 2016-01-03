@@ -1,0 +1,39 @@
+Index: linux-3.14-rc7/arch/arm/mach-mxs/mach-mxs.c
+===================================================================
+--- linux-3.14-rc7.orig/arch/arm/mach-mxs/mach-mxs.c
++++ linux-3.14-rc7/arch/arm/mach-mxs/mach-mxs.c
+@@ -242,9 +242,34 @@ static void __init imx28_evk_init(void)
+ 	mxs_saif_clkmux_select(MXS_DIGCTL_SAIF_CLKMUX_EXTMSTR0);
+ }
+ 
++#define BM_POWER_RESET_UNLOCK		0xFFFF0000
++#define BV_POWER_RESET_UNLOCK__KEY	0x3E77
++#define BM_POWER_RESET_PWD		0x00000001
++#define HW_POWER_RESET			0x00000100
++#define BF_POWER_RESET_UNLOCK(v) \
++		(((v) << 16) & BM_POWER_RESET_UNLOCK)
++
++static void apf28_power_off(void)
++{
++	struct device_node *np;
++	void __iomem *power_base;
++
++	np = of_find_node_by_name(NULL, "power");
++	if (!np)
++		return;
++
++	power_base = of_iomap(np, 0);
++	if (!power_base)
++		return;
++
++	__mxs_setl(BF_POWER_RESET_UNLOCK(BV_POWER_RESET_UNLOCK__KEY) |
++		BM_POWER_RESET_PWD, power_base + HW_POWER_RESET);
++}
++
+ static void __init imx28_apf28_init(void)
+ {
+ 	update_fec_mac_prop(OUI_ARMADEUS);
++	pm_power_off = apf28_power_off;
+ }
+ 
+ static int apx4devkit_phy_fixup(struct phy_device *phy)

@@ -1,0 +1,266 @@
+Add package Shiboken to Buildroot. This package is needed to compile PySide.
+
+Signed-off-by: Jérémie Scheer <jeremie.scheer@armadeus.com>
+
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2014-07-28 17:07:50.000000000 +0200
++++ buildroot/package/Config.in	2014-07-29 12:10:49.000000000 +0200
+@@ -434,6 +434,7 @@
+ source "package/python-setuptools/Config.in"
+ source "package/python-thrift/Config.in"
+ endmenu
++source "package/shiboken/Config.in"
+ endif
+ source "package/python3/Config.in"
+ source "package/ruby/Config.in"
+Index: buildroot/package/shiboken/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/shiboken/Config.in	2014-07-28 17:07:50.000000000 +0200
+@@ -0,0 +1,13 @@
++config BR2_PACKAGE_SHIBOKEN
++	bool "Shiboken"
++	depends on BR2_PACKAGE_PYTHON
++    select BR2_PACKAGE_QT
++    select BR2_PACKAGE_QT_STL
++    select BR2_PACKAGE_QT_XML
++    select BR2_PACKAGE_QT_XMLPATTERNS
++    select BR2_PACKAGE_LIBXML2
++    select BR2_PACKAGE_LIBXSLT
++	help
++	  Shiboken generates bindings for C++ libraries using CPython source code.
++
++	  https://pypi.python.org/pypi/Shiboken
+Index: buildroot/package/shiboken/shiboken.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/shiboken/shiboken.mk	2014-07-29 12:11:18.000000000 +0200
+@@ -0,0 +1,73 @@
++#############################################################
++#
++# Shiboken
++#
++#############################################################
++SHIBOKEN_VERSION = 1.2.2
++SHIBOKEN_SOURCE = shiboken-$(SHIBOKEN_VERSION).tar.bz2
++SHIBOKEN_SITE = download.qt-project.org/official_releases/pyside
++
++SHIBOKEN_DEPENDENCIES = python qt libxml2 libxslt host-shiboken
++HOST_SHIBOKEN_DEPENDENCIES = python qt libxml2 libxslt
++
++SHIBOKEN_INSTALL_STAGING = YES
++
++define SHIBOKEN_SET_CONFIG_PATH
++	$(SED) "s:STAGING_DIR:$(STAGING_DIR):" $(@D)/data/ShibokenConfig.cmake.in
++    $(SED) "s:STAGING_DIR:$(STAGING_DIR):g" $(@D)/data/ShibokenConfig-spec.cmake.in
++    $(SED) "s:HOST_DIR:$(HOST_DIR):" $(@D)/data/ShibokenConfig-spec.cmake.in
++endef
++
++SHIBOKEN_POST_PATCH_HOOKS += SHIBOKEN_SET_CONFIG_PATH
++
++define HOST_SHIBOKEN_CONFIGURE_CMDS
++	(mkdir -p $(@D)/build && \
++    cd $(@D)/build && \
++	rm -f CMakeCache.txt && \
++	$(HOST_DIR)/usr/bin/cmake .. \
++	)
++endef
++
++define SHIBOKEN_CONFIGURE_CMDS
++	(mkdir -p $(@D)/build && \
++    cd $(@D)/build && \
++    mkdir -p $(@D)/build/generator && \
++    cp $(HOST_DIR)/usr/bin/shiboken $(@D)/build/generator/shiboken-x86 && \
++	rm -f CMakeCache.txt && \
++	$(SHIBOKEN_CONF_ENV) $(HOST_DIR)/usr/bin/cmake .. \
++		-DCMAKE_TOOLCHAIN_FILE="$(HOST_DIR)/usr/share/buildroot/toolchainfile.cmake" \
++		-DCMAKE_INSTALL_PREFIX="/usr" \
++		$(SHIBOKEN_CONF_OPT) \
++	)
++endef
++
++define HOST_SHIBOKEN_BUILD_CMDS
++    (cd $(@D)/build && \
++    $(SHIBOKEN_MAKE) \
++    )
++endef
++
++define SHIBOKEN_BUILD_CMDS
++    (cd $(@D)/build && \
++    $(TARGET_MAKE_ENV) $(SHIBOKEN_MAKE_ENV) $(SHIBOKEN_MAKE) $(SHIBOKEN_MAKE_OPT) \
++    )
++endef
++
++define HOST_SHIBOKEN_INSTALL_CMDS
++    cp $(@D)/build/generator/shiboken $(HOST_DIR)/usr/bin
++endef
++
++define SHIBOKEN_INSTALL_STAGING_CMDS
++    (cd $(@D)/build && \
++    $(TARGET_MAKE_ENV) $(SHIBOKEN_MAKE_ENV) $(SHIBOKEN_MAKE) $(SHIBOKEN_MAKE_OPT) $(SHIBOKEN_INSTALL_STAGING_OPT) \
++    )
++endef
++
++define SHIBOKEN_INSTALL_TARGET_CMDS
++    (cd $(@D)/build && \
++    $(TARGET_MAKE_ENV) $(SHIBOKEN_MAKE_ENV) $(SHIBOKEN_MAKE) $(SHIBOKEN_MAKE_OPT) $(SHIBOKEN_INSTALL_TARGET_OPT) \
++    )
++endef
++
++$(eval $(autotools-package))
++$(eval $(host-autotools-package))
+Index: buildroot/package/shiboken/shiboken-1.2.2-compile_module_with_host_shiboken_generator.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/shiboken/shiboken-1.2.2-compile_module_with_host_shiboken_generator.patch	2014-07-28 17:07:50.000000000 +0200
+@@ -0,0 +1,40 @@
++Compile shiboken module with previously generated x86 generator
++
++Signed-off-by: Jérémie Scheer <jeremie.scheer@armadeus.com>
++---
++Index: shiboken-1.2.2/shibokenmodule/CMakeLists.txt
++===================================================================
++--- shiboken-1.2.2.orig/shibokenmodule/CMakeLists.txt
+++++ shiboken-1.2.2/shibokenmodule/CMakeLists.txt
++@@ -8,11 +8,19 @@
++ ${CMAKE_CURRENT_BINARY_DIR}/shiboken/shiboken_module_wrapper.cpp
++ )
++
++-add_custom_command(OUTPUT ${sample_SRC}
++-COMMAND ${shibokengenerator_BINARY_DIR}/shiboken --project-file=${CMAKE_CURRENT_BINARY_DIR}/shibokenmodule.txt ${GENERATOR_EXTRA_FLAGS}
++-WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
++-COMMENT "Running generator for 'shiboken'..."
++-)
+++if(EXISTS "${shibokengenerator_BINARY_DIR}/shiboken-x86")
+++    add_custom_command(OUTPUT ${sample_SRC}
+++    COMMAND ${shibokengenerator_BINARY_DIR}/shiboken-x86 --project-file=${CMAKE_CURRENT_BINARY_DIR}/shibokenmodule.txt ${GENERATOR_EXTRA_FLAGS}
+++    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+++    COMMENT "Running generator for 'shiboken'..."
+++    )
+++else()
+++    add_custom_command(OUTPUT ${sample_SRC}
+++    COMMAND ${shibokengenerator_BINARY_DIR}/shiboken --project-file=${CMAKE_CURRENT_BINARY_DIR}/shibokenmodule.txt ${GENERATOR_EXTRA_FLAGS}
+++    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+++    COMMENT "Running generator for 'shiboken'..."
+++    )
+++endif()
++
++ include_directories(${CMAKE_CURRENT_SOURCE_DIR}
++                     ${CMAKE_SOURCE_DIR}
++@@ -31,4 +39,4 @@
++
++ add_dependencies(shibokenmodule shiboken)
++
++-install(TARGETS shibokenmodule DESTINATION ${PYTHON_SITE_PACKAGES})
++\ No newline at end of file
+++install(TARGETS shibokenmodule DESTINATION ${PYTHON_SITE_PACKAGES})
+Index: buildroot/package/shiboken/shiboken-1.2.2-fix_pthread_cancel_compile.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/shiboken/shiboken-1.2.2-fix_pthread_cancel_compile.patch	2014-07-28 17:07:50.000000000 +0200
+@@ -0,0 +1,56 @@
++Find pthread_cancel method when compiling ApiExtractor and generator
++
++Signed-off-by: Jérémie Scheer <jeremie.scheer@armadeus.com>
++---
++Index: shiboken-1.2.2/ApiExtractor/CMakeLists.txt
++===================================================================
++--- shiboken-1.2.2.orig/ApiExtractor/CMakeLists.txt
+++++ shiboken-1.2.2/ApiExtractor/CMakeLists.txt
++@@ -91,7 +91,8 @@
++                     )
++
++ add_library(apiextractor STATIC ${apiextractor_SRC} ${apiextractor_RCCS_SRC})
++-target_link_libraries(apiextractor ${APIEXTRACTOR_EXTRA_LIBRARIES} ${QT_QTCORE_LIBRARY} ${QT_QTXMLPATTERNS_LIBRARY} ${QT_QTXML_LIBRARY})
+++find_package (Threads)
+++target_link_libraries(apiextractor ${APIEXTRACTOR_EXTRA_LIBRARIES} ${QT_QTCORE_LIBRARY} ${QT_QTXMLPATTERNS_LIBRARY} ${QT_QTXML_LIBRARY} ${CMAKE_THREAD_LIBS_INIT})
++
++ if (BUILD_TESTS)
++     enable_testing()
++
++Index: shiboken-1.2.2/generator/CMakeLists.txt
++===================================================================
++--- shiboken-1.2.2.orig/generator/CMakeLists.txt
+++++ shiboken-1.2.2/generator/CMakeLists.txt
++@@ -27,10 +27,12 @@
++ add_executable(shiboken ${shiboken_SRC})
++ add_dependencies(shiboken apiextractor)
++ set_target_properties(shiboken PROPERTIES OUTPUT_NAME shiboken${shiboken_SUFFIX})
+++find_package (Threads)
++ target_link_libraries(shiboken
++                       apiextractor
++                       ${QT_QTCORE_LIBRARY}
++-                      ${QT_QTXML_LIBRARY})
+++                      ${QT_QTXML_LIBRARY}
+++                      ${CMAKE_THREAD_LIBS_INIT})
++
++ configure_file(shibokenconfig.h.in "${CMAKE_CURRENT_BINARY_DIR}/shibokenconfig.h" @ONLY)
++
++
++Index: shiboken-1.2.2/generator/shiboken/CMakeLists.txt
++===================================================================
++--- shiboken-1.2.2.orig/generator/shiboken/CMakeLists.txt
+++++ shiboken-1.2.2/generator/shiboken/CMakeLists.txt
++@@ -20,10 +20,12 @@
++
++ add_executable(shiboken ${shiboken_SRC})
++ set_target_properties(shiboken PROPERTIES OUTPUT_NAME shiboken${shiboken_SUFFIX})
+++find_package (Threads)
++ target_link_libraries(shiboken
++                       ${APIEXTRACTOR_LIBRARY}
++                       ${QT_QTCORE_LIBRARY}
++-                      ${QT_QTXML_LIBRARY})
+++                      ${QT_QTXML_LIBRARY}
+++                      ${CMAKE_THREAD_LIBS_INIT})
++
++ configure_file(shibokenconfig.h.in "${CMAKE_CURRENT_BINARY_DIR}/shibokenconfig.h" @ONLY)
++
+Index: buildroot/package/shiboken/shiboken-1.2.2-fix_shiboken_config_dir.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/shiboken/shiboken-1.2.2-fix_shiboken_config_dir.patch	2014-07-29 12:10:36.000000000 +0200
+@@ -0,0 +1,43 @@
++Fix directory where shiboken searches configuration.
++
++Signed-off-by: Jérémie Scheer <jeremie.scheer@armadeus.com>
++---
++Index: shiboken-1.2.2/data/ShibokenConfig.cmake.in
++===================================================================
++--- shiboken-1.2.2.orig/data/ShibokenConfig.cmake.in
+++++ shiboken-1.2.2/data/ShibokenConfig.cmake.in
++@@ -2,4 +2,4 @@
++     message(STATUS "Using default python: @PYTHON_SUFFIX@")
++     SET(PYTHON_SUFFIX @PYTHON_SUFFIX@)
++ endif()
++-include(@LIB_INSTALL_DIR@/cmake/Shiboken-@shiboken_VERSION@/ShibokenConfig${PYTHON_SUFFIX}.cmake)
+++include(STAGING_DIR/@LIB_INSTALL_DIR@/cmake/Shiboken-@shiboken_VERSION@/ShibokenConfig${PYTHON_SUFFIX}.cmake)
++
++Index: shiboken-1.2.2/data/ShibokenConfig-spec.cmake.in
++===================================================================
++--- shiboken-1.2.2.orig/data/ShibokenConfig-spec.cmake.in
+++++ shiboken-1.2.2/data/ShibokenConfig-spec.cmake.in
++@@ -5,7 +5,7 @@
++ #  SHIBOKEN_PYTHON_INTERPRETER - Python interpreter (regular or debug) to be used with the bindings.
++ #  SHIBOKEN_PYTHON_LIBRARIES   - Python libraries (regular or debug) Shiboken is linked against.
++
++-SET(SHIBOKEN_INCLUDE_DIR "@CMAKE_INSTALL_PREFIX@/include/shiboken@shiboken_SUFFIX@")
+++SET(SHIBOKEN_INCLUDE_DIR "STAGING_DIR/@CMAKE_INSTALL_PREFIX@/include/shiboken@shiboken_SUFFIX@")
++ if(MSVC)
++     SET(SHIBOKEN_LIBRARY "@LIB_INSTALL_DIR@/@CMAKE_SHARED_LIBRARY_PREFIX@shiboken@shiboken_SUFFIX@@PYTHON_SUFFIX@@LIBRARY_OUTPUT_SUFFIX@.lib")
++ elseif(CYGWIN)
++@@ -13,7 +13,7 @@
++ elseif(WIN32)
++     SET(SHIBOKEN_LIBRARY "@CMAKE_INSTALL_PREFIX@/bin/@CMAKE_SHARED_LIBRARY_PREFIX@shiboken@shiboken_SUFFIX@@PYTHON_SUFFIX@@LIBRARY_OUTPUT_SUFFIX@@CMAKE_SHARED_LIBRARY_SUFFIX@")
++ else()
++-    SET(SHIBOKEN_LIBRARY "@LIB_INSTALL_DIR@/@CMAKE_SHARED_LIBRARY_PREFIX@shiboken@shiboken_SUFFIX@@PYTHON_SUFFIX@@LIBRARY_OUTPUT_SUFFIX@@CMAKE_SHARED_LIBRARY_SUFFIX@")
+++    SET(SHIBOKEN_LIBRARY "STAGING_DIR/@LIB_INSTALL_DIR@/@CMAKE_SHARED_LIBRARY_PREFIX@shiboken@shiboken_SUFFIX@@PYTHON_SUFFIX@@LIBRARY_OUTPUT_SUFFIX@@CMAKE_SHARED_LIBRARY_SUFFIX@")
++ endif()
++ SET(SHIBOKEN_PYTHON_INCLUDE_DIR "@SBK_PYTHON_INCLUDE_DIR@")
++ SET(SHIBOKEN_PYTHON_INCLUDE_DIR "@SBK_PYTHON_INCLUDE_DIR@")
++@@ -23,4 +23,4 @@
++ message(STATUS "libshiboken built for @SHIBOKEN_BUILD_TYPE@")
++ @SBK_ADD_PY_DEBUG_DEFINITION@
++
++-set(SHIBOKEN_BINARY "@CMAKE_INSTALL_PREFIX@/bin/@SHIBOKEN_GENERATOR@")
+++set(SHIBOKEN_BINARY "HOST_DIR/@CMAKE_INSTALL_PREFIX@/bin/@SHIBOKEN_GENERATOR@")

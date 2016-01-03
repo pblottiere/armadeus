@@ -1,0 +1,26 @@
+UART receive may hang up after a shutdown while receiving data
+Perform a complete uart reset instead of a simple uart disable
+
+Signed-off-by: Nicolas Colombain <nicolas.colombain@armadeus.org>
+ 
+Index: linux-2.6.29/drivers/serial/imx.c
+===================================================================
+--- linux-2.6.29.orig/drivers/serial/imx.c	2012-02-06 10:24:51.000000000 +0100
++++ linux-2.6.29/drivers/serial/imx.c	2012-02-06 10:25:28.000000000 +0100
+@@ -652,12 +652,12 @@ static void imx_shutdown(struct uart_por
+ 		free_irq(sport->port.irq, sport);
+ 
+ 	/*
+-	 * Disable all interrupts, port and break condition.
++	 * reset uart
+ 	 */
+ 
+-	temp = readl(sport->port.membase + UCR1);
+-	temp &= ~(UCR1_TXMPTYEN | UCR1_RRDYEN | UCR1_RTSDEN | UCR1_UARTEN);
+-	writel(temp, sport->port.membase + UCR1);
++	temp = readl(sport->port.membase + UCR2);
++	temp &= ~(UCR2_SRST);
++	writel(temp, sport->port.membase + UCR2);
+ }
+ 
+ static void imx_serial_dump_registers(struct imx_port *sport)

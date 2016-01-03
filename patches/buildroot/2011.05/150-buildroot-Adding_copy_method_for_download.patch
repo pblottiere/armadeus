@@ -1,0 +1,66 @@
+Adding capability to copy directory from the computer instead of 
+downloading the package from the internet
+
+Signed-off-by : Fabien Marteau <fabien.marteau@armadeus.com>
+---
+
+Index: buildroot/Config.in
+===================================================================
+--- buildroot.orig/Config.in	2011-05-27 16:18:21.000000000 +0200
++++ buildroot/Config.in	2012-01-13 13:51:18.000000000 +0100
+@@ -16,6 +16,10 @@
+ 
+ menu "Commands"
+ 
++config BR2_COPY
++	string "Copy command"
++	default "cp -R "
++
+ config BR2_WGET
+ 	string "Wget command"
+ 	default "wget --passive-ftp -nd -t 3"
+Index: buildroot/package/Makefile.package.in
+===================================================================
+--- buildroot.orig/package/Makefile.package.in	2011-05-27 16:18:21.000000000 +0200
++++ buildroot/package/Makefile.package.in	2012-01-13 13:52:21.000000000 +0100
+@@ -73,6 +73,7 @@
+ SVN:=$(call qstrip,$(BR2_SVN)) $(QUIET)
+ BZR:=$(call qstrip,$(BR2_BZR)) $(QUIET)
+ GIT:=$(call qstrip,$(BR2_GIT)) $(QUIET)
++COPY:=$(call qstrip,$(BR2_COPY)) $(QUIET)
+ 
+ # Default spider mode is 'DOWNLOAD'. Other possible values are 'SOURCE_CHECK'
+ # used by the _source-check target and 'SHOW_EXTERNAL_DEPS', used by the
+@@ -170,6 +171,24 @@
+   echo $(2)
+ endef
+ 
++
++define DOWNLOAD_COPY
++	pushd $(DL_DIR) > /dev/null && \
++	$(COPY) $($(PKG)_SITE) $($(PKG)_BASE_NAME) && \
++	$(TAR) czf $($(PKG)_SOURCE) $($(PKG)_BASE_NAME) && \
++	rm -rf $($(PKG)_BASE_NAME) && \
++	popd > /dev/null
++endef
++
++define SOURCE_CHECK_COPY
++	test -e $($(PKG)_SITE)
++endef
++
++define SHOW_EXTERNAL_DEPS_COPY
++	echo $(2)
++endef
++
++
+ ################################################################################
+ # DOWNLOAD -- Download helper. Will try to download source from:
+ # 1) BR2_PRIMARY_SITE if enabled
+@@ -192,6 +211,7 @@
+ 			git) $($(DL_MODE)_GIT) && exit ;; \
+ 			svn) $($(DL_MODE)_SVN) && exit ;; \
+ 			bzr) $($(DL_MODE)_BZR) && exit ;; \
++			copy) $($(DL_MODE)_COPY) && exit ;; \
+ 			*) $(call $(DL_MODE)_WGET,$(1),$(2)) && exit ;; \
+ 		esac ; \
+ 	fi ; \

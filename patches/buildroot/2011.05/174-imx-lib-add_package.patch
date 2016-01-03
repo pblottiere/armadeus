@@ -1,0 +1,73 @@
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/imx-lib/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/imx-lib/Config.in	2012-03-02 14:11:54.000000000 +0100
+@@ -0,0 +1,4 @@
++config BR2_PACKAGE_IMX_LIB
++	bool "imx-lib"
++	help
++	  Freescale specific libraries for i.MX processors family.
+Index: buildroot/package/imx-lib/imx-lib.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/imx-lib/imx-lib.mk	2012-03-02 14:11:54.000000000 +0100
+@@ -0,0 +1,45 @@
++#############################################################
++#
++# imx-lib (helpers librairies from Freescale BSP)
++#
++#############################################################
++IMX_LIB_VERSION = 10.11.01
++IMX_LIB_SOURCE = imx-lib-$(IMX_LIB_VERSION).tar.gz
++IMX_LIB_SITE = ftp://ftp2.armadeus.com/armadeusw/download/
++IMX_LIB_INSTALL_STAGING = YES
++
++ifeq ($(BR2_CPU_NAME),imx27)
++BUILD_PLATFORM = IMX27
++else
++BUILD_PLATFORM = IMX51
++endif
++
++define IMX_LIB_BUILD_CMDS
++	$(MAKE) CC="$(TARGET_CC)" \
++		PLATFORM=$(BUILD_PLATFORM) \
++		DIRS="sahara2 vpu" \
++		CFLAGS="-fPIC -I$(LINUX26_DIR)/drivers/mxc/security/sahara2/include" \
++		-C $(@D)
++endef
++
++define IMX_LIB_INSTALL_STAGING_CMDS
++	install -D -m 755 $(@D)/vpu/libvpu.so $(STAGING_DIR)/usr/lib
++	install -D -m 755 $(@D)/vpu/vpu_io.h $(STAGING_DIR)/usr/include
++	install -D -m 755 $(@D)/vpu/vpu_lib.h $(STAGING_DIR)/usr/include
++	install -D -m 755 $(@D)/sahara2/libsahara.so $(STAGING_DIR)/usr/lib
++endef
++
++define IMX_LIB_INSTALL_TARGET_CMDS
++	install -D -m 755 $(@D)/vpu/libvpu.so $(TARGET_DIR)/usr/lib
++	install -D -m 755 $(@D)/sahara2/libsahara.so $(TARGET_DIR)/usr/lib
++endef
++
++define IMX_LIB_UNINSTALL_TARGET_CMDS
++	rm -f $(TARGET_DIR)/usr/lib/libvpu.so
++endef
++
++define IMX_LIB_CLEAN_CMDS
++	-$(MAKE) -C $(@D) clean
++endef
++
++$(eval $(call GENTARGETS,package,imx-lib))
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2012-03-02 14:11:54.000000000 +0100
++++ buildroot/package/Config.in	2012-03-02 14:11:54.000000000 +0100
+@@ -322,6 +322,7 @@
+ endmenu
+ 
+ menu "Hardware handling"
++source "package/imx-lib/Config.in"
+ source "package/libaio/Config.in"
+ source "package/libraw1394/Config.in"
+ source "package/tslib/Config.in"

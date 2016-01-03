@@ -1,0 +1,7 @@
+
+config ARMADEUS_FPGA_VIRTUAL_COMPONENTS_LED
+	tristate "led"
+	default n
+	depends on ARMADEUS_FPGA_VIRTUAL_COMPONENTS
+	---help---
+	  Armadeus driver for virtual led component.

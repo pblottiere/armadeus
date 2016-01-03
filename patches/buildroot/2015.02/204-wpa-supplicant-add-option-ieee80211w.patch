@@ -1,0 +1,34 @@
+Add option to disable management frame protection (IEEE 802.11w) not supported
+by legacy Linux kernel
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+
+Index: buildroot/package/wpa_supplicant/Config.in
+===================================================================
+--- buildroot.orig/package/wpa_supplicant/Config.in
++++ buildroot/package/wpa_supplicant/Config.in
+@@ -67,4 +67,9 @@ config BR2_PACKAGE_WPA_SUPPLICANT_DBUS_I
+	help
+	  Add introspection support for new DBus control interface.
+
++config BR2_PACKAGE_WPA_SUPPLICANT_IEEE80211W
++	bool "Enable support for management frame protection"
++	help
++	  Enable support for management frame protection (IEEE 802.11w)
++
+ endif
+Index: buildroot/package/wpa_supplicant/wpa_supplicant.mk
+===================================================================
+--- buildroot.orig/package/wpa_supplicant/wpa_supplicant.mk
++++ buildroot/package/wpa_supplicant/wpa_supplicant.mk
+@@ -112,6 +112,10 @@ ifeq ($(BR2_PACKAGE_READLINE),y)
+	WPA_SUPPLICANT_CONFIG_ENABLE += CONFIG_READLINE
+ endif
+
++ifeq ($(BR2_PACKAGE_WPA_SUPPLICANT_IEEE80211W),y)
++	WPA_SUPPLICANT_CONFIG_ENABLE += CONFIG_IEEE80211W
++endif
++
+ define WPA_SUPPLICANT_CONFIGURE_CMDS
+	cp $(@D)/wpa_supplicant/defconfig $(WPA_SUPPLICANT_CONFIG)
+	sed -i $(patsubst %,-e 's/^#\(%\)/\1/',$(WPA_SUPPLICANT_CONFIG_ENABLE)) \

@@ -1,0 +1,70 @@
+Add apf51 basic support
+
+Signed-off-by: Laurent Cans <laurent.cans@gmail.com>
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+---
+Index: linux-3.11.6/arch/arm/boot/dts/imx51-apf51.dts
+===================================================================
+--- linux-3.11.6.orig/arch/arm/boot/dts/imx51-apf51.dts	2013-10-18 20:24:16.000000000 +0200
++++ linux-3.11.6/arch/arm/boot/dts/imx51-apf51.dts	2013-10-28 20:35:10.000000000 +0100
+@@ -34,6 +34,24 @@
+ 			clock-frequency = <33554432>;
+ 		};
+ 	};
++
++	hsusb_reset_regulator: usb_reset {
++		compatible = "regulator-fixed";
++		regulator-name = "usb_vbus";
++		regulator-min-microvolt = <5000000>;
++		regulator-max-microvolt = <5000000>;
++		gpio = <&gpio3 1 0>;
++		enable-active-high;
++	};
++
++	usbotg_reset_regulator: usbotg_reset {
++		compatible = "regulator-fixed";
++		regulator-name = "usbotg_vbus";
++		regulator-min-microvolt = <5000000>;
++		regulator-max-microvolt = <5000000>;
++		gpio = <&gpio1 8 0>;
++		enable-active-high;
++	};
+ };
+ 
+ &fec {
+@@ -57,3 +75,35 @@
+ 	pinctrl-0 = <&pinctrl_uart3_2>;
+ 	status = "okay";
+ };
++
++&usbphy0 {
++	reset-supply = <&usbotg_reset_regulator>;
++};
++
++&usbphy1 {
++	reset-supply = <&hsusb_reset_regulator>;
++};
++
++&usbh1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_usbh1_1>;
++	phy_type = "ulpi";
++	dr_mode = "host";
++	ext-clk-en;
++	status = "okay";
++};
++
++&usbh2 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_usbh2_1>;
++	phy_type = "ulpi";
++	dr_mode = "host";
++	ext-clk-en;
++	status = "okay";
++};
++
++&usbotg {
++	phy_type = "utmi_wide";
++	vbus-supply = <&usbotg_reset_regulator>;
++	status = "okay";
++};

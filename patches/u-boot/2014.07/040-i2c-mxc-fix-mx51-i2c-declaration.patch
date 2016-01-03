@@ -1,0 +1,41 @@
+From 8cc45b2a0332154b9ef2deaa3085da90f4397da7 Mon Sep 17 00:00:00 2001
+From: Eric Jarrige <eric.jarrige@armadeus.org>
+Date: Tue, 13 May 2014 14:22:51 +0200
+Subject: [PATCH 1/1] i2c: mxc: fix mx51 i2c declaration
+
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+ drivers/i2c/mxc_i2c.c |    8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/i2c/mxc_i2c.c b/drivers/i2c/mxc_i2c.c
+index 595019b..a4280b4 100644
+--- a/drivers/i2c/mxc_i2c.c
++++ b/drivers/i2c/mxc_i2c.c
+@@ -421,8 +421,11 @@ static void * const i2c_bases[] = {
+ #elif defined(CONFIG_MX27)
+ 	(void *)IMX_I2C1_BASE,
+ 	(void *)IMX_I2C2_BASE
++#elif defined(CONFIG_MX51)
++	(void *)I2C1_BASE_ADDR,
++	(void *)I2C2_BASE_ADDR,
+ #elif defined(CONFIG_MX31) || defined(CONFIG_MX35) || \
+-	defined(CONFIG_MX51) || defined(CONFIG_MX53) ||	\
++	defined(CONFIG_MX53) ||	\
+ 	defined(CONFIG_MX6)
+ 	(void *)I2C1_BASE_ADDR,
+ 	(void *)I2C2_BASE_ADDR,
+@@ -544,8 +547,7 @@ U_BOOT_I2C_ADAP_COMPLETE(mxc1, mxc_i2c_init, mxc_i2c_probe,
+ 			 CONFIG_SYS_MXC_I2C2_SPEED,
+ 			 CONFIG_SYS_MXC_I2C2_SLAVE, 1)
+ #if defined(CONFIG_MX31) || defined(CONFIG_MX35) ||\
+-	defined(CONFIG_MX51) || defined(CONFIG_MX53) ||\
+-	defined(CONFIG_MX6)
++	defined(CONFIG_MX53) || defined(CONFIG_MX6)
+ U_BOOT_I2C_ADAP_COMPLETE(mxc2, mxc_i2c_init, mxc_i2c_probe,
+ 			 mxc_i2c_read, mxc_i2c_write,
+ 			 mxc_i2c_set_bus_speed,
+-- 
+1.7.9.5
+

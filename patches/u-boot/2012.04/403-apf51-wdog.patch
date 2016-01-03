@@ -1,0 +1,29 @@
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+---
+ arch/arm/include/asm/arch-mx5/imx-regs.h |    9 +++++++++
+ 1 files changed, 9 insertions(+), 0 deletions(-)
+
+diff --git a/arch/arm/include/asm/arch-mx5/imx-regs.h b/arch/arm/include/asm/arch-mx5/imx-regs.h
+index 36c6c84..83e33ee 100644
+--- a/arch/arm/include/asm/arch-mx5/imx-regs.h
++++ b/arch/arm/include/asm/arch-mx5/imx-regs.h
+@@ -493,6 +493,15 @@ struct fuse_bank1_regs {
+ 	u32	fuse15_31[0x11];
+ };
+ 
++/* WDOG registers */
++struct wdog_regs {
++	u16	wcr;
++	u16	wsr;
++	u16	wrsr;
++	u16	wicr;
++	u16	wmcr;
++};
++
+ #endif /* __ASSEMBLER__*/
+ 
+ #endif				/* __ASM_ARCH_MX5_IMX_REGS_H__ */
+-- 
+1.7.4.4
+

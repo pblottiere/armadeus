@@ -1,0 +1,89 @@
+config BR2_PACKAGE_DEMOS
+	bool "Armadeus misc demos"
+	help
+	  Install Armadeus miscallenous demos.
+
+menu "Choose the demos to install"
+	depends on BR2_PACKAGE_DEMOS
+
+config BR2_PACKAGE_ARMADEUS_DEMOS_ARMANOID
+	bool "Armanoid"
+	select BR2_PACKAGE_SDL
+	help
+	  Small game to show SDL usage.
+
+config BR2_PACKAGE_ARMADEUS_DEMOS_BACKLIGHT
+	bool "Backlight control"
+	select BR2_PACKAGE_SDL
+	help
+	  SDL tool to graphically adjust LCD backlight.
+
+config BR2_PACKAGE_ARMADEUS_DEMOS_GPIO
+	bool "GPIO test"
+
+config BR2_PACKAGE_ARMADEUS_DEMOS_GPS
+	bool "GPS frame decoding"
+	help
+	  Small tool to show how to read and decode NMEA frames
+	  coming from a serial GPS.
+
+config BR2_PACKAGE_ARMADEUS_DEMOS_INPUT
+	bool "Input test"
+	select BR2_PACKAGE_SDL
+	help
+	  Shows how to use user inputs (mouse, keyboard, touch) in SDL.
+
+config BR2_PACKAGE_ARMADEUS_DEMOS_MUSIC_PLAYER
+	bool "Music player"
+	select BR2_PACKAGE_SDL
+	select BR2_PACKAGE_SDL_TTF
+	select BR2_PACKAGE_SDL_MIXER
+	help
+	  SDL based music player.
+
+config BR2_PACKAGE_ARMADEUS_DEMOS_CAPTURE
+	bool "Camera capture"
+	select BR2_PACKAGE_SDL
+	help
+	  Capture and display camera (V4L) video stream.
+
+config BR2_PACKAGE_ARMADEUS_DEMOS_CAPTURE_VPU
+	bool "use VPU"
+	depends on BR2_PACKAGE_ARMADEUS_DEMOS_CAPTURE
+#	select FREESCALE_TOOLS
+	help
+	  Use i.MX27/i.MX51 VPU to encode stream in H.264
+
+config BR2_PACKAGE_ARMADEUS_DEMOS_OSCILLO
+	bool "Oscilloscope"
+	help
+	  MAX1027 data viewer "à la" oscilloscope. (Work in progress).
+
+config BR2_PACKAGE_ARMADEUS_DEMOS_SHOW_IMAGE
+	bool "Image viewer"
+	select BR2_PACKAGE_SDL_IMAGE
+	help
+	  SDL based image viewer.
+
+config BR2_PACKAGE_ARMADEUS_DEMOS_TEST_LCD
+	bool "LCD test"
+	select BR2_PACKAGE_SDL
+	help
+	  Test for LCD dead pixels. Needs SDL.
+
+config BR2_PACKAGE_ARMADEUS_DEMOS_MCP25020
+	bool "MCP25020 demo"
+	depends on BR2_PACKAGE_IPROUTE2
+	help
+	  Test for CAN bus communication with MCP25020 (demo board).
+	  Requires package iproute2.
+
+comment "MCP25020 demo requires package iproute2"
+	depends on !BR2_PACKAGE_IPROUTE2
+
+config BR2_PACKAGE_ARMADEUS_DEMOS_SHM
+	bool "Shared memory demo"
+	help
+	  Test for shared memory.
+
+endmenu

@@ -1,0 +1,398 @@
+Add xenomai package to BR.
+
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec@armadeus.com>
+
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2011-08-08 12:14:33.000000000 +0200
++++ buildroot/package/Config.in	2011-08-08 12:14:41.000000000 +0200
+@@ -217,6 +217,7 @@
+ source "package/usbmount/Config.in"
+ source "package/usbutils/Config.in"
+ source "package/wipe/Config.in"
++source "package/xenomai/Config.in"
+ source "package/xfsprogs/Config.in"
+ endmenu
+ 
+Index: buildroot/linux/linux.mk
+===================================================================
+--- buildroot.orig/linux/linux.mk	2011-08-08 12:14:40.000000000 +0200
++++ buildroot/linux/linux.mk	2011-08-08 12:14:41.000000000 +0200
+@@ -149,6 +149,9 @@
+ ifeq ($(BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_MDEV),y)
+ 	$(call KCONFIG_SET_OPT,CONFIG_UEVENT_HELPER_PATH,\"/sbin/mdev\",$(@D)/.config)
+ endif
++ifeq ($(BR2_PACKAGE_XENOMAI),y)
++	make -C ../buildroot xenomai-patch-kernel
++endif
+ 	$(TARGET_MAKE_ENV) $(MAKE) $(LINUX26_MAKE_FLAGS) -C $(@D) oldconfig
+ 	$(Q)touch $@
+ 
+Index: buildroot/package/xenomai/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/xenomai/Config.in	2011-08-08 12:14:41.000000000 +0200
+@@ -0,0 +1,44 @@
++config BR2_PACKAGE_XENOMAI
++	bool "Xenomai"
++	help
++	  Real-Time Framework for Linux
++
++	  http://xenomai.org
++
++if BR2_PACKAGE_XENOMAI
++
++if BR2_x86
++config BR2_PACKAGE_XENOMAI_SMP
++        bool "Enable SMP support"
++        help
++          Enable SMP support
++
++config BR2_PACKAGE_XENOMAI_SEP
++        bool "Enable x86 SEP instructions"
++        help
++          Enable x86 SEP instructions
++          You will also need NPTL
++endif #BR2_x86
++
++config BR2_PACKAGE_XENOMAI_MACH
++        string "Machine architecture"
++        default "generic"
++	depends on BR2_arm
++        help
++          Select for which machine we are compiling.
++          Possible choices are :
++          - at91rm9200
++          - at91sam926x
++          - generic
++          - imx
++          - imx21
++          - integrator
++          - ixp4xx
++          - mx2
++          - mx3
++          - pxa
++          - pxa3xx
++          - s3c2410
++          - sa1100
++
++endif # BR2_PACKAGE_XENOMAI
+Index: buildroot/package/xenomai/xenomai.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/xenomai/xenomai.mk	2011-08-08 12:14:41.000000000 +0200
+@@ -0,0 +1,121 @@
++#############################################################
++#
++# xenomai :
++# URL  : http://xenomai.org
++# NOTE : Real-Time Framework for Linux
++#
++# adeos :
++# URL   : http://home.gna.org/adeos/
++# NOTE  : The purpose of Adeos is to provide a flexible
++#         environment for sharing hardware resources among
++#         multiple operating systems, or among multiple
++#         instances of a single OS.
++#
++#############################################################
++
++KERNEL_VERSION=$(call qstrip,$(BR2_LINUX_KERNEL_VERSION))
++KERNEL_DIR:=$(BUILD_DIR)/linux-$(KERNEL_VERSION)
++
++XENOMAI_VERSION:=2.5.2
++XENOMAI_SOURCE:=xenomai-$(XENOMAI_VERSION).tar.bz2
++XENOMAI_SITE:=http://download.gna.org/xenomai/stable
++XENOMAI_DIR:=$(BUILD_DIR)/xenomai-$(XENOMAI_VERSION)
++XENOMAI_CAT:=bzcat
++XENOMAI_BINARY:=xeno-load
++XENOMAI_TARGET_BINARY:=usr/xenomai/bin/$(XENOMAI_BINARY)
++XENOMAI_ARCH:=$(shell echo $(BR2_ARCH))
++XENOMAI_CONF:=--host=$(XENOMAI_ARCH)-linux --datarootdir=/xenodoc
++
++ifeq ($(BR2_arm),y)
++	XENOMAI_CONF +=--enable-arm-mach=$(shell echo $(BR2_PACKAGE_XENOMAI_MACH))
++	ifeq ($(BR2_ARM_EABI),y)
++		XENOMAI_CONF += --enable-$(XENOMAI_ARCH)-eabi=yes
++	else
++		XENOMAI_CONF += --enable-$(XENOMAI_ARCH)-eabi=no
++	endif
++endif
++
++ifeq ($(BR2_x86),y)
++	ifeq ($(BR2_PACKAGE_XENOMAI_SMP),y)
++		XENOMAI_CONF+=--enable-smp=yes
++	endif
++	ifeq ($(BR2_PACKAGE_XENOMAI_SEP),y)
++		XENOMAI_CONF+=--enable-x86-sep=yes
++	endif
++endif
++
++$(DL_DIR)/$(XENOMAI_SOURCE):
++	@$(call MESSAGE,"Downloading Xenomai")
++	$(call DOWNLOAD,$(XENOMAI_SITE),$(XENOMAI_SOURCE))
++
++xenomai-source: $(DL_DIR)/$(XENOMAI_SOURCE)
++
++$(XENOMAI_DIR)/.unpacked: $(DL_DIR)/$(XENOMAI_SOURCE)
++	@$(call MESSAGE,"Extracting Xenomai")
++	$(XENOMAI_CAT) $(DL_DIR)/$(XENOMAI_SOURCE) | tar -C $(BUILD_DIR) $(TAR_OPTIONS) -
++	touch $@
++
++$(KERNEL_DIR)/.patched.xenomai: $(XENOMAI_DIR)/.unpacked
++	@$(call MESSAGE,"Patching/Preparing Linux for Xenomai")
++	toolchain/patch-kernel.sh $(KERNEL_DIR) package/xenomai \
++		\*-before-adeos-\*.patch
++	$(XENOMAI_DIR)/scripts/prepare-kernel.sh \
++		--linux=$(KERNEL_DIR) \
++		--arch=$(BR2_ARCH) \
++		--default
++	cat package/xenomai/xeno-kernel.config >> $(KERNEL_DIR)/.config
++	toolchain/patch-kernel.sh $(KERNEL_DIR) package/xenomai \
++		\*-after-adeos-\*.patch
++	toolchain/patch-kernel.sh $(XENOMAI_DIR) package/xenomai \
++		\*-xenomai-\*.patch
++	touch $@
++
++xenomai-patch-kernel: $(KERNEL_DIR)/.patched.xenomai
++
++$(XENOMAI_DIR)/.configured: $(KERNEL_DIR)/.patched.xenomai
++	@$(call MESSAGE,"Configuring Xenomai")
++	(cd $(XENOMAI_DIR); rm -rf config.cache; \
++                $(TARGET_CONFIGURE_OPTS) \
++		$(TARGET_CONFIGURE_ARGS) \
++                CCFLAGS_FOR_BUILD="$(HOST_CFLAGS)" \
++		./configure $(XENOMAI_CONF) \
++	)
++	touch $@
++
++$(KERNEL_DIR)/.built.xenomai: $(XENOMAI_DIR)/.configured
++	$(MAKE) -C $(BASE_DIR)/.. linux26
++	touch $@
++
++$(XENOMAI_DIR)/scripts/$(XENOMAI_BINARY): $(KERNEL_DIR)/.built.xenomai
++	@$(call MESSAGE,"Compiling Xenomai")
++	$(MAKE) -C $(XENOMAI_DIR) CC="$(TARGET_CC)" LD="$(TARGET_LD)"
++
++$(TARGET_DIR)/$(XENOMAI_TARGET_BINARY): $(XENOMAI_DIR)/scripts/$(XENOMAI_BINARY)
++	@$(call MESSAGE,"Installing Xenomai")
++	# Use fakeroot to pretend to do 'make install' as root
++	$(HOST_DIR)/usr/bin/fakeroot $(MAKE) -C $(XENOMAI_DIR) \
++		CC="$(TARGET_CC)" LD="$(TARGET_LD)" \
++		DESTDIR="$(TARGET_DIR)" install
++	rm -rf $(TARGET_DIR)/xenodoc
++	echo "/usr/xenomai/lib" > $(TARGET_DIR)/etc/ld.so.conf
++	echo -e 'export PATH=/usr/xenomai/bin:$${PATH}' >> $(TARGET_DIR)/etc/profile
++
++xenomai: linux26 host-fakeroot kernel-headers $(TARGET_DIR)/$(XENOMAI_TARGET_BINARY)
++
++xenomai-clean:
++	$(MAKE) DESTDIR=$(TARGET_DIR) -C $(XENOMAI_DIR) uninstall
++	-$(MAKE) DESTDIR=$(TARGET_DIR) -C $(XENOMAI_DIR) clean
++
++xenomai-dirclean: linux26-dirclean
++	if [ -d "$(XENOMAI_DIR)" ]; then \
++		$(MAKE) DESTDIR=$(TARGET_DIR) -C $(XENOMAI_DIR) uninstall; fi
++	rm -rf $(XENOMAI_DIR)
++
++#############################################################
++#
++# Toplevel Makefile options
++#
++#############################################################
++ifeq ($(strip $(BR2_PACKAGE_XENOMAI)),y)
++TARGETS+=xenomai
++endif
+Index: buildroot/package/xenomai/xeno-kernel.config
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/xenomai/xeno-kernel.config	2011-08-08 12:14:41.000000000 +0200
+@@ -0,0 +1,69 @@
++CONFIG_XENOMAI=y
++CONFIG_XENO_OPT_NUCLEUS=y
++CONFIG_XENO_OPT_PERVASIVE=y
++# CONFIG_XENO_OPT_ISHIELD is not set
++CONFIG_XENO_OPT_PRIOCPL=y
++CONFIG_XENO_OPT_PIPELINE_HEAD=y
++CONFIG_XENO_OPT_PIPE_NRDEV=32
++CONFIG_XENO_OPT_REGISTRY_NRSLOTS=512
++CONFIG_XENO_OPT_SYS_HEAPSZ=128
++CONFIG_XENO_OPT_SYS_STACKPOOLSZ=32
++CONFIG_XENO_OPT_STATS=y
++# CONFIG_XENO_OPT_DEBUG is not set
++# CONFIG_XENO_OPT_SHIRQ is not set
++CONFIG_XENO_OPT_TIMING_PERIODIC=y
++CONFIG_XENO_OPT_TIMING_SCHEDLAT=0
++# CONFIG_XENO_OPT_SCALABLE_SCHED is not set
++CONFIG_XENO_OPT_TIMER_LIST=y
++# CONFIG_XENO_OPT_TIMER_HEAP is not set
++# CONFIG_XENO_OPT_TIMER_WHEEL is not set
++CONFIG_XENO_HW_FPU=y
++CONFIG_XENO_SKIN_NATIVE=y
++CONFIG_XENO_OPT_NATIVE_BUFFER=y
++# CONFIG_XENO_OPT_NOWARN_DEPRECATED is not set
++CONFIG_XENO_OPT_NATIVE_PERIOD=0
++CONFIG_XENO_OPT_NATIVE_PIPE=y
++CONFIG_XENO_OPT_NATIVE_PIPE_BUFSZ=1024
++CONFIG_XENO_OPT_NATIVE_SEM=y
++CONFIG_XENO_OPT_NATIVE_EVENT=y
++CONFIG_XENO_OPT_NATIVE_MUTEX=y
++CONFIG_XENO_OPT_NATIVE_COND=y
++CONFIG_XENO_OPT_NATIVE_QUEUE=y
++CONFIG_XENO_OPT_NATIVE_HEAP=y
++CONFIG_XENO_OPT_NATIVE_ALARM=y
++CONFIG_XENO_OPT_NATIVE_MPS=y
++CONFIG_XENO_OPT_NATIVE_INTR=y
++CONFIG_XENO_SKIN_POSIX=y
++CONFIG_XENO_OPT_POSIX_PERIOD=0
++# CONFIG_XENO_OPT_POSIX_SHM is not set
++# CONFIG_XENO_OPT_POSIX_INTR is not set
++# CONFIG_XENO_OPT_POSIX_SELECT is not set
++# CONFIG_XENO_OPT_SCHED_CLASSES is not set
++CONFIG_XENO_OPT_SEM_HEAPSZ=12
++CONFIG_XENO_OPT_GLOBAL_SEM_HEAPSZ=12
++# CONFIG_XENO_OPT_DEBUG_POSIX is not set
++CONFIG_XENO_OPT_TIMING_VIRTICK=1000
++CONFIG_XENO_HW_UNLOCKED_SWITCH=y
++# CONFIG_XENO_SKIN_PSOS is not set
++# CONFIG_XENO_SKIN_UITRON is not set
++# CONFIG_XENO_SKIN_VRTX is not set
++# CONFIG_XENO_SKIN_VXWORKS is not set
++# CONFIG_XENO_SKIN_RTAI is not set
++CONFIG_XENO_SKIN_RTDM=y
++CONFIG_XENO_OPT_RTDM_PERIOD=0
++CONFIG_XENO_OPT_RTDM_FILDES=128
++CONFIG_XENO_OPT_RTDM_SELECT=y
++# CONFIG_XENO_DRIVERS_16550A is not set
++# CONFIG_XENO_DRIVERS_ANALOGY is not set
++# CONFIG_XENO_DRIVERS_RTIPC is not set
++CONFIG_XENO_DRIVERS_TIMERBENCH=m
++CONFIG_XENO_DRIVERS_KLATENCY=m
++CONFIG_XENO_DRIVERS_IRQBENCH=m
++# CONFIG_XENO_DRIVERS_SIGTEST is not set
++CONFIG_XENO_DRIVERS_SWITCHTEST=m
++# CONFIG_XENO_DRIVERS_CAN is not set
++# CONFIG_ARM_FCSE is not set
++CONFIG_IPIPE=y
++CONFIG_IPIPE_DOMAINS=4
++CONFIG_IPIPE_COMPAT=y
++# CONFIG_IPIPE_DEBUG is not set
+Index: buildroot/package/xenomai/00-before-adeos-compatibility_with_armadeus.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/xenomai/00-before-adeos-compatibility_with_armadeus.patch	2011-08-08 12:14:41.000000000 +0200
+@@ -0,0 +1,10 @@
++--- a/arch/arm/mach-imx/include/mach/imxfb.h
+++++ b/arch/arm/mach-imx/include/mach/imxfb.h
++@@ -14,7 +14,6 @@
++ #define PCR_BPIX_8	(3 << 25)
++ #define PCR_BPIX_12	(4 << 25)
++ #define PCR_BPIX_16	(4 << 25)
++-#define PCR_BPIX_MASK	(7 << 25)
++ #define PCR_PIXPOL	(1 << 24)
++ #define PCR_FLMPOL	(1 << 23)
++ #define PCR_LPPOL	(1 << 22)
+Index: buildroot/package/xenomai/01-after-adeos-prevent_system_freeze_on_mxc_with_gpio_generated_interrupts.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/xenomai/01-after-adeos-prevent_system_freeze_on_mxc_with_gpio_generated_interrupts.patch	2011-08-08 12:14:41.000000000 +0200
+@@ -0,0 +1,23 @@
++Corrects Freeze problem with MX2 when Adeos is active and 
++application/driver uses interruption on GPIO
++
++Signed-off-by: Gwenhael GOAVEC-MEROU <gwe@trabucayre.com>
++
++Index: kernel/arch/arm/plat-mxc/gpio.c
++===================================================================
++--- a/arch/arm/plat-mxc/gpio.c	2009-12-17 22:09:56.000000000 +0100
+++++ b/arch/arm/plat-mxc/gpio.c	2009-12-17 15:45:17.000000000 +0100
++@@ -241,11 +241,11 @@
++ 	int i;
++ 
++ 	for (i = 0; i < gpio_table_size; i++) {
++-		irq_msk = __raw_readl(port->base + GPIO_IMR);
+++		irq_msk = __raw_readl(port[i].base + GPIO_IMR);
++ 		if (!irq_msk)
++ 			continue;
++ 
++-		irq_stat = __raw_readl(port->base + GPIO_ISR) & irq_msk;
+++		irq_stat = __raw_readl(port[i].base + GPIO_ISR) & irq_msk;
++ 
++ 		gpio_irq_no = port[i].virtual_irq_start;
++ 
+Index: buildroot/package/xenomai/02-xenomai-makes_cond_torture_test_compiles_again.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/xenomai/02-xenomai-makes_cond_torture_test_compiles_again.patch	2011-08-08 12:14:41.000000000 +0200
+@@ -0,0 +1,18 @@
++--- a/src/testsuite/unit/cond-torture.c
+++++ b/src/testsuite/unit/cond-torture.c
++@@ -47,13 +47,13 @@
++
++ 	pthread_mutexattr_init(&mattr);
++ 	pthread_mutexattr_settype(&mattr, type);
++-	if (pi != 0)
+++	if (pi != 0){
++ #ifdef HAVE_PTHREAD_MUTEXATTR_SETPROTOCOL
++ 		pthread_mutexattr_setprotocol(&mattr, PTHREAD_PRIO_INHERIT);
++
++ 	err = pthread_mutex_init(mutex, &mattr);
++ #else
++-	else {
+++	} else {
++ 		err = ENOSYS;
++ 		goto out;
++ 	}
+Index: buildroot/toolchain/uClibc/uClibc-0.9.29-spin_locks_are_not_supported_with_old_pthread_api.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/toolchain/uClibc/uClibc-0.9.29-spin_locks_are_not_supported_with_old_pthread_api.patch	2011-08-08 12:14:41.000000000 +0200
+@@ -0,0 +1,21 @@
++Spinlocks are not implemented in uClibc when using old pthread API.
++Xenomai (clock_test) uses this flag to enable or not spinlocking and so, if
++_POSIX_SPIN_LOCKS is set, but not implemented, then Xenomai will fail to build.
++
++To check: is LINUXTHREADS_NEW the right #ifdef ?
++
++diff -purN uClibc-0.9.29.ori/libc/sysdeps/linux/common/bits/posix_opt.h uClibc-0.9.29/libc/sysdeps/linux/common/bits/posix_opt.h
++--- uClibc-0.9.29.ori/libc/sysdeps/linux/common/bits/posix_opt.h	2008-04-26 15:25:03.000000000 +0200
+++++ uClibc-0.9.29/libc/sysdeps/linux/common/bits/posix_opt.h	2008-04-26 15:39:38.000000000 +0200
++@@ -124,8 +124,10 @@
++ /* We support the Timeouts option.  */
++ #define _POSIX_TIMEOUTS	200112L
++ 
++-/* We support spinlocks.  */
+++/* We support spinlocks when using new pthread API. */
+++#ifdef LINUXTHREADS_NEW
++ #define _POSIX_SPIN_LOCKS	200112L
+++#endif
++ 
++ /* The `spawn' function family is supported.  */
++ #define _POSIX_SPAWN	200112L
+Index: buildroot/toolchain/uClibc/uClibc-0.9.30.3-spin_locks_are_not_supported_with_old_pthread_api.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/toolchain/uClibc/uClibc-0.9.30.3-spin_locks_are_not_supported_with_old_pthread_api.patch	2011-08-08 12:14:41.000000000 +0200
+@@ -0,0 +1,22 @@
++Spinlocks are not implemented in uClibc when using old pthread API.
++Xenomai (clock_test) uses this flag to enable or not spinlocking and so, if
++_POSIX_SPIN_LOCKS is set, but not implemented, then Xenomai will fail to build.
++
++To check: is LINUXTHREADS_NEW the right #ifdef ?
++
++Index: uClibc-0.9.30.3/libc/sysdeps/linux/common/bits/posix_opt.h
++===================================================================
++--- uClibc-0.9.30.3.orig/libc/sysdeps/linux/common/bits/posix_opt.h	2011-06-24 17:50:34.000000000 +0200
+++++ uClibc-0.9.30.3/libc/sysdeps/linux/common/bits/posix_opt.h	2011-06-24 17:52:30.000000000 +0200
++@@ -124,8 +124,10 @@
++ /* We support the Timeouts option.  */
++ #define _POSIX_TIMEOUTS	200112L
++ 
++-/* We support spinlocks.  */
+++/* We support spinlocks when using new pthread API.  */
+++#ifdef LINUXTHREADS_NEW
++ #define _POSIX_SPIN_LOCKS	200112L
+++#endif
++ 
++ /* The `spawn' function family is supported.  */
++ #if 0 /* no support in uClibc (yet) */

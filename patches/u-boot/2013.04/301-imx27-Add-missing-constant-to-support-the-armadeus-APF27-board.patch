@@ -1,0 +1,49 @@
+Add some missing constant (chip select, ...), and
+a file mxc_nand.h with the NFC constant.
+
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+ arch/arm/cpu/arm926ejs/mx27/asm-offsets.c |    5 +++++
+ arch/arm/include/asm/arch-mx27/imx-regs.h |    3 ++-
+ 2 files changed, 7 insertions(+), 1 deletions(-)
+
+diff --git a/arch/arm/cpu/arm926ejs/mx27/asm-offsets.c b/arch/arm/cpu/arm926ejs/mx27/asm-offsets.c
+index f3a8d7b..215c562 100644
+--- a/arch/arm/cpu/arm926ejs/mx27/asm-offsets.c
++++ b/arch/arm/cpu/arm926ejs/mx27/asm-offsets.c
+@@ -41,5 +41,10 @@ int main(void)
+ 	DEFINE(ESDCFG1_ROF, offsetof(struct esdramc_regs, esdcfg1));
+ 	DEFINE(ESDMISC_ROF, offsetof(struct esdramc_regs, esdmisc));
+ 
++	DEFINE(GPCR, IMX_SYSTEM_CTL_BASE +
++		offsetof(struct system_control_regs, gpcr));
++	DEFINE(FMCR, IMX_SYSTEM_CTL_BASE +
++		offsetof(struct system_control_regs, fmcr));
++
+ 	return 0;
+ }
+diff --git a/arch/arm/include/asm/arch-mx27/imx-regs.h b/arch/arm/include/asm/arch-mx27/imx-regs.h
+index 8867e9f..707ca4b 100644
+--- a/arch/arm/include/asm/arch-mx27/imx-regs.h
++++ b/arch/arm/include/asm/arch-mx27/imx-regs.h
+@@ -185,7 +185,7 @@ struct iim_regs {
+ 	struct fuse_bank {
+ 		u32 fuse_regs[0x20];
+ 		u32 fuse_rsvd[0xe0];
+-	} bank[1];
++	} bank[2];
+ };
+ 
+ struct fuse_bank0_regs {
+@@ -225,6 +225,7 @@ struct fuse_bank0_regs {
+ #define IIM_BASE_ADDR		IMX_IIM_BASE
+ #define IMX_FEC_BASE		(0x2b000 + IMX_IO_BASE)
+ 
++#define IMX_NFC_BASE		(0xD8000000)
+ #define IMX_ESD_BASE		(0xD8001000)
+ #define IMX_WEIM_BASE		(0xD8002000)
+ 
+-- 
+1.7.4.4
+

@@ -1,0 +1,23 @@
+Some HOST1 registers bits seem to be misused. Corresponding comments seem also
+false. Correct that.
+
+Strange that with or without this changes HOST1 seems to work the same way...
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: linux-3.0.10/arch/arm/mach-mx5/ehci.c
+===================================================================
+--- linux-3.0.10.orig/arch/arm/mach-mx5/ehci.c	2011-11-21 23:37:44.000000000 +0100
++++ linux-3.0.10/arch/arm/mach-mx5/ehci.c	2011-11-30 17:57:58.000000000 +0100
+@@ -113,9 +113,9 @@
+ 		}
+ 
+ 		if (flags & MXC_EHCI_POWER_PINS_ENABLED)
+-			v &= ~MXC_H1_UCTRL_H1PM_BIT; /* HOST1 power mask used*/
++			v |= MXC_H1_UCTRL_H1PM_BIT; /* USBPWR pin used */
+ 		else
+-			v |= MXC_H1_UCTRL_H1PM_BIT; /* HOST1 power mask used*/
++			v &= ~MXC_H1_UCTRL_H1PM_BIT; /* USBPWR pin inactive */
+ 		__raw_writel(v, usbother_base + MXC_USBCTRL_OFFSET);
+ 
+ 		v = __raw_readl(usbother_base + MXC_USB_PHY_CTR_FUNC_OFFSET);

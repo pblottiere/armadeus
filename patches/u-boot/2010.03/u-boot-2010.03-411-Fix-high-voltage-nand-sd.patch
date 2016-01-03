@@ -1,0 +1,28 @@
+diff -purN u-boot-2010.03.ori/include/asm-arm/arch-mx51/asm-offsets.h u-boot-2010.03/include/asm-arm/arch-mx51/asm-offsets.h
+--- u-boot-2010.03.ori/include/asm-arm/arch-mx51/asm-offsets.h	2011-01-25 22:43:22.000000000 +0100
++++ u-boot-2010.03/include/asm-arm/arch-mx51/asm-offsets.h	2011-02-03 23:08:33.000000000 +0100
+@@ -176,7 +176,7 @@
+ #define PAD_CTL_HYS_ENABLE (0x1 << 8)	/* Hysteresis enabled */
+ #define PAD_CTL_DDR_INPUT_CMOS (0x0 << 9)/* DDR input CMOS */
+ #define PAD_CTL_DDR_INPUT_DDR (0x1 << 9)/* DDR input DDR */
+-#define PAD_CTL_DRV_VOT_LOW (0x0 << 13) /* Low voltage mode */
+-#define PAD_CTL_DRV_VOT_HIGH (0x1 << 13)/* High voltage mode */
++#define PAD_CTL_DRV_VOT_HIGH (0x0 << 13) /* High voltage mode */
++#define PAD_CTL_DRV_VOT_LOW (0x1 << 13)/* Low voltage mode */
+ 
+ #endif /* __ASSEMBLY__ */
+diff -purN u-boot-2010.03.ori/include/asm-arm/arch-mx51/iomux.h u-boot-2010.03/include/asm-arm/arch-mx51/iomux.h
+--- u-boot-2010.03.ori/include/asm-arm/arch-mx51/iomux.h	2010-03-31 23:54:39.000000000 +0200
++++ u-boot-2010.03/include/asm-arm/arch-mx51/iomux.h	2011-02-03 23:08:48.000000000 +0100
+@@ -66,8 +66,8 @@ typedef enum iomux_pad_config {
+ 	PAD_CTL_HYS_ENABLE = 0x1 << 8,	/* Hysteresis enabled */
+ 	PAD_CTL_DDR_INPUT_CMOS = 0x0 << 9,/* DDR input CMOS */
+ 	PAD_CTL_DDR_INPUT_DDR = 0x1 << 9,/* DDR input DDR */
+-	PAD_CTL_DRV_VOT_LOW = 0x0 << 13, /* Low voltage mode */
+-	PAD_CTL_DRV_VOT_HIGH = 0x1 << 13,/* High voltage mode */
++	PAD_CTL_DRV_VOT_HIGH = 0x0 << 13, /* High voltage mode */
++	PAD_CTL_DRV_VOT_LOW = 0x1 << 13,/* Low voltage mode */
+ } iomux_pad_config_t;
+ 
+ /* various IOMUX input select register index */
+

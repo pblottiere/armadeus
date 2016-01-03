@@ -1,0 +1,57 @@
+Add the possibility to build & install the Qt's demos and examples separately.
+
+Signed-off-by: Jérémie Scheer <jeremie.scheer@armadeus.com>
+
+Index: buildroot/package/qt/Config.in
+===================================================================
+--- buildroot.orig/package/qt/Config.in	2013-11-30 14:16:03.000000000 +0100
++++ buildroot/package/qt/Config.in	2014-06-23 11:56:03.000000000 +0200
+@@ -21,7 +21,13 @@
+ 	  If unsure, say N.
+ 
+ config BR2_PACKAGE_QT_DEMOS
+-	bool "Compile and install demos and examples (with code)"
++	bool "Compile and install Qt demos (with code)"
++	select BR2_PACKAGE_QT_GUI_MODULE
++	help
++	  If unsure, say N.
++
++config BR2_PACKAGE_QT_EXAMPLES
++	bool "Compile and install Qt examples (with code)"
+ 	select BR2_PACKAGE_QT_GUI_MODULE
+ 	help
+ 	  If unsure, say N.
+Index: buildroot/package/qt/qt.mk
+===================================================================
+--- buildroot.orig/package/qt/qt.mk	2013-11-30 14:16:03.000000000 +0100
++++ buildroot/package/qt/qt.mk	2014-06-23 11:57:29.000000000 +0200
+@@ -11,9 +11,10 @@
+ #
+ ################################################################################
+ 
+-QT_VERSION = 4.8.5
++QT_VERSION_MAJOR = 4.8
++QT_VERSION = $(QT_VERSION_MAJOR).5
+ QT_SOURCE  = qt-everywhere-opensource-src-$(QT_VERSION).tar.gz
+-QT_SITE    = http://download.qt-project.org/official_releases/qt/4.8/$(QT_VERSION)
++QT_SITE    = http://download.qt-project.org/archive/qt/$(QT_VERSION_MAJOR)/$(QT_VERSION)
+ QT_DEPENDENCIES = host-pkgconf
+ QT_INSTALL_STAGING = YES
+ 
+@@ -58,9 +59,14 @@
+ endif
+ 
+ ifeq ($(BR2_PACKAGE_QT_DEMOS),y)
+-QT_CONFIGURE_OPTS += -examplesdir $(TARGET_DIR)/usr/share/qt/examples -demosdir $(TARGET_DIR)/usr/share/qt/demos
++QT_CONFIGURE_OPTS += -demosdir $(TARGET_DIR)/usr/share/qt/demos
+ else
+-QT_CONFIGURE_OPTS += -nomake examples -nomake demos
++QT_CONFIGURE_OPTS += -nomake demos
++endif
++ifeq ($(BR2_PACKAGE_QT_EXAMPLES),y)
++QT_CONFIGURE_OPTS += -examplesdir $(TARGET_DIR)/usr/share/qt/examples
++else
++QT_CONFIGURE_OPTS += -nomake examples
+ endif
+ 
+ # ensure glib is built first if enabled for Qt's glib support

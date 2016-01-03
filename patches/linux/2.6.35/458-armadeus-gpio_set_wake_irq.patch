@@ -1,0 +1,71 @@
+Enable mx28 GPIO pins to support system wakeup.
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+Index: linux-2.6.35.3/arch/arm/plat-mxs/gpio.c
+===================================================================
+--- linux-2.6.35.3/arch/arm/plat-mxs/gpio.c
++++ linux-2.6.35.3/arch/arm/plat-mxs/gpio.c
+@@ -22,6 +22,7 @@
+ #include <linux/string.h>
+ #include <linux/gpio.h>
+ #include <linux/list.h>
++#include <linux/interrupt.h>
+ #include <linux/irq.h>
+ 
+ #include <mach/hardware.h>
+@@ -166,7 +167,8 @@ static void mxs_gpio_mask_irq(unsigned i
+ 	port = mxs_gpios[GPIO_TO_BANK(gpio)];
+ 	if (port->child_irq < 0)
+ 		return;
+-	port->chip->mask_irq(port, GPIO_TO_PINS(gpio));
++	if (!(port->suspend_wakeup & (1 << gpio)))
++		port->chip->mask_irq(port, GPIO_TO_PINS(gpio));
+ }
+ 
+ static void mxs_gpio_unmask_irq(unsigned int irq)
+@@ -179,6 +181,24 @@ static void mxs_gpio_unmask_irq(unsigned
+ 	port->chip->unmask_irq(port, GPIO_TO_PINS(gpio));
+ }
+ 
++static int mxs_gpio_set_wake_irq(u32 irq, u32 enable)
++{
++	struct mxs_gpio_port *port;
++	unsigned int gpio = irq_to_gpio(irq);
++	port = mxs_gpios[GPIO_TO_BANK(gpio)];
++	if (port->child_irq < 0)
++		return -EINVAL;
++
++	if (enable) {
++		port->suspend_wakeup |= (1 << gpio);
++		enable_irq_wake(port->irq);
++	} else {
++		port->suspend_wakeup &= ~(1 << gpio);
++		disable_irq_wake(port->irq);
++	}
++	return 0;
++}
++
+ static struct irq_chip gpio_irq_chip = {
+ 	.ack = mxs_gpio_ack_irq,
+ 	.mask = mxs_gpio_mask_irq,
+@@ -186,6 +206,7 @@ static struct irq_chip gpio_irq_chip = {
+ 	.enable = mxs_gpio_unmask_irq,
+ 	.disable = mxs_gpio_mask_irq,
+ 	.set_type = mxs_gpio_set_irq_type,
++	.set_wake = mxs_gpio_set_wake_irq,
+ };
+ 
+ int __init mxs_add_gpio_port(struct mxs_gpio_port *port)
+Index: linux-2.6.35.3/arch/arm/plat-mxs/include/mach/gpio.h
+===================================================================
+--- linux-2.6.35.3/arch/arm/plat-mxs/include/mach/gpio.h
++++ linux-2.6.35.3/arch/arm/plat-mxs/include/mach/gpio.h
+@@ -51,6 +51,7 @@ struct mxs_gpio_port {
+ 	struct mxs_gpio_chip *chip;
+ 	struct gpio_chip port;
+ 	u32 both_edges;
++	u32 suspend_wakeup;
+ };
+ 
+ extern int mxs_add_gpio_port(struct mxs_gpio_port *port);

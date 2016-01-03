@@ -1,0 +1,17 @@
+Inverted logic on APF27Dev user LED.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: linux-3.12.7/arch/arm/boot/dts/imx27-apf27dev.dts
+===================================================================
+--- linux-3.12.7.orig/arch/arm/boot/dts/imx27-apf27dev.dts	2014-01-17 17:54:18.915096591 +0100
++++ linux-3.12.7/arch/arm/boot/dts/imx27-apf27dev.dts	2014-01-17 17:54:28.635144789 +0100
+@@ -31,7 +31,7 @@
+ 
+ 		user {
+ 			label = "Heartbeat";
+-			gpios = <&gpio6 14 0>;
++			gpios = <&gpio6 14 1>;
+ 			linux,default-trigger = "heartbeat";
+ 		};
+ 	};

@@ -1,0 +1,46 @@
+On Armadeus platforms, we use a custom rootfs AND we need to be able to choose
+generic serial tty device.
+
+Specific to Armadeus ??
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/target/generic/Config.in
+===================================================================
+--- buildroot.orig/target/generic/Config.in	2012-02-21 16:43:48.000000000 +0100
++++ buildroot/target/generic/Config.in	2012-02-21 16:46:06.000000000 +0100
+@@ -84,8 +84,6 @@
+ 	  Path custom target skeleton.
+ endif
+ 
+-if BR2_ROOTFS_SKELETON_DEFAULT
+-
+ config BR2_TARGET_GENERIC_GETTY_PORT
+ 	string "Port to run a getty (login prompt) on"
+ 	default "ttyS0"
+@@ -132,8 +130,6 @@
+ 	  read-only.
+ 	  If unsure, say Y.
+ 
+-endif # BR2_ROOTFS_SKELETON_DEFAULT
+-
+ config BR2_ROOTFS_POST_BUILD_SCRIPT
+ 	string "Custom script to run before creating filesystem images"
+ 	default ""
+Index: buildroot/target/generic/Makefile.in
+===================================================================
+--- buildroot.orig/target/generic/Makefile.in	2012-02-21 16:43:24.000000000 +0100
++++ buildroot/target/generic/Makefile.in	2012-02-21 16:46:06.000000000 +0100
+@@ -39,7 +39,6 @@
+ TARGETS += target-generic-issue
+ endif
+ 
+-ifeq ($(BR2_ROOTFS_SKELETON_DEFAULT),y)
+ ifeq ($(BR2_PACKAGE_SYSVINIT),y)
+ TARGETS += target-generic-getty-sysvinit
+ else
+@@ -50,4 +49,3 @@
+ else
+ TARGETS += target-generic-dont-remount-rw
+ endif
+-endif

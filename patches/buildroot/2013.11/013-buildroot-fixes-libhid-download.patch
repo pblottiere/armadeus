@@ -1,0 +1,15 @@
+From BR mainline. Can be removed when moving to BR 2014.05.
+
+Index: buildroot/package/libhid/libhid.mk
+===================================================================
+--- buildroot.orig/package/libhid/libhid.mk	2014-06-24 21:54:37.789807736 +0200
++++ buildroot/package/libhid/libhid.mk	2014-06-24 21:55:29.574064530 +0200
+@@ -5,7 +5,7 @@
+ ################################################################################
+ 
+ LIBHID_VERSION = 0.2.16
+-LIBHID_SITE = http://alioth.debian.org/frs/download.php/file/1958
++LIBHID_SITE = http://sources.buildroot.net/
+ LIBHID_DEPENDENCIES = libusb-compat libusb
+ LIBHID_INSTALL_STAGING = YES
+ LIBHID_AUTORECONF = YES

@@ -1,0 +1,334 @@
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+---
+ arch/arm/cpu/armv7/cpu.c
+ arch/arm/cpu/armv7/mx5/lowlevel_init.S
+ arch/arm/include/asm/arch-mx5/imx-regs.h
+ arch/arm/include/asm/arch-mx5/mx5x_pins.h
+ arch/arm/include/asm/arch-mx5/regs_esdctl.h
+
+diff --git a/arch/arm/cpu/armv7/cpu.c b/arch/arm/cpu/armv7/cpu.c
+index 39a8023..c8c2293 100644
+--- a/arch/arm/cpu/armv7/cpu.c
++++ b/arch/arm/cpu/armv7/cpu.c
+@@ -82,5 +82,9 @@ int cleanup_before_linux(void)
+ 	 */
+ 	cpu_cache_initialization();
+ 
++#ifndef CONFIG_L2_OFF
++/*	v7_outer_cache_enable();*/
++#endif
++
+ 	return 0;
+ }
+diff --git a/arch/arm/cpu/armv7/mx5/lowlevel_init.S b/arch/arm/cpu/armv7/mx5/lowlevel_init.S
+index a40b84f..1ca9b22 100644
+--- a/arch/arm/cpu/armv7/mx5/lowlevel_init.S
++++ b/arch/arm/cpu/armv7/mx5/lowlevel_init.S
+@@ -24,6 +24,34 @@
+ #include <generated/asm-offsets.h>
+ #include <linux/linkage.h>
+ 
++#ifndef CONFIG_SYS_PLL_DP_CTL
++/* use internal oscillator */
++#define CONFIG_SYS_PLL_DP_CTL	0x00001232
++#endif
++
++#ifndef CONFIG_SYS_CLKCTL_CCSR
++/* use internal oscillator */
++#define CONFIG_SYS_CLKCTL_CCSR	0x00000000
++#endif
++
++#ifndef CONFIG_SYS_CLKTL_CBCDR
++#define CONFIG_SYS_CLKTL_CBCDR	0x59E35100
++#endif
++
++#ifndef CONFIG_SYS_CLKTL_CBCMR
++/* Use lp_apm (24MHz) source for perclk */
++#define CONFIG_SYS_CLKTL_CBCMR	0x000020C2
++#endif
++
++#ifndef CONFIG_SYS_CLKTL_CSCDR1
++#define CONFIG_SYS_CLKTL_CSCDR1 0x00C30321
++#endif
++
++#ifndef CONFIG_SYS_CLKTL_CBCMR1
++/* Use PLL 2 for UART's, get 66.5MHz from it */
++#define CONFIG_SYS_CLKTL_CBCMR1 0xA5A2A020
++#endif
++
+ .section ".text.init", "x"
+ 
+ .macro init_arm_erratum
+@@ -114,7 +142,7 @@
+ #define W_DP_MFN	8
+ 
+ setup_pll_func:
+-	ldr r1, =0x00001232
++	ldr r1, =CONFIG_SYS_PLL_DP_CTL
+ 	str r1, [r0, #PLL_DP_CTL] /* Set DPLL ON (set UPEN bit): BRMO=1 */
+ 	mov r1, #0x2
+ 	str r1, [r0, #PLL_DP_CONFIG] /* Enable auto-restart AREN bit */
+@@ -131,7 +159,7 @@
+ 	str r1, [r0, #PLL_DP_MFN]
+ 	str r1, [r0, #PLL_DP_HFS_MFN]
+ 
+-	ldr r1, =0x00001232
++	ldr r1, =CONFIG_SYS_PLL_DP_CTL
+ 	str r1, [r0, #PLL_DP_CTL]
+ 1:	ldr r1, [r0, #PLL_DP_CTL]
+ 	ands r1, r1, #0x1
+@@ -143,7 +171,7 @@
+ .macro setup_pll_errata pll, freq
+ 	ldr r2, =\pll
+ 	str r4, [r2, #PLL_DP_CONFIG] /* Disable auto-restart AREN bit */
+-	ldr r1, =0x00001236
++	ldr r1, =CONFIG_SYS_PLL_DP_CTL  | 0x04
+ 	str r1, [r2, #PLL_DP_CTL]    /* Restart PLL with PLM=1 */
+ 1:	ldr r1, [r2, #PLL_DP_CTL]    /* Wait for lock */
+ 	ands r1, r1, #0x1
+@@ -172,6 +200,16 @@
+ #if defined (CONFIG_MX51)
+ 	ldr r0, =CCM_BASE_ADDR
+ 
++#ifdef CONFIG_SYS_CLKCTL_CCMR
++	ldr r1, =CONFIG_SYS_CLKCTL_CCMR
++	str r1, [r0, #CLKCTL_CCMR]
++
++	/* make sure clocks are ready */
++1:	ldr r1, [r0, #CLKCTL_CSR]
++	cmp r1, #CONFIG_SYS_CLKCTL_CSR
++	bne 1b
++#endif
++
+ 	/* Gate of clocks to the peripherals first */
+ 	ldr r1, =0x3FFFFFFF
+ 	str r1, [r0, #CLKCTL_CCGR0]
+@@ -199,7 +237,7 @@
+ 	bne 1b
+ 
+ 	/* Switch ARM to step clock */
+-	mov r1, #0x4
++	mov r1, #CONFIG_SYS_CLKCTL_CCSR | 0x04
+ 	str r1, [r0, #CLKCTL_CCSR]
+ 
+ #if defined(CONFIG_MX51_PLL_ERRATA)
+@@ -244,13 +282,14 @@
+ 	str r1, [r0, #CLKCTL_CACRR]
+ 
+ 	/* Switch ARM back to PLL 1 */
++	mov r1, #CONFIG_SYS_CLKCTL_CCSR
+-	str r4, [r0, #CLKCTL_CCSR]
++	str r1, [r0, #CLKCTL_CCSR]
+ 
+ 	/* setup the rest */
+-	/* Use lp_apm (24MHz) source for perclk */
+-	ldr r1, =0x000020C2 | CONFIG_SYS_DDR_CLKSEL
++	/* select source for perclk */
++	ldr r1, =CONFIG_SYS_CLKTL_CBCMR | CONFIG_SYS_DDR_CLKSEL
+ 	str r1, [r0, #CLKCTL_CBCMR]
+-	/* ddr clock from PLL 1, all perclk dividers are 1 since using 24MHz */
++	/* ddr clock from PLL 1 */
+ 	ldr r1, =CONFIG_SYS_CLKTL_CBCDR
+ 	str r1, [r0, #CLKCTL_CBCDR]
+ 
+@@ -265,9 +304,9 @@
+ 	str r1, [r0, #CLKCTL_CCGR6]
+ 
+ 	/* Use PLL 2 for UART's, get 66.5MHz from it */
+-	ldr r1, =0xA5A2A020
++	ldr r1, =CONFIG_SYS_CLKTL_CBCMR1
+ 	str r1, [r0, #CLKCTL_CSCMR1]
+-	ldr r1, =0x00C30321
++	ldr r1, =CONFIG_SYS_CLKTL_CSCDR1
+ 	str r1, [r0, #CLKCTL_CSCDR1]
+ 	/* make sure divider effective */
+ 1:	ldr r1, [r0, #CLKCTL_CDHIPR]
+diff --git a/arch/arm/include/asm/arch-mx5/imx-regs.h b/arch/arm/include/asm/arch-mx5/imx-regs.h
+index 46017f4..520bf98 100644
+--- a/arch/arm/include/asm/arch-mx5/imx-regs.h
++++ b/arch/arm/include/asm/arch-mx5/imx-regs.h
+@@ -267,6 +267,7 @@
+ #define M4IF_FBPM0	0x40
+ #define M4IF_FIDBP	0x48
+ 
++#ifndef DP_OP_800
+ /* Assuming 24MHz input clock with doubler ON */
+ /*                            MFI         PDF */
+ #define DP_OP_864	((8 << 4) + ((1 - 1)  << 0))
+@@ -305,6 +306,7 @@
+ #define DP_OP_216	((6 << 4) + ((3 - 1)  << 0))
+ #define DP_MFD_216	(4 - 1)
+ #define DP_MFN_216	3
++#endif /* DP_OP_800 */
+ 
+ #define CHIP_REV_1_0            0x10
+ #define CHIP_REV_1_1            0x11
+diff --git a/arch/arm/include/asm/arch-mx5/regs_esdctl.h b/arch/arm/include/asm/arch-mx5/regs_esdctl.h
+new file mode 100644
+index 0000000..1c0bf8e
+--- /dev/null
++++ b/arch/arm/include/asm/arch-mx5/regs_esdctl.h
+@@ -0,0 +1,131 @@
++/*
++ * Copyright (C) 2012
++ * Eric Jarrige, Armadeus Project, <eric.jarrige@armadeus.org>
++ *
++ * See file CREDITS for list of people who contributed to this
++ * project.
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of
++ * the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
++ * MA 02111-1307 USA
++ */
++
++
++#ifndef __REGS_ESDCTL_H__
++#define __REGS_ESDCTL_H__
++
++
++#ifndef	__ASSEMBLY__
++/* ESDCTL registers */
++#if defined(CONFIG_MX51)
++struct esdctl_regs {
++	u32	esdctl0;
++	u32	esdcfg0;
++	u32	esdctl1;
++	u32	esdcfg1;
++	u32	esdmisc;
++	u32	esdscr;
++	u32	reserved[2];
++	u32	esdcdly1;
++	u32	esdcdly2;
++	u32	esdcdly3;
++	u32	esdcdly4;
++	u32	esdcdly5;
++	u32	esdgpr;
++	u32	esdprct0;
++	u32	esdprct1;
++};
++#elif defined(CONFIG_MX53)
++struct esdctl_regs {
++	u32	esdctl;
++	u32	esdpdc;
++	u32	esdotc;
++	u32	esdcfg0;
++	u32	esdcfg1;
++	u32	esdcfg2;
++	u32	esdmisc;
++	u32	esdscr;
++	u32	esdref;
++	u32	esdwcc;
++	u32	esdrcc;
++	u32	esdrwd;
++	u32	esdor;
++	u32	esdmrr;
++	u32	esdcfg3_lp;
++	u32	esdmr4;
++	u32	zqhwctrl;
++	u32	zqswctrl;
++	u32	wlgcr;
++	u32	wldectrl0;
++	u32	wldectrl1;
++	u32	wldlst;
++	u32	odtctrl;
++	u32	rddqby0dl;
++	u32	rddqby1dl;
++	u32	rddqby2dl;
++	u32	rddqby3dl;
++	u32	wrdqby0dl;
++	u32	wrdqby1dl;
++	u32	wrdqby2dl;
++	u32	wrdqby3dl;
++	u32	dgctrl0;
++	u32	dgctrl1;
++	u32	dgdlst;
++	u32	rddlctl;
++	u32	rddlst;
++	u32	wrlctl;
++	u32	wrlst;
++	u32	sdctrl;
++	u32	zqlp2ctl;
++	u32	rddlhwctl;
++	u32	wrdlhwctl;
++	u32	rddlhwst0;
++	u32	rddlhwst1;
++	u32	wrdlhwst0;
++	u32	wrdlhwst1;
++	u32	wlhwerr;
++	u32	dghwst0;
++	u32	dghwst1;
++	u32	dghwst2;
++	u32	dghwst3;
++	u32	pdcmpr1;
++	u32	pdcmpr2;
++	u32	swdar;
++	u32	swdrdr0;
++	u32	swdrdr1;
++	u32	swdrdr2;
++	u32	swdrdr3;
++	u32	swdrdr4;
++	u32	swdrdr5;
++	u32	swdrdr6;
++	u32	swdrdr7;
++	u32	mur;
++	u32	wrcadl;
++};
++#endif
++
++#endif /* __ASSEMBLY__ */
++
++/* DDR commands */
++/* cs ChipSelect in range of 0..1 */
++/* ba Bank Address in range of 0..3 */
++/* addr Pseudo Address as expected by the DDR */
++
++#define DDR_NOP_CMD(cs)		(0x00008000 + (cs << 2))
++#define DRR_PRECHARGE_CMD(cs, ba)	(0x04008008 + (cs << 2) + ba)
++#define DRR_AUTOREFRESH_CMD(cs)	(0x00008010 + (cs << 2))
++#define DRR_LMR_CMD(cs, ba, addr)	(0x00008018 + (addr << 16)\
++						+ (cs << 2) + ba)
++
++#endif /* __REGS_ESDCTL_H__ */
+--- uboot-custom/arch/arm/include/asm/arch-mx5/mx5x_pins.h
++++ uboot-custom/arch/arm/include/asm/arch-mx5/mx5x_pins.h
+@@ -380,6 +380,7 @@ enum {
+ 	/* The following are PADS used for drive strength */
+ 
+ 	MX51_PIN_CTL_GRP_DDRPKS = _MXC_BUILD_NON_GPIO_PIN(0, 0x820),
++	MX51_PIN_CTL_GRP_INDDR = _MXC_BUILD_NON_GPIO_PIN(0, 0x830),
+ 	MX51_PIN_CTL_GRP_PKEDDR = _MXC_BUILD_NON_GPIO_PIN(0, 0x838),
+ 	MX51_PIN_CTL_GRP_PKEADDR = _MXC_BUILD_NON_GPIO_PIN(0, 0x890),
+ 	MX51_PIN_CTL_GRP_DDRAPKS = _MXC_BUILD_NON_GPIO_PIN(0, 0x87C),
+@@ -388,6 +389,7 @@ enum {
+ 	MX51_PIN_CTL_GRP_HYSDDR0 = _MXC_BUILD_NON_GPIO_PIN(0, 0x85C),
+ 	MX51_PIN_CTL_GRP_HYSDDR1 = _MXC_BUILD_NON_GPIO_PIN(0, 0x864),
+ 	MX51_PIN_CTL_GRP_HYSDDR2 = _MXC_BUILD_NON_GPIO_PIN(0, 0x86C),
++	MX51_PIN_CTL_GRP_HVDDR = _MXC_BUILD_NON_GPIO_PIN(0, 0x870),
+ 	MX51_PIN_CTL_GRP_HYSDDR3 = _MXC_BUILD_NON_GPIO_PIN(0, 0x874),
+ 	MX51_PIN_CTL_GRP_DDR_SR_B0 = _MXC_BUILD_NON_GPIO_PIN(0, 0x878),
+ 	MX51_PIN_CTL_GRP_DDR_SR_B1 = _MXC_BUILD_NON_GPIO_PIN(0, 0x880),
+@@ -420,6 +422,9 @@ enum {
+ 	MX51_PIN_CTL_DRAM_DQM1 = _MXC_BUILD_NON_GPIO_PIN(0, 0x4D8),
+ 	MX51_PIN_CTL_DRAM_DQM2 = _MXC_BUILD_NON_GPIO_PIN(0, 0x4DC),
+ 	MX51_PIN_CTL_DRAM_DQM3 = _MXC_BUILD_NON_GPIO_PIN(0, 0x4E0),
++	MX51_PIN_CTL_PAD_EIM_SDBA2 = _MXC_BUILD_NON_GPIO_PIN(0, 0x508),
++	MX51_PIN_CTL_PAD_EIM_SDODT1 = _MXC_BUILD_NON_GPIO_PIN(0, 0x50C),
++	MX51_PIN_CTL_PAD_EIM_SDODT0 = _MXC_BUILD_NON_GPIO_PIN(0, 0x510),
+ };
+ 
+ enum {
+-- 
+1.7.2.5
+

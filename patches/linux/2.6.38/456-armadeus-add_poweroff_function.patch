@@ -1,0 +1,34 @@
+Index: linux-2.6.38.8/arch/arm/mach-mx5/board-apf51.c
+===================================================================
+--- linux-2.6.38.8.orig/arch/arm/mach-mx5/board-apf51.c
++++ linux-2.6.38.8/arch/arm/mach-mx5/board-apf51.c
+@@ -132,6 +132,8 @@ static iomux_v3_cfg_t apf51_pads[] = {
+ 	MX51_PAD_CSI2_D13__GPIO4_10, /* CONFIG_SYS_FPGA_DONE */
+ 	MX51_PAD_DISPB2_SER_DIO__GPIO3_6, /* CONFIG_SYS_FPGA_SUSPEND */
+ 	(_MX51_PAD_GPIO1_5__GPIO1_5 | MUX_PAD_CTRL(APF51_GPIO_SPECIAL_PAD_CTRL)), /* CLK0 as gpio */
++
++	MX51_PAD_DISPB2_SER_RS__GPIO3_8, /* PMIC OFF */
+ };
+ 
+ 
+@@ -458,12 +460,20 @@ static int apf51_fpga_init(void)
+ }
+ 
+ #define APF51_VERSION_GPIO (2*32 + 12)	/* GPIO3_12 */
++#define APF51_PMIC_OFF_GPIO (2*32 + 8) /* GPIO3_8 */
++
++static void apf51_power_off(void) {
++	gpio_request(APF51_PMIC_OFF_GPIO, "apf51-pmic-off-gpio");
++	gpio_direction_output(APF51_PMIC_OFF_GPIO, 0);
++}
+ 
+ /*
+  * Board specific initialization.
+  */
+ static void __init apf51_board_init(void)
+ {
++	pm_power_off = apf51_power_off;
++
+ #if defined(CONFIG_CPU_FREQ_IMX)
+ 	get_cpu_op = mx51_get_cpu_op;
+ #endif

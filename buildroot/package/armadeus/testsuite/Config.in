@@ -1,0 +1,5 @@
+config BR2_PACKAGE_TESTSUITE
+	bool "Armadeus Test Suite"
+	help
+	  Install Armadeus "Test Suite" (used for BSP release validation).
+	  Test scripts will be installed on the APF in /usr/bin/test/.

@@ -1,0 +1,62 @@
+Index: buildroot/package/busybox/1.21.0/busybox-1.21.0-ifplugd-netlink-buffer.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/busybox/1.21.0/busybox-1.21.0-ifplugd-netlink-buffer.patch	2013-09-30 16:56:15.151579379 +0200
+@@ -0,0 +1,57 @@
++From da331d779c19d7d5d4ef05152ee467d617913a01 Mon Sep 17 00:00:00 2001
++From: Tito Ragusa <farmatito@tiscali.it>
++Date: Sun, 04 Aug 2013 16:08:40 +0000
++Subject: ifplugd: use a larger netlink buffer
++
++function                                             old     new   delta
++check_existence_through_netlink                      310     321     +11
++
++Signed-off-by: Tito Ragusa <farmatito@tiscali.it>
++Signed-off-by: Denys Vlasenko <vda.linux@googlemail.com>
++---
++(limited to 'networking/ifplugd.c')
++
++diff --git a/networking/ifplugd.c b/networking/ifplugd.c
++index 3cdc2c9..b578f4c 100644
++--- a/networking/ifplugd.c
+++++ b/networking/ifplugd.c
++@@ -451,20 +451,24 @@ static smallint detect_link(void)
++ static NOINLINE int check_existence_through_netlink(void)
++ {
++ 	int iface_len;
++-	char replybuf[1024];
+++	/* Buffer was 1K, but on linux-3.9.9 it was reported to be too small.
+++	 * netlink.h: "limit to 8K to avoid MSG_TRUNC when PAGE_SIZE is very large".
+++	 * Note: on error returns (-1) we exit, no need to free replybuf.
+++	 */
+++	enum { BUF_SIZE = 8 * 1024 };
+++	char *replybuf = xmalloc(BUF_SIZE);
++ 
++ 	iface_len = strlen(G.iface);
++ 	while (1) {
++ 		struct nlmsghdr *mhdr;
++ 		ssize_t bytes;
++ 
++-		bytes = recv(netlink_fd, &replybuf, sizeof(replybuf), MSG_DONTWAIT);
+++		bytes = recv(netlink_fd, replybuf, BUF_SIZE, MSG_DONTWAIT);
++ 		if (bytes < 0) {
++ 			if (errno == EAGAIN)
++-				return G.iface_exists;
+++				goto ret;
++ 			if (errno == EINTR)
++ 				continue;
++-
++ 			bb_perror_msg("netlink: recv");
++ 			return -1;
++ 		}
++@@ -507,6 +511,8 @@ static NOINLINE int check_existence_through_netlink(void)
++ 		}
++ 	}
++ 
+++ ret:
+++	free(replybuf);
++ 	return G.iface_exists;
++ }
++ 
++--
++cgit v0.9.1

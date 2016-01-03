@@ -1,0 +1,14 @@
+Index: linux-3.8-rc1/drivers/spi/spi-imx.c
+===================================================================
+--- linux-3.8-rc1.orig/drivers/spi/spi-imx.c	2012-12-22 02:19:00.000000000 +0100
++++ linux-3.8-rc1/drivers/spi/spi-imx.c	2013-01-01 21:19:56.000000000 +0100
+@@ -47,6 +47,9 @@
+ #define MXC_CSPITXDATA		0x04
+ #define MXC_CSPICTRL		0x08
+ #define MXC_CSPIINT		0x0c
++#define MXC_TEST		0x10
++#define MXC_PERIOD		0x14
++#define MXC_DMA			0x18
+ #define MXC_RESET		0x1c
+ 
+ /* generic defines to abstract from the different register layouts */

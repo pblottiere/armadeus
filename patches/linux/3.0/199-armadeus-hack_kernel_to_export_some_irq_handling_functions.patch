@@ -1,0 +1,48 @@
+Allows to use some usefull irq_chip registering/handling functions in modules.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: linux-3.0.10/kernel/irq/chip.c
+===================================================================
+--- linux-3.0.10.orig/kernel/irq/chip.c	2011-11-21 23:37:44.000000000 +0100
++++ linux-3.0.10/kernel/irq/chip.c	2011-12-02 17:10:07.000000000 +0100
+@@ -475,6 +475,7 @@
+ out_unlock:
+ 	raw_spin_unlock(&desc->lock);
+ }
++EXPORT_SYMBOL_GPL(handle_edge_irq);
+ 
+ #ifdef CONFIG_IRQ_EDGE_EOI_HANDLER
+ /**
+@@ -589,6 +590,7 @@
+ 	irq_set_chip(irq, chip);
+ 	__irq_set_handler(irq, handle, 0, name);
+ }
++EXPORT_SYMBOL_GPL(irq_set_chip_and_handler_name);
+ 
+ void irq_modify_status(unsigned int irq, unsigned long clr, unsigned long set)
+ {
+Index: linux-3.0.10/arch/arm/kernel/irq.c
+===================================================================
+--- linux-3.0.10.orig/arch/arm/kernel/irq.c	2011-11-21 23:37:44.000000000 +0100
++++ linux-3.0.10/arch/arm/kernel/irq.c	2011-12-02 17:57:29.000000000 +0100
+@@ -115,6 +115,7 @@
+ 	/* Order is clear bits in "clr" then set bits in "set" */
+ 	irq_modify_status(irq, clr, set & ~clr);
+ }
++EXPORT_SYMBOL_GPL(set_irq_flags);
+ 
+ void __init init_IRQ(void)
+ {
+Index: linux-3.0.10/kernel/irq/irqdesc.c
+===================================================================
+--- linux-3.0.10.orig/kernel/irq/irqdesc.c	2011-11-21 23:37:44.000000000 +0100
++++ linux-3.0.10/kernel/irq/irqdesc.c	2011-12-02 17:58:03.000000000 +0100
+@@ -270,6 +270,7 @@
+ {
+ 	return (irq < NR_IRQS) ? irq_desc + irq : NULL;
+ }
++EXPORT_SYMBOL_GPL(irq_to_desc);
+ 
+ static void free_desc(unsigned int irq)
+ {

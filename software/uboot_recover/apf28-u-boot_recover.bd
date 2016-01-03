@@ -1,0 +1,20 @@
+sources {
+	u_boot_spl="apf28-u-boot-spl";
+	u_boot_env="apf28_env_recover.txt";
+	u_boot_sb="apf28-u-boot.sb";
+}
+
+section (0) {
+	//----------------------------------------------------------
+	// SPL Initialization: power supply & DDR2 memory
+	//----------------------------------------------------------
+	load u_boot_spl;
+	load ivt (entry = u_boot_spl:board_init_ll) > 0x8000;
+	hab call 0x8000;
+
+	//----------------------------------------------------------
+	// Load U-Boot and env script to setup NAND flash
+	//----------------------------------------------------------
+	load u_boot_sb > 0x41000000;
+	load u_boot_env > 0x42000000;
+}

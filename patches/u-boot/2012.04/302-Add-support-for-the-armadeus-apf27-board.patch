@@ -1,0 +1,759 @@
+Add support for the armadeus APF27 board
+
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+Signed-off-by: Nicolas Colombain <nicolas.colombain@armadeus.com>
+---
+ board/armadeus/apf27/Makefile        |   52 ++++++
+ board/armadeus/apf27/apf27.c         |  310 ++++++++++++++++++++++++++++++++++
+ board/armadeus/apf27/config.mk       |   38 ++++
+ board/armadeus/apf27/lowlevel_init.S |  275 ++++++++++++++++++++++++++++++
+ boards.cfg                           |    1 +
+ 5 files changed, 676 insertions(+), 0 deletions(-)
+ create mode 100644 board/armadeus/apf27/Makefile
+ create mode 100644 board/armadeus/apf27/apf27.c
+ create mode 100644 board/armadeus/apf27/config.mk
+ create mode 100644 board/armadeus/apf27/lowlevel_init.S
+
+diff --git a/board/armadeus/apf27/Makefile b/board/armadeus/apf27/Makefile
+new file mode 100644
+index 0000000..fe6ba5c
+--- /dev/null
++++ b/board/armadeus/apf27/Makefile
+@@ -0,0 +1,52 @@
++#
++# (C) Copyright 2000-2004
++# Wolfgang Denk, DENX Software Engineering, wd@denx.de.
++# (C) Copyright 2012
++# Eric Jarrige <eric.jarrige@armadeus.org>
++#
++# See file CREDITS for list of people who contributed to this
++# project.
++#
++# This program is free software; you can redistribute it and/or
++# modify it under the terms of the GNU General Public License as
++# published by the Free Software Foundation; either version 2 of
++# the License, or (at your option) any later version.
++#
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++# GNU General Public License for more details.
++#
++# You should have received a copy of the GNU General Public License
++# along with this program; if not, write to the Free Software
++# Foundation, Inc., 59 Temple Place, Suite 330, Boston,
++# MA 02111-1307 USA
++#
++
++include $(TOPDIR)/config.mk
++
++LIB	= $(obj)lib$(BOARD).o
++
++COBJS	:= apf27.o
++SOBJS	:= lowlevel_init.o
++
++SRCS	:= $(SOBJS:.o=.S) $(COBJS:.o=.c)
++OBJS	:= $(addprefix $(obj),$(COBJS))
++SOBJS	:= $(addprefix $(obj),$(SOBJS))
++
++$(LIB):	$(obj).depend $(OBJS) $(SOBJS)
++	$(call cmd_link_o_target, $(OBJS) $(SOBJS))
++
++clean:
++	rm -f $(SOBJS) $(OBJS)
++
++distclean:	clean
++	rm -f $(LIB) core *.bak $(obj).depend
++
++#########################################################################
++
++include $(SRCTREE)/rules.mk
++
++sinclude $(obj).depend
++
++#########################################################################
+diff --git a/board/armadeus/apf27/apf27.c b/board/armadeus/apf27/apf27.c
+new file mode 100644
+index 0000000..c55da1a
+--- /dev/null
++++ b/board/armadeus/apf27/apf27.c
+@@ -0,0 +1,338 @@
++/*
++ * Copyright (C) 2007 Sascha Hauer, Pengutronix
++ * Copyright (C) 2008-2012 Eric Jarrige <eric.jarrige@armadeus.org>
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of
++ * the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
++ * MA 02111-1307 USA
++ *
++ */
++
++#include <common.h>
++#include "crc.h"
++#include <jffs2/jffs2.h>
++#include <nand.h>
++#include <netdev.h>
++#include <asm/io.h>
++#include <asm/arch/imx-regs.h>
++#include <asm/errno.h>
++
++DECLARE_GLOBAL_DATA_PTR;
++
++/*
++ * Fuse bank 1 row 8 is "reserved for future use" and therefore available for
++ * custormer use. The APF27 board uses this fuse to store the board revision:
++ * 0: initial board revision
++ * 1: first revision - Presence of the second RAM chip on the board is blown in
++ *	fuse bank 1 row 9  bit 0 - No hardware change
++ * N: to be defined
++ */
++u32 get_board_rev(void)
++{
++	struct iim_regs *iim = (struct iim_regs *)IMX_IIM_BASE;
++
++	return readl(&iim->bank[1].fuse_regs[8]);
++}
++
++/*
++ * Fuse bank 1 row 9 is "reserved for future use" and therefore available for
++ * custormer use. The APF27 board revision 1 uses the bit 0 to permanently store
++ * the presence of the second RAM chip
++ * 0: AFP27 with 1 RAM of 64 MiB
++ * 1: AFP27 with 2 RAM chips of 64 MiB each (128MB)
++ */
++int get_num_ram_bank(void)
++{
++	struct iim_regs *iim = (struct iim_regs *)IMX_IIM_BASE;
++	int nr_dram_banks = 1;
++
++	if ((get_board_rev() > 0) && (CONFIG_NR_DRAM_BANKS > 1))
++		nr_dram_banks += readl(&iim->bank[1].fuse_regs[9]) & 0x01;
++	else
++		nr_dram_banks = CONFIG_NR_DRAM_POPULATED;
++
++	return nr_dram_banks;
++}
++
++static void apf27_gpio_init(void)
++{
++	struct gpio_regs *regs = (struct gpio_regs *)IMX_GPIO_BASE;
++
++	/* PORT A */
++	writel(CONFIG_SYS_DR_A_VAL,    &regs->port[PORTA].dr);
++	writel(CONFIG_SYS_OCR1_A_VAL,  &regs->port[PORTA].ocr1);
++	writel(CONFIG_SYS_OCR2_A_VAL,  &regs->port[PORTA].ocr2);
++	writel(CONFIG_SYS_ICFA1_A_VAL, &regs->port[PORTA].iconfa1);
++	writel(CONFIG_SYS_ICFA2_A_VAL, &regs->port[PORTA].iconfa2);
++	writel(CONFIG_SYS_ICFB1_A_VAL, &regs->port[PORTA].iconfb1);
++	writel(CONFIG_SYS_ICFB2_A_VAL, &regs->port[PORTA].iconfb2);
++	writel(CONFIG_SYS_ICR1_A_VAL,  &regs->port[PORTA].icr1);
++	writel(CONFIG_SYS_ICR2_A_VAL,  &regs->port[PORTA].icr2);
++	writel(CONFIG_SYS_IMR_A_VAL,   &regs->port[PORTA].imr);
++	writel(CONFIG_SYS_DDIR_A_VAL,  &regs->port[PORTA].ddir);
++	writel(CONFIG_SYS_GPR_A_VAL,   &regs->port[PORTA].gpr);
++	writel(CONFIG_SYS_PUEN_A_VAL,  &regs->port[PORTA].puen);
++	writel(CONFIG_SYS_GIUS_A_VAL,  &regs->port[PORTA].gius);
++
++	/* PORT B */
++	writel(CONFIG_SYS_DR_B_VAL,    &regs->port[PORTB].dr);
++	writel(CONFIG_SYS_OCR1_B_VAL,  &regs->port[PORTB].ocr1);
++	writel(CONFIG_SYS_OCR2_B_VAL,  &regs->port[PORTB].ocr2);
++	writel(CONFIG_SYS_ICFA1_B_VAL, &regs->port[PORTB].iconfa1);
++	writel(CONFIG_SYS_ICFA2_B_VAL, &regs->port[PORTB].iconfa2);
++	writel(CONFIG_SYS_ICFB1_B_VAL, &regs->port[PORTB].iconfb1);
++	writel(CONFIG_SYS_ICFB2_B_VAL, &regs->port[PORTB].iconfb2);
++	writel(CONFIG_SYS_ICR1_B_VAL,  &regs->port[PORTB].icr1);
++	writel(CONFIG_SYS_ICR2_B_VAL,  &regs->port[PORTB].icr2);
++	writel(CONFIG_SYS_IMR_B_VAL,   &regs->port[PORTB].imr);
++	writel(CONFIG_SYS_DDIR_B_VAL,  &regs->port[PORTB].ddir);
++	writel(CONFIG_SYS_GPR_B_VAL,   &regs->port[PORTB].gpr);
++	writel(CONFIG_SYS_PUEN_B_VAL,  &regs->port[PORTB].puen);
++	writel(CONFIG_SYS_GIUS_B_VAL,  &regs->port[PORTB].gius);
++
++	/* PORT C */
++	writel(CONFIG_SYS_DR_C_VAL,    &regs->port[PORTC].dr);
++	writel(CONFIG_SYS_OCR1_C_VAL,  &regs->port[PORTC].ocr1);
++	writel(CONFIG_SYS_OCR2_C_VAL,  &regs->port[PORTC].ocr2);
++	writel(CONFIG_SYS_ICFA1_C_VAL, &regs->port[PORTC].iconfa1);
++	writel(CONFIG_SYS_ICFA2_C_VAL, &regs->port[PORTC].iconfa2);
++	writel(CONFIG_SYS_ICFB1_C_VAL, &regs->port[PORTC].iconfb1);
++	writel(CONFIG_SYS_ICFB2_C_VAL, &regs->port[PORTC].iconfb2);
++	writel(CONFIG_SYS_ICR1_C_VAL,  &regs->port[PORTC].icr1);
++	writel(CONFIG_SYS_ICR2_C_VAL,  &regs->port[PORTC].icr2);
++	writel(CONFIG_SYS_IMR_C_VAL,   &regs->port[PORTC].imr);
++	writel(CONFIG_SYS_DDIR_C_VAL,  &regs->port[PORTC].ddir);
++	writel(CONFIG_SYS_GPR_C_VAL,   &regs->port[PORTC].gpr);
++	writel(CONFIG_SYS_PUEN_C_VAL,  &regs->port[PORTC].puen);
++	writel(CONFIG_SYS_GIUS_C_VAL,  &regs->port[PORTC].gius);
++
++	/* PORT D */
++	writel(CONFIG_SYS_DR_D_VAL,    &regs->port[PORTD].dr);
++	writel(CONFIG_SYS_OCR1_D_VAL,  &regs->port[PORTD].ocr1);
++	writel(CONFIG_SYS_OCR2_D_VAL,  &regs->port[PORTD].ocr2);
++	writel(CONFIG_SYS_ICFA1_D_VAL, &regs->port[PORTD].iconfa1);
++	writel(CONFIG_SYS_ICFA2_D_VAL, &regs->port[PORTD].iconfa2);
++	writel(CONFIG_SYS_ICFB1_D_VAL, &regs->port[PORTD].iconfb1);
++	writel(CONFIG_SYS_ICFB2_D_VAL, &regs->port[PORTD].iconfb2);
++	writel(CONFIG_SYS_ICR1_D_VAL,  &regs->port[PORTD].icr1);
++	writel(CONFIG_SYS_ICR2_D_VAL,  &regs->port[PORTD].icr2);
++	writel(CONFIG_SYS_IMR_D_VAL,   &regs->port[PORTD].imr);
++	writel(CONFIG_SYS_DDIR_D_VAL,  &regs->port[PORTD].ddir);
++	writel(CONFIG_SYS_GPR_D_VAL,   &regs->port[PORTD].gpr);
++	writel(CONFIG_SYS_PUEN_D_VAL,  &regs->port[PORTD].puen);
++	writel(CONFIG_SYS_GIUS_D_VAL,  &regs->port[PORTD].gius);
++
++	/* PORT E */
++	writel(CONFIG_SYS_DR_E_VAL,    &regs->port[PORTE].dr);
++	writel(CONFIG_SYS_OCR1_E_VAL,  &regs->port[PORTE].ocr1);
++	writel(CONFIG_SYS_OCR2_E_VAL,  &regs->port[PORTE].ocr2);
++	writel(CONFIG_SYS_ICFA1_E_VAL, &regs->port[PORTE].iconfa1);
++	writel(CONFIG_SYS_ICFA2_E_VAL, &regs->port[PORTE].iconfa2);
++	writel(CONFIG_SYS_ICFB1_E_VAL, &regs->port[PORTE].iconfb1);
++	writel(CONFIG_SYS_ICFB2_E_VAL, &regs->port[PORTE].iconfb2);
++	writel(CONFIG_SYS_ICR1_E_VAL,  &regs->port[PORTE].icr1);
++	writel(CONFIG_SYS_ICR2_E_VAL,  &regs->port[PORTE].icr2);
++	writel(CONFIG_SYS_IMR_E_VAL,   &regs->port[PORTE].imr);
++	writel(CONFIG_SYS_DDIR_E_VAL,  &regs->port[PORTE].ddir);
++	writel(CONFIG_SYS_GPR_E_VAL,   &regs->port[PORTE].gpr);
++	writel(CONFIG_SYS_PUEN_E_VAL,  &regs->port[PORTE].puen);
++	writel(CONFIG_SYS_GIUS_E_VAL,  &regs->port[PORTE].gius);
++
++	/* PORT F */
++	writel(CONFIG_SYS_DR_F_VAL,    &regs->port[PORTF].dr);
++	writel(CONFIG_SYS_OCR1_F_VAL,  &regs->port[PORTF].ocr1);
++	writel(CONFIG_SYS_OCR2_F_VAL,  &regs->port[PORTF].ocr2);
++	writel(CONFIG_SYS_ICFA1_F_VAL, &regs->port[PORTF].iconfa1);
++	writel(CONFIG_SYS_ICFA2_F_VAL, &regs->port[PORTF].iconfa2);
++	writel(CONFIG_SYS_ICFB1_F_VAL, &regs->port[PORTF].iconfb1);
++	writel(CONFIG_SYS_ICFB2_F_VAL, &regs->port[PORTF].iconfb2);
++	writel(CONFIG_SYS_ICR1_F_VAL,  &regs->port[PORTF].icr1);
++	writel(CONFIG_SYS_ICR2_F_VAL,  &regs->port[PORTF].icr2);
++	writel(CONFIG_SYS_IMR_F_VAL,   &regs->port[PORTF].imr);
++	writel(CONFIG_SYS_DDIR_F_VAL,  &regs->port[PORTF].ddir);
++	writel(CONFIG_SYS_GPR_F_VAL,   &regs->port[PORTF].gpr);
++	writel(CONFIG_SYS_PUEN_F_VAL,  &regs->port[PORTF].puen);
++	writel(CONFIG_SYS_GIUS_F_VAL,  &regs->port[PORTF].gius);
++}
++
++void bus_i2c_init(void *base, int speed, int slave_addr,
++		int (*idle_bus_fn)(void *p), void *p);
++
++static int apf27_devices_init(void)
++{
++	struct gpio_regs *regs = (struct gpio_regs *)IMX_GPIO_BASE;
++	int i;
++	unsigned int mode[] = {
++		PD0_AIN_FEC_TXD0,
++		PD1_AIN_FEC_TXD1,
++		PD2_AIN_FEC_TXD2,
++		PD3_AIN_FEC_TXD3,
++		PD4_AOUT_FEC_RX_ER,
++		PD5_AOUT_FEC_RXD1,
++		PD6_AOUT_FEC_RXD2,
++		PD7_AOUT_FEC_RXD3,
++		PD8_AF_FEC_MDIO,
++		PD9_AIN_FEC_MDC | GPIO_PUEN,
++		PD10_AOUT_FEC_CRS,
++		PD11_AOUT_FEC_TX_CLK,
++		PD12_AOUT_FEC_RXD0,
++		PD13_AOUT_FEC_RX_DV,
++		PD14_AOUT_FEC_CLR,
++		PD15_AOUT_FEC_COL,
++		PD16_AIN_FEC_TX_ER,
++		PF23_AIN_FEC_TX_EN,
++		PE12_PF_UART1_TXD,
++		PE13_PF_UART1_RXD,
++		PC5_PF_I2C2_DATA,
++		PC6_PF_I2C2_CLK,
++		PD17_PF_I2C_DATA,
++		PD18_PF_I2C_CLK,
++	};
++
++	for (i = 0; i < ARRAY_SIZE(mode); i++)
++		imx_gpio_mode(mode[i]);
++
++#ifdef CONFIG_MXC_MMC
++	mx27_sd2_init_pins();
++	imx_gpio_mode((GPIO_PORTF | GPIO_OUT | GPIO_PUEN | GPIO_GPIO | 16));
++	writel(readl(&regs->port[PORTF].dr) | (1 << 16),
++				&regs->port[PORTF].dr);
++#endif
++#if defined(CONFIG_I2C_MXC) && defined(CONFIG_I2C_MULTI_BUS)
++	bus_i2c_init(IMX_I2C1_BASE, CONFIG_SYS_I2C_SPEED, CONFIG_SYS_I2C_SLAVE,
++			NULL, NULL);
++	bus_i2c_init(IMX_I2C2_BASE, CONFIG_SYS_I2C_SPEED, CONFIG_SYS_I2C_SLAVE,
++			NULL, NULL);
++#endif
++	return 0;
++}
++
++int
++board_init(void)
++{
++	gd->bd->bi_boot_params = PHYS_SDRAM_1 + 0x100;
++
++	apf27_gpio_init();
++	apf27_devices_init();
++
++	return 0;
++}
++
++int
++dram_init(void)
++{
++	/* dram_init must store complete ramsize in gd->ram_size */
++	gd->ram_size = get_ram_size((void *)PHYS_SDRAM_1, PHYS_SDRAM_1_SIZE);
++	if (get_num_ram_bank() > 1) {
++		gd->ram_size += get_ram_size((void *)PHYS_SDRAM_2,
++					     PHYS_SDRAM_2_SIZE);
++	}
++
++	return 0;
++}
++
++void dram_init_banksize(void)
++{
++	gd->bd->bi_dram[0].start = PHYS_SDRAM_1;
++	gd->bd->bi_dram[0].size = gd->ram_size / get_num_ram_bank();
++	if (CONFIG_NR_DRAM_BANKS > 1) {
++		gd->bd->bi_dram[1].start = PHYS_SDRAM_2;
++		gd->bd->bi_dram[1].size = \
++			gd->ram_size - gd->bd->bi_dram[0].size;
++	}
++}
++
++/*
++ * Miscellaneous intialization
++ */
++int
++misc_init_r(void)
++{
++	char *s;
++	u_char * firmware_buffer = (u_char *)(CONFIG_SYS_LOAD_ADDR + \
++					      CONFIG_SYS_MONITOR_LEN);
++	size_t size	= 0;
++	size_t offset	= -1;
++	char *autoload = getenv("firmware_autoload");
++	u8 pnum;
++	struct mtd_device *dev;
++	struct part_info *part;
++
++	/* detect compatibility issue of environment version */
++	s = getenv("env_version");
++	if ((NULL == s) || (0 != strcmp(s, CONFIG_ENV_VERSION))) {
++		printf("*** Warning - Environment version change suggests: "
++			"run flash_reset_env; reset\n");
++	}
++
++	/* Unlock whole flash but U-Boot */
++	s = getenv("env_offset");
++	offset = CONFIG_ENV_OFFSET;
++	if ((s != NULL) && (0 != strcmp(s, "0")))
++		offset = simple_strtoul(s, NULL, 16);
++
++	if (nand_unlock(&nand_info[0], offset, nand_info[0].size - offset))
++		printf("NAND flash lock/unlocked failed\n");
++
++
++	return 0;
++}
++
++void
++show_boot_progress(int status)
++{
++#ifdef CONFIG_SHOW_BOOT_PROGRESS
++#endif
++	return;
++}
++
++int checkboard(void)
++{
++	printf("Board: Armadeus APF27 revision %d\n", get_board_rev());
++	return 0;
++}
++
++int board_eth_init(bd_t *bis)
++{
++#define STR_ENV_ETHADDR	"ethaddr"
++	int rc = -ENODEV;
++
++#if defined(CONFIG_FEC_MXC)
++	struct eth_device *dev;
++	uchar eth_addr[6];
++
++	rc = fecmxc_initialize(bis);
++
++	if (!eth_getenv_enetaddr(STR_ENV_ETHADDR, eth_addr)) {
++		dev = eth_get_dev_by_index(0);
++		if (dev) {
++			eth_setenv_enetaddr(STR_ENV_ETHADDR, dev->enetaddr);
++		} else {
++			printf("FEC APF27: Couldn't get eth device\n");
++			rc = -1;
++		}
++	}
++#endif
++
++	return rc;
++}
++
++void enable_caches(void)
++{
++#ifndef CONFIG_SYS_DCACHE_OFF
++	/* Enable D-cache. I-cache is already enabled in start.S */
++	dcache_enable();
++#endif
++}
++
+diff --git a/board/armadeus/apf27/config.mk b/board/armadeus/apf27/config.mk
+new file mode 100644
+index 0000000..9713e69
+--- /dev/null
++++ b/board/armadeus/apf27/config.mk
+@@ -0,0 +1,38 @@
++#
++# (C) Copyright 2003
++# Wolfgang Denk, DENX Software Engineering, wd@denx.de.
++# (C) Copyright 2012
++# Eric Jarrige <eric.jarrige@armadeus.org>
++#
++# See file CREDITS for list of people who contributed to this
++# project.
++#
++# This program is free software; you can redistribute it and/or
++# modify it under the terms of the GNU General Public License as
++# published by the Free Software Foundation; either version 2 of
++# the License, or (at your option) any later version.
++#
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++# GNU General Public License for more details.
++#
++# You should have received a copy of the GNU General Public License
++# along with this program; if not, write to the Free Software
++# Foundation, Inc., 59 Temple Place, Suite 330, Boston,
++# MA 02111-1307 USA
++#
++
++#
++# This config file is used for compilation of armadeus sources
++#
++# You might change location of U-Boot in memory by setting right TEXT_BASE.
++# This allows for example having one copy located at the end of ram and stored
++# in flash device and later on while developing use other location to test
++# the code in RAM device only.
++#
++
++ifndef TEXT_BASE
++TEXT_BASE = 0xAFF00000
++endif
++
+diff --git a/board/armadeus/apf27/lowlevel_init.S b/board/armadeus/apf27/lowlevel_init.S
+new file mode 100644
+index 0000000..f5dbbb4
+--- /dev/null
++++ b/board/armadeus/apf27/lowlevel_init.S
+@@ -0,0 +1,275 @@
++/*
++ * For clock initialization, see chapter 3 of the "MCIMX27 Multimedia
++ * Applications Processor Reference Manual, Rev. 0.2".
++ *
++ * (C) Copyright 2008-2012 Eric Jarrige <eric.jarrige@armadeus.org>
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of
++ * the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
++ * MA 02111-1307 USA
++ */
++
++
++#include <config.h>
++#include <version.h>
++#include <asm/macro.h>
++#include <asm/arch/imx-regs.h>
++#include <generated/asm-offsets.h>
++
++
++
++
++.macro port_init
++    write32 FMCR, CONFIG_SYS_FMCR_VAL
++.endm /* port_init */
++
++.macro init_aipi
++	/*
++	 * setup AIPI1 and AIPI2
++	 */
++	write32 AIPI1_PSR0, CONFIG_SYS_AIPI1_PSR0_VAL
++	write32 AIPI1_PSR1, CONFIG_SYS_AIPI1_PSR1_VAL
++	write32 AIPI2_PSR0, CONFIG_SYS_AIPI2_PSR0_VAL
++	write32 AIPI2_PSR1, CONFIG_SYS_AIPI2_PSR1_VAL
++
++	/* Change SDRAM signal strengh */
++	ldr r0, =GPCR
++	ldr r1, =CONFIG_SYS_GPCR_VAL
++	ldr r5, [r0]
++	orr r5, r5, r1
++	str r5, [r0]
++
++.endm /* init_aipi */
++
++.macro init_clock
++	ldr r0, =CSCR
++	/* disable MPLL/SPLL first */
++	ldr r1, [r0]
++	bic r1, r1, #(CSCR_MPEN|CSCR_SPEN)
++	str r1, [r0]
++
++ 	/*
++	 * pll clock initialization predefined in apf27.h
++	 */
++	write32 MPCTL0, CONFIG_SYS_MPCTL0_VAL
++	write32 SPCTL0, CONFIG_SYS_SPCTL0_VAL
++
++	write32 CSCR, CONFIG_SYS_CSCR_VAL|CSCR_MPLL_RESTART|CSCR_SPLL_RESTART
++
++	/*
++	 * add some delay here
++	 */
++	mov r1, #0x1000
++	1:  subs r1, r1, #0x1
++	bne 1b
++
++	/* peripheral clock divider */
++	write32 PCDR0, CONFIG_SYS_PCDR0_VAL
++	write32 PCDR1, CONFIG_SYS_PCDR1_VAL
++
++	/* Configure PCCR0 and PCCR1 */
++	write32 PCCR0, CONFIG_SYS_PCCR0_VAL
++	write32 PCCR1, CONFIG_SYS_PCCR1_VAL
++
++
++.endm /* init_clock */
++
++.macro sdram_init
++	/* wait for SDRAM/LPDDR ready (SDRAMRDY) */
++	ldr  r0, =IMX_ESD_BASE
++	ldr  r4, =ESDMISC_SDRAM_RDY
++2:	ldr  r1, [r0, #ESDMISC_ROF]
++	ands r1, r1, r4
++	bpl 2b
++
++	/* LPDDR Soft Reset Mobile/Low Power DDR SDRAM. */
++	ldr		r0, =IMX_ESD_BASE
++	ldr		r4, =CONFIG_SYS_ESDMISC_VAL
++	orr		r1, r4, #ESDMISC_MDDR_DL_RST
++	str		r1, [r0, #ESDMISC_ROF]
++
++	/* Hold for more than 200ns */
++	ldr r1, =0x10000
++	1:	subs r1, r1, #0x1
++	bne 1b
++
++	str		r4, [r0]
++
++	/* write32 ESDCFG0, CONFIG_SYS_SDRAM_ESDCFG_REGISTER_VAL */
++	ldr		r0, =IMX_ESD_BASE
++	ldr		r1, =CONFIG_SYS_SDRAM_ESDCFG_REGISTER_VAL
++	str		r1, [r0, #ESDCFG0_ROF]
++
++	/* writel(ESDCTL0, CONFIG_SYS_PRECHARGE_CMD) */
++	ldr		r0, =IMX_ESD_BASE
++	ldr		r1, =CONFIG_SYS_PRECHARGE_CMD
++	str		r1, [r0, #ESDCTL0_ROF]
++
++	/* writeb(0xA0001000, any value) */
++	ldr		r1, =PHYS_SDRAM_1+CONFIG_SYS_SDRAM_PRECHARGE_ALL_VAL
++	strb		r2, [r1]
++
++	/* writel(ESDCTL0, CONFIG_SYS_AUTOREFRESH_CMD) */
++	ldr		r1, =CONFIG_SYS_AUTOREFRESH_CMD
++	str		r1, [r0, #ESDCTL0_ROF]
++
++	ldr 		r4, =PHYS_SDRAM_1	/* CSD0 base address	*/
++
++	ldr 		r6,=0x7		/* load loop counter	*/
++1:	str 		r5,[r4]		/* run auto-refresh cycle to array 0 */
++	subs 		r6,r6,#1	/* decrease counter value */
++	bne 1b
++
++	/* writel(CONFIG_SYS_PRECHARGE_CMD, CONFIG_SYS_SET_MODE_REG_CMD) */
++	ldr		r1, =CONFIG_SYS_SET_MODE_REG_CMD
++	str		r1, [r0, #ESDCTL0_ROF]
++
++	/* set standard mode register */
++	ldr		r4, = PHYS_SDRAM_1+CONFIG_SYS_SDRAM_MODE_REGISTER_VAL
++	strb		r2, [r4]
++
++	/* set extended mode register */
++	ldr		r4, =PHYS_SDRAM_1+CONFIG_SYS_SDRAM_EXT_MODE_REGISTER_VAL
++	strb		r5, [r4]
++
++	/* writel(CONFIG_SYS_PRECHARGE_CMD, CONFIG_SYS_NORMAL_RW_CMD) */
++	ldr		r1, =CONFIG_SYS_NORMAL_RW_CMD
++	str		r1, [r0, #ESDCTL0_ROF]
++
++	/* 2nd sdram */
++	/* write32 ESDCFG1, CONFIG_SYS_SDRAM_ESDCFG_REGISTER_VAL */
++	ldr		r1, =CONFIG_SYS_SDRAM_ESDCFG_REGISTER_VAL
++	str		r1, [r0, #ESDCFG1_ROF]
++
++	/* writel(ESDCTL1, CONFIG_SYS_PRECHARGE_CMD) */
++	ldr		r1, =CONFIG_SYS_PRECHARGE_CMD
++	str		r1, [r0, #ESDCTL1_ROF]
++
++	/* writeb(0xB0001000, any value) */
++	ldr		r1, =PHYS_SDRAM_2+CONFIG_SYS_SDRAM_PRECHARGE_ALL_VAL
++	strb		r2, [r1]
++
++	/* writel(ESDCTL1, CONFIG_SYS_AUTOREFRESH_CMD) */
++	ldr		r1, =CONFIG_SYS_AUTOREFRESH_CMD
++	str		r1, [r0, #ESDCTL1_ROF]
++
++	ldr 		r4, =PHYS_SDRAM_2	/* CSD1 base address */
++
++	ldr 		r6,=0x7		/* load loop counter */
++1:	str 		r5,[r4]		/* run auto-refresh cycle to array 0 */
++	subs 		r6,r6,#1	/* decrease counter value */
++	bne 1b
++
++	/* writel(ESDCTL1, CONFIG_SYS_SET_MODE_REG_CMD) */
++	ldr		r1, =CONFIG_SYS_SET_MODE_REG_CMD
++	str		r1, [r0, #ESDCTL1_ROF]
++
++	/* set standard mode register */
++	ldr		r4, =PHYS_SDRAM_2+CONFIG_SYS_SDRAM_MODE_REGISTER_VAL
++	strb		r2, [r4]
++
++	/* set extended mode register */
++	ldr		r4, =PHYS_SDRAM_2+CONFIG_SYS_SDRAM_EXT_MODE_REGISTER_VAL
++	strb		r2, [r4]
++
++	/* writel(ESDCTL1, CONFIG_SYS_NORMAL_RW_CMD) */
++	ldr		r1, =CONFIG_SYS_NORMAL_RW_CMD
++	str		r1, [r0, #ESDCTL1_ROF]
++.endm /* sdram_init */
++
++.globl board_init_lowlevel
++board_init_lowlevel:
++.globl	lowlevel_init
++lowlevel_init:
++
++	init_aipi
++
++	/* configure csx */
++	write32 CS0U, CONFIG_SYS_CS0U_VAL
++	write32 CS0L, CONFIG_SYS_CS0L_VAL
++	write32 CS0A, CONFIG_SYS_CS0A_VAL
++
++	write32 CS1U, CONFIG_SYS_CS1U_VAL
++	write32 CS1L, CONFIG_SYS_CS1L_VAL
++	write32 CS1A, CONFIG_SYS_CS1A_VAL
++
++	write32 CS2U, CONFIG_SYS_CS2U_VAL
++	write32 CS2L, CONFIG_SYS_CS2L_VAL
++	write32 CS2A, CONFIG_SYS_CS2A_VAL
++
++	write32 CS3U, CONFIG_SYS_CS3U_VAL
++	write32 CS3L, CONFIG_SYS_CS3L_VAL
++	write32 CS3A, CONFIG_SYS_CS3A_VAL
++
++	write32 CS4U, CONFIG_SYS_CS4U_VAL
++	write32 CS4L, CONFIG_SYS_CS4L_VAL
++	write32 CS4A, CONFIG_SYS_CS4A_VAL
++
++	write32 CS5U, CONFIG_SYS_CS5U_VAL
++	write32 CS5L, CONFIG_SYS_CS5L_VAL
++	write32 CS5A, CONFIG_SYS_CS5A_VAL
++
++	write32 EIM,  CONFIG_SYS_EIM_VAL
++
++	port_init
++
++    /* Configure FPGA CLKO */
++	write32 CCSR, CONFIG_SYS_CCSR_VAL
++
++    /* Configure strentgh for FPGA */
++	write32 DSCR10, CONFIG_SYS_DSCR10_VAL
++	write32 DSCR3, CONFIG_SYS_DSCR3_VAL
++	write32 DSCR7, CONFIG_SYS_DSCR7_VAL
++	write32 DSCR2, CONFIG_SYS_DSCR2_VAL
++
++	init_clock
++
++	/* skip clock and sdram initialization if we run from ram */
++	cmp	pc, #0xa0000000
++	bls	1f
++	cmp	pc, #0xc0000000
++	bhi	1f
++
++	b	copy2ram
++1:
++	sdram_init
++
++/* make U-Boot runnable form "almost" anywhere */
++/* but SYS_TEXT_BASE should be in RAM */
++copy2ram:		/* populate _TEXT_BASE with U-Boot from load addr */
++	ldr	r0, _start_adr
++	ldr	r1, _copy2ram
++	sub	r1, r1, r0
++	adr	r0, copy2ram
++	sub	r0, r0, r1
++	ldr	r1, =CONFIG_SYS_TEXT_BASE
++	cmp	r0, r1
++	beq	end_of_copy2ram		/* skip U-Boot copy */
++	ldr	r2, =CONFIG_SYS_MONITOR_LEN
++	add	r2, r2, r0		/* r2 <- source end address	    */
++
++copy_loop:
++	ldmia	r0!, {r9-r10}		/* copy from source address [r0]    */
++	stmia	r1!, {r9-r10}		/* copy to   target address [r1]    */
++	cmp	r0, r2			/* until source end address [r2]    */
++	blo	copy_loop
++
++end_of_copy2ram:
++	mov 	pc,lr
++
++_copy2ram:
++	.word copy2ram
++_start_adr:
++	.word _start	/* r12 saved upper lr*/
++
+diff --git a/boards.cfg b/boards.cfg
+index c8bc589..fc8f71c 100644
+--- a/boards.cfg
++++ b/boards.cfg
+@@ -70,6 +70,7 @@ integratorcp_cm926ejs        arm         arm926ejs   integrator          armltd
+ aspenite                     arm         arm926ejs   -                   Marvell        armada100
+ gplugd                       arm         arm926ejs   -                   Marvell        armada100
+ afeb9260                     arm         arm926ejs   -                   -              at91
++apf27                        arm         arm926ejs   apf27               armadeus       mx27
+ at91sam9260ek_dataflash_cs0  arm         arm926ejs   at91sam9260ek       atmel          at91        at91sam9260ek:AT91SAM9260,SYS_USE_DATAFLASH_CS0
+ at91sam9260ek_dataflash_cs1  arm         arm926ejs   at91sam9260ek       atmel          at91        at91sam9260ek:AT91SAM9260,SYS_USE_DATAFLASH_CS1
+ at91sam9260ek_nandflash      arm         arm926ejs   at91sam9260ek       atmel          at91        at91sam9260ek:AT91SAM9260,SYS_USE_NANDFLASH
+-- 
+1.7.4.4
+

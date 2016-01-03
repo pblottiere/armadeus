@@ -1,0 +1,58 @@
+Index: linux-3.18-rc1/arch/arm/mach-imx/Kconfig
+===================================================================
+--- linux-3.18-rc1.orig/arch/arm/mach-imx/Kconfig
++++ linux-3.18-rc1/arch/arm/mach-imx/Kconfig
+@@ -121,9 +121,41 @@ config MACH_APF9328
+ 	bool "APF9328"
+ 	select IMX_HAVE_PLATFORM_IMX_I2C
+ 	select IMX_HAVE_PLATFORM_IMX_UART
++	select IMX_HAVE_PLATFORM_SPI_IMX
++	select IMX_HAVE_PLATFORM_IMX_FB
++	select IMX_HAVE_PLATFORM_MXC_PWM
++	select IMX_HAVE_PLATFORM_IMX_UDC
++	select SERIAL_IMX_UART1
+ 	select SOC_IMX1
+ 	help
+ 	  Say Yes here if you are using the Armadeus APF9328 development board
++choice
++	prompt "Flash available on board"
++	depends on MACH_APF9328
++	default IMX_APF9328_FLASH_16MB
++
++config IMX_APF9328_FLASH_8MB
++	bool "8MB"
++
++config IMX_APF9328_FLASH_16MB
++	bool "16MB"
++
++endchoice
++
++choice
++	prompt "Baseboard"
++	depends on MACH_APF9328
++	default MACH_APF9328_DEV
++
++config MACH_APF9328_DEV
++	prompt "DevLight/DevFull"
++	bool
++	help
++	  This selects the APF9328_DevLight/DevFull as baseboard. You have
++	  to manually activates the devices you want to use if you have a
++	  DevFull.
++
++endchoice
+ 
+ config MACH_IMX1_DT
+ 	bool "Support i.MX1 platforms from device tree"
+Index: linux-3.18-rc1/arch/arm/mach-imx/Makefile
+===================================================================
+--- linux-3.18-rc1.orig/arch/arm/mach-imx/Makefile
++++ linux-3.18-rc1/arch/arm/mach-imx/Makefile
+@@ -44,6 +44,7 @@ endif
+ # i.MX1 based machines
+ obj-$(CONFIG_MACH_SCB9328) += mach-scb9328.o
+ obj-$(CONFIG_MACH_APF9328) += mach-apf9328.o
++obj-$(CONFIG_MACH_APF9328_DEV) += apf9328-dev.o
+ obj-$(CONFIG_MACH_IMX1_DT) += imx1-dt.o
+ 
+ # i.MX21 based machines

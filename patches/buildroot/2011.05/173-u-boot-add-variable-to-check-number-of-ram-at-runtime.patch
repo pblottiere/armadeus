@@ -1,0 +1,23 @@
+U-Boot: Add config option to check number of RAM at runtime.
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+
+Index: buildroot/boot/u-boot/u-boot.mk
+===================================================================
+--- buildroot/boot/u-boot/u-boot.mk	2011-08-08 12:14:25.000000000 +0200
++++ buildroot/boot/u-boot/u-boot.mk	2012-02-21 00:36:06.969559196 +0100
+@@ -156,11 +156,12 @@ ifneq ($(BR2_TARGET_ARMADEUS_SDRAM_SIZE)
+ 	$(SED) "s,^#define CONFIG_SYS_SDRAM_MBYTE_SYZE.*,#define CONFIG_SYS_SDRAM_MBYTE_SYZE $(BR2_TARGET_ARMADEUS_SDRAM_SIZE),g;"\
+ 		$(U_BOOT_INC_CONF_FILE)
+ endif
+-ifneq ($(BR2_TARGET_ARMADEUS_NR_SDRAM),)
++ifneq ($(strip $(BR2_TARGET_ARMADEUS_NR_SDRAM)),"1")
+ 	$(SED) "s,^#define CONFIG_NR_DRAM_BANKS.*,#define CONFIG_NR_DRAM_BANKS $(BR2_TARGET_ARMADEUS_NR_SDRAM),g;"\
+ 		$(U_BOOT_INC_CONF_FILE)
+ 	$(SED) "s,^#define CONFIG_SYS_NR_DRAM_BANKS.*,#define CONFIG_SYS_NR_DRAM_BANKS $(BR2_TARGET_ARMADEUS_NR_SDRAM),g;"\
+ 		$(U_BOOT_INC_CONF_FILE)
++	$(call insert_define, CONFIG_NR_DRAM_POPULATED, $(BR2_TARGET_ARMADEUS_NR_SDRAM))
+ endif
+ 	touch $@
+ 

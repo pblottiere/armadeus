@@ -1,0 +1,16 @@
+Add armadeus specific packages menu to BR.
+
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2012-02-21 16:43:29.000000000 +0100
++++ buildroot/package/Config.in	2012-02-21 16:43:56.000000000 +0100
+@@ -2,6 +2,9 @@
+ 
+ source "package/busybox/Config.in"
+ 
++# Armadeus specific
++source "package/armadeus/Config.in"
++
+ # Audio and video applications
+ source "package/multimedia/Config.in"
+ 

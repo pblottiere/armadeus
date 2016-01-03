@@ -1,0 +1,31 @@
+mx1: export imx_gpio_mode() function
+
+Add imx_gpio_mode() to Freescale imx1/L/S public functions
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+Cc: Stefano Babic <sbabic@denx.de>
+---
+ arch/arm/include/asm/arch-imx/imx-regs.h |    7 +++++++
+ 1 files changed, 7 insertions(+), 0 deletions(-)
+
+diff --git a/arch/arm/include/asm/arch-imx/imx-regs.h b/arch/arm/include/asm/arch-imx/imx-regs.h
+index ec94ba9..0c26a36 100644
+--- a/arch/arm/include/asm/arch-imx/imx-regs.h
++++ b/arch/arm/include/asm/arch-imx/imx-regs.h
+@@ -1,5 +1,12 @@
+ #ifndef _IMX_REGS_H
+ #define _IMX_REGS_H
++
++#ifndef __ASSEMBLY__
++
++extern void imx_gpio_mode(int gpio_mode);
++
++#endif /* __ASSEMBLY__ */
++
+ /* ------------------------------------------------------------------------
+  *  Motorola IMX system registers
+  * ------------------------------------------------------------------------
+-- 
+1.7.4.4
+

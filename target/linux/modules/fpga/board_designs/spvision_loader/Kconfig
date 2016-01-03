@@ -1,0 +1,11 @@
+
+config ARMADEUS_FPGA_BOARD_DESIGNS_SPVISION_PROBER
+	tristate "board driver for sp_vision fpga loader"
+	default n
+	depends on ARMADEUS_FPGA_BOARD_DESIGNS
+	select ARMADEUS_FPGA_VIRTUAL_SPVISION_LOADER
+	select ARMADEUS_FPGA_VIRTUAL_COMPONENTS
+	---help---
+	  With this driver you will be able to load the configuration
+	  of your sp_vision FPGA directly from Linux userspace.
+

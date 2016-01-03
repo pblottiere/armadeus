@@ -1,0 +1,22 @@
+Index: linux-2.6.29.4/kernel/power/Kconfig
+===================================================================
+--- linux-2.6.29.4.orig/kernel/power/Kconfig	2009-09-16 19:29:43.000000000 +0200
++++ linux-2.6.29.4/kernel/power/Kconfig	2009-09-17 09:31:46.000000000 +0200
+@@ -204,3 +204,17 @@
+ 	  random kernel OOPSes or reboots that don't seem to be related to
+ 	  anything, try disabling/enabling this option (or disabling/enabling
+ 	  APM in your BIOS).
++
++config USE_APF27DEV_IMX_LED_FOR_PM
++	bool "Use D14 LED of the APF27Dev for suspend signaling"
++	depends on PM && MACH_APF27_DEV
++	help
++	  Use D14 LED of the APF27Dev board to show user when the system is
++	  out of sleep (LED on) or sleeping (LED off).
++
++config USE_APF27DEV_IMX_SWITCH_FOR_PM
++	bool "Use S1 switch of the APF27Dev to resume after a suspend"
++	depends on PM && MACH_APF27_DEV
++	help
++          Use S1 switch of the APF27Dev board to leave sleep/suspend mode.
++

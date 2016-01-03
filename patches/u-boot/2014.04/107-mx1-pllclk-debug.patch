@@ -1,0 +1,26 @@
+mx1: change a printf in speed.c to use debug instead
+
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+Cc: Stefano Babic <sbabic@denx.de>
+---
+ arch/arm/cpu/arm920t/imx/speed.c |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/arch/arm/cpu/arm920t/imx/speed.c b/arch/arm/cpu/arm920t/imx/speed.c
+index b1c2bd6..b8e42bf 100644
+--- a/arch/arm/cpu/arm920t/imx/speed.c
++++ b/arch/arm/cpu/arm920t/imx/speed.c
+@@ -51,7 +51,7 @@ ulong get_FCLK(void)
+ ulong get_HCLK(void)
+ {
+ 	u32 bclkdiv = (( CSCR >> 10 ) & 0xf) + 1;
+-	printf("bclkdiv: %d\n", bclkdiv);
++	debug("bclkdiv: %d\n", bclkdiv);
+ 	return get_systemPLLCLK() / bclkdiv;
+ }
+ 
+-- 
+1.7.2.5
+

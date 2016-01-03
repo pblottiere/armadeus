@@ -1,0 +1,151 @@
+From afba84d1fcec911094ba54e1777155fa76913fe1 Mon Sep 17 00:00:00 2001
+From: Laurent GONZALEZ <br2@gezedo.com>
+Date: Sat, 02 Jun 2012 06:14:00 +0000
+Subject: libqwt: new package
+
+Patch initially written by Thomas Petazzoni, then reworked and updated
+by Laurent Gonzalez, and finally cleaned up by Thomas again.
+
+[Peter: generic-package, deps, download, rename to qwt, move under Qt]
+Signed-off-by: Thomas Petazzoni <thomas.petazzoni@free-electrons.com>
+Signed-off-by: Peter Korsgaard <jacmet@sunsite.dk>
+---
+diff --git a/package/Config.in b/package/Config.in
+index ea0586b..4f05665 100644
+--- a/package/Config.in
++++ b/package/Config.in
+@@ -140,6 +140,7 @@
+ comment "other GUIs"
+ source "package/efl/Config.in"
+ source "package/qt/Config.in"
++source "package/qwt/Config.in"
+ source "package/x11r7/Config.in"
+ 
+ comment "X libraries and helper libraries"
+diff --git a/package/qwt/Config.in b/package/qwt/Config.in
+new file mode 100644
+index 0000000..d72b30e
+--- /dev/null
++++ b/package/qwt/Config.in
+@@ -0,0 +1,22 @@
++config BR2_PACKAGE_QWT
++	bool "qwt"
++	depends on BR2_PACKAGE_QT_GUI_MODULE
++	help
++	  Qwt is a graphics extension to the Qt GUI application
++	  framework. It provides a 2D plotting widget and more.
++
++	  http://http://sourceforge.net/projects/qwt
++
++if BR2_PACKAGE_QWT
++
++config BR2_PACKAGE_QWT_SVG
++	bool "SVG support"
++	select BR2_PACKAGE_QT_SVG
++
++config BR2_PACKAGE_QWT_MATHML
++	bool "MathML support"
++
++endif
++
++comment "qwt depends on QT gui module"
++	depends on !BR2_PACKAGE_QT_GUI_MODULE
+diff --git a/package/qwt/qwt-remove-installed-check.patch b/package/qwt/qwt-remove-installed-check.patch
+new file mode 100644
+index 0000000..7490a7b
+--- /dev/null
++++ b/package/qwt/qwt-remove-installed-check.patch
+@@ -0,0 +1,32 @@
++Remove useless check at build time
++
++At build time, Qwt looks whether the Qwt libraries are already
++installed in the destination directory, to avoid confusion between
++libraries installed system-wide and locally-built shared
++libraries. However, this behaviour conflicts with how Buildroot builds
++and installs libraries, so get rid of it.
++
++Signed-off-by: Thomas Petazzoni <thomas.petazzoni@free-electrons.com>
++
++Index: qwt-6.0.0/qwtbuild.pri
++===================================================================
++--- qwt-6.0.0.orig/qwtbuild.pri	2011-09-12 19:37:35.663275952 +0200
+++++ qwt-6.0.0/qwtbuild.pri	2011-09-12 19:37:41.913275949 +0200
++@@ -53,17 +53,3 @@
++ !debug_and_release {
++     OBJECTS_DIR       = obj
++ }
++-
++-unix {
++-
++-    exists( $${QMAKE_LIBDIR_QT}/libqwt.* ) {
++-
++-        # On some Linux distributions the Qwt libraries are installed 
++-        # in the same directory as the Qt libraries. Unfortunately
++-        # qmake always adds QMAKE_LIBDIR_QT at the beginning of the 
++-        # linker path, so that the installed libraries will be
++-        # used instead of the local ones.
++-
++-        error( "local build will conflict with $${QMAKE_LIBDIR_QT}/libqwt.*" )
++-    }
++-}
+diff --git a/package/qwt/qwt.mk b/package/qwt/qwt.mk
+new file mode 100644
+index 0000000..1560ea4
+--- /dev/null
++++ b/package/qwt/qwt.mk
+@@ -0,0 +1,52 @@
++#############################################################
++#
++# qwt
++#
++#############################################################
++
++QWT_VERSION = 6.0.1
++QWT_SOURCE = qwt-$(QWT_VERSION).tar.bz2
++QWT_SITE = http://downloads.sourceforge.net/project/qwt/qwt/$(QWT_VERSION)
++QWT_INSTALL_STAGING = YES
++QWT_DEPENDENCIES = qt
++
++QWT_CONFIG  =    's%QWT_INSTALL_PREFIX.*/usr/local/.*%QWT_INSTALL_PREFIX = /usr%'
++QWT_CONFIG += -e 's/^.*QWT_CONFIG.*QwtDesigner.*$$/\# QWT_CONFIG += QwtDesigner/'
++QWT_CONFIG += -e 's%/features%/mkspecs/features%'
++
++ifeq ($(BR2_PACKAGE_QWT_SVG),y)
++	QWT_CONFIG += -e 's/^.*QWT_CONFIG.*QwtSvg.*$$/QWT_CONFIG += QwtSvg/'
++else
++	QWT_CONFIG += -e 's/^.*QWT_CONFIG.*QwtSvg.*$$/\# QWT_CONFIG += QwtSvg/'
++endif
++
++ifeq ($(BR2_PACKAGE_QWT_MATHML),y)
++	QWT_CONFIG += -e 's/^.*QWT_CONFIG.*QwtMathML.*$$/QWT_CONFIG += QwtMathML/'
++else
++	QWT_CONFIG += -e 's/^.*QWT_CONFIG.*QwtMathML.*$$/\# QWT_CONFIG += QwtMathML/'
++endif
++
++define QWT_CONFIGURE_CMDS
++	$(SED) $(QWT_CONFIG) $(@D)/qwtconfig.pri
++	(cd $(@D); $(QT_QMAKE))
++endef
++
++define QWT_BUILD_CMDS
++	$(MAKE) -C $(@D)
++endef
++
++# After installation, we fixup the INSTALL_PREFIX in qwtconfig.pri so
++# that when building with qmake, -L$(STAGING_DIR)/usr/lib is used and
++# not -L/usr/lib.
++define QWT_INSTALL_STAGING_CMDS
++	$(MAKE) -C $(@D) install INSTALL_ROOT=$(STAGING_DIR)
++	$(SED) "s%QWT_INSTALL_PREFIX = .*%QWT_INSTALL_PREFIX = $(STAGING_DIR)/usr%" \
++		$(STAGING_DIR)/usr/mkspecs/features/qwtconfig.pri
++endef
++
++define QWT_INSTALL_TARGET_CMDS
++	$(MAKE) -C $(@D) install INSTALL_ROOT=$(TARGET_DIR)
++	rm -Rf $(TARGET_DIR)/usr/mkspecs
++endef
++
++$(eval $(call GENTARGETS,package,qwt))
+--
+cgit v0.9.1
+

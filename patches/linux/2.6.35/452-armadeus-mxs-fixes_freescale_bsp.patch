@@ -1,0 +1,78 @@
+Misc (i.MX28) fixes to Freescale's 2.6.35 BSP
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: linux-2.6.35.3/drivers/input/keyboard/mxs-kbd.c
+===================================================================
+--- linux-2.6.35.3.orig/drivers/input/keyboard/mxs-kbd.c	2012-02-03 12:57:41.000000000 +0100
++++ linux-2.6.35.3/drivers/input/keyboard/mxs-kbd.c	2012-02-03 12:57:55.000000000 +0100
+@@ -361,5 +361,5 @@
+ module_init(mxskbd_init);
+ module_exit(mxskbd_exit);
+ MODULE_DESCRIPTION("Freescale keyboard driver for mxs family");
+-MODULE_AUTHOR("dmitry pervushin <dimka@embeddedalley.com>")
++MODULE_AUTHOR("dmitry pervushin <dimka@embeddedalley.com>");
+ MODULE_LICENSE("GPL");
+Index: linux-2.6.35.3/arch/arm/mach-mx28/include/mach/lcdif.h
+===================================================================
+--- linux-2.6.35.3.orig/arch/arm/mach-mx28/include/mach/lcdif.h	2012-02-03 15:10:01.000000000 +0100
++++ linux-2.6.35.3/arch/arm/mach-mx28/include/mach/lcdif.h	2012-02-03 15:17:19.000000000 +0100
+@@ -162,9 +162,9 @@
+ 				      u16 h_pulse_width,
+ 				      u16 h_period,
+ 				      u16 h_wait_cnt,
+-				      u16 h_active, int enable_present)
++				      u16 h_active, u16 bpp, int enable_present)
+ {
+-	u32 val;
++	u32 val, packing, databus_width, word_length;
+ 
+ 	__raw_writel(BM_LCDIF_CTRL_DATA_SHIFT_DIR,
+ 		     REGS_LCDIF_BASE + HW_LCDIF_CTRL_CLR);
+@@ -174,9 +174,18 @@
+ 
+ 	__raw_writel(BM_LCDIF_CTRL1_BYTE_PACKING_FORMAT,
+ 		     REGS_LCDIF_BASE + HW_LCDIF_CTRL1_CLR);
+-	__raw_writel(BF_LCDIF_CTRL1_BYTE_PACKING_FORMAT(7) |
+-		     BM_LCDIF_CTRL1_RECOVER_ON_UNDERFLOW,
+-		     REGS_LCDIF_BASE + HW_LCDIF_CTRL1_SET);
++	if (bpp == 16) {
++		packing = 0xf;
++		databus_width = 0;
++		word_length = 0;
++	} else {
++		packing = 7;
++		databus_width = 3;
++		word_length = 3;
++	}
++	__raw_writel(BF_LCDIF_CTRL1_BYTE_PACKING_FORMAT(packing) |
++	    BM_LCDIF_CTRL1_RECOVER_ON_UNDERFLOW,
++	    REGS_LCDIF_BASE + HW_LCDIF_CTRL1_SET);
+ 
+ 	val = __raw_readl(REGS_LCDIF_BASE + HW_LCDIF_TRANSFER_COUNT);
+ 	val &= ~(BM_LCDIF_TRANSFER_COUNT_V_COUNT |
+@@ -200,10 +209,10 @@
+ 		     BM_LCDIF_CTRL_INPUT_DATA_SWIZZLE |
+ 		     BM_LCDIF_CTRL_LCD_DATABUS_WIDTH,
+ 		     REGS_LCDIF_BASE + HW_LCDIF_CTRL_CLR);
+-	__raw_writel(BF_LCDIF_CTRL_WORD_LENGTH(3) |	/* 24 bit */
++	__raw_writel(BF_LCDIF_CTRL_WORD_LENGTH(word_length) |	/* 24 bit */
+ 		     BM_LCDIF_CTRL_DATA_SELECT |	/* data mode */
+ 		     BF_LCDIF_CTRL_INPUT_DATA_SWIZZLE(0) |	/* no swap */
+-		     BF_LCDIF_CTRL_LCD_DATABUS_WIDTH(3),	/* 24 bit */
++		     BF_LCDIF_CTRL_LCD_DATABUS_WIDTH(databus_width),	/* 24 bit */
+ 		     REGS_LCDIF_BASE + HW_LCDIF_CTRL_SET);
+ 
+ 	val = __raw_readl(REGS_LCDIF_BASE + HW_LCDIF_VDCTRL0);
+Index: linux-2.6.35.3/drivers/input/touchscreen/mxs-ts.c
+===================================================================
+--- linux-2.6.35.3.orig/drivers/input/touchscreen/mxs-ts.c	2012-02-03 16:23:16.000000000 +0100
++++ linux-2.6.35.3/drivers/input/touchscreen/mxs-ts.c	2012-02-03 16:30:56.000000000 +0100
+@@ -462,3 +462,7 @@
+ 
+ module_init(mxs_ts_init);
+ module_exit(mxs_ts_exit);
++
++MODULE_DESCRIPTION("MXS input touchscreen driver");
++MODULE_AUTHOR("Vitaly Wool <vital@embeddedalley.com>");
++MODULE_LICENSE("GPL v2");

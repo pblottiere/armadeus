@@ -1,0 +1,26 @@
+apf9328: add apf9328 in Kconfig
+
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+--- a/arch/arm/Kconfig
++++ b/arch/arm/Kconfig
+@@ -260,6 +260,10 @@ config TARGET_APF27
+ 	select CPU_ARM926EJS
+ 	select SUPPORT_SPL
+ 
++config TARGET_APF9328
++	bool "Support apf9328"
++	select CPU_ARM920T
++
+ config TARGET_IMX27LITE
+ 	bool "Support imx27lite"
+ 	select CPU_ARM926EJS
+@@ -852,6 +856,7 @@ source "board/Marvell/gplugd/Kconfig"
+ source "board/afeb9260/Kconfig"
+ source "board/altera/socfpga/Kconfig"
+ source "board/armadeus/apf27/Kconfig"
++source "board/armadeus/apf9328/Kconfig"
+ source "board/armltd/integrator/Kconfig"
+ source "board/armltd/vexpress/Kconfig"
+ source "board/armltd/vexpress64/Kconfig"

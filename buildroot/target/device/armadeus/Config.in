@@ -1,0 +1,31 @@
+menuconfig BR2_TARGET_ARMADEUS
+	bool "Armadeus Device Support"
+	depends on BR2_arm
+	help
+	  Armadeus ARM based systems
+
+if BR2_TARGET_ARMADEUS
+
+config BR2_BOARD_NAME
+	string "Board name"
+	default "apf"
+
+config BR2_BOARD_PATH
+	string
+	default "target/device/armadeus/$(BR2_BOARD_NAME)"
+
+config BR2_CPU_NAME
+	string "CPU name"
+	default "imx"
+
+config BR2_TARGET_ARMADEUS_NR_SDRAM
+	string "Number of RAM chips on your board"
+	default 1
+
+config BR2_TARGET_ARMADEUS_SDRAM_SIZE
+	string "Size of a single RAM chip (in MB)"
+	default "64"
+	help
+	  Size of a single RAM chip on your board.
+
+endif

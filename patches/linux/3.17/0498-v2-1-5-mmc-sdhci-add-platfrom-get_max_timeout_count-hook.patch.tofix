@@ -1,0 +1,60 @@
+From patchwork Tue Dec 17 08:16:27 2013
+Content-Type: text/plain; charset="utf-8"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Subject: [v2,1/5] mmc: sdhci: add platfrom get_max_timeout_count hook
+From: Aisheng Dong <b29396@freescale.com>
+X-Patchwork-Id: 3359651
+Message-Id: <1387268191-19859-2-git-send-email-b29396@freescale.com>
+To: <linux-mmc@vger.kernel.org>
+Cc: ulf.hansson@linaro.org, shawn.guo@linaro.org,
+	ed.sutter@alcatel-lucent.com,
+	s.hauer@pengutronix.de, adrian.hunter@intel.com,
+	vladimir_zapolskiy@mentor.com, cjb@laptop.org, b29396@freescale.com,
+	linux-arm-kernel@lists.infradead.org
+Date: Tue, 17 Dec 2013 16:16:27 +0800
+
+Currently the max_discard_to is simply got by (1 << 27) / host->timeout_clk
+which is assumed to be the maximum timeout value, however, some platforms
+maximum timeout counter may not be 1 << 27, e.g. i.MX uSDHC is 1 << 28.
+Thus 1 << 27 may not be correct for such platforms.
+
+It is also possible that other platforms may have different problems.
+To be flexible, we add a get_max_timeout_count hook to get the correct
+maximum timeout value for these platforms.
+
+Signed-off-by: Dong Aisheng <b29396@freescale.com>
+
+---
+drivers/mmc/host/sdhci.c |    4 +++-
+ drivers/mmc/host/sdhci.h |    1 +
+ 2 files changed, 4 insertions(+), 1 deletions(-)
+
+Index: linux-3.15-rc1/drivers/mmc/host/sdhci.c
+===================================================================
+--- linux-3.15-rc1.orig/drivers/mmc/host/sdhci.c
++++ linux-3.15-rc1/drivers/mmc/host/sdhci.c
+@@ -2938,8 +2938,9 @@ int sdhci_add_host(struct sdhci_host *ho
+	if (host->quirks & SDHCI_QUIRK_DATA_TIMEOUT_USES_SDCLK)
+		host->timeout_clk = mmc->f_max / 1000;
+
+-	mmc->max_busy_timeout = (1 << 27) / host->timeout_clk;
+-
++	mmc->max_busy_timeout = host->ops->get_max_timeout_count ?
++		host->ops->get_max_timeout_count(host) : 1 << 27;
++	mmc->max_busy_timeout /= host->timeout_clk;
+	mmc->caps |= MMC_CAP_SDIO_IRQ | MMC_CAP_ERASE | MMC_CAP_CMD23;
+
+	if (host->quirks & SDHCI_QUIRK_MULTIBLOCK_READ_ACMD12)
+Index: linux-3.15-rc1/drivers/mmc/host/sdhci.h
+===================================================================
+--- linux-3.15-rc1.orig/drivers/mmc/host/sdhci.h
++++ linux-3.15-rc1/drivers/mmc/host/sdhci.h
+@@ -281,6 +281,7 @@ struct sdhci_ops {
+	unsigned int	(*get_max_clock)(struct sdhci_host *host);
+	unsigned int	(*get_min_clock)(struct sdhci_host *host);
+	unsigned int	(*get_timeout_clock)(struct sdhci_host *host);
++	unsigned int	(*get_max_timeout_count)(struct sdhci_host *host);
+	int		(*platform_bus_width)(struct sdhci_host *host,
+					       int width);
+	void (*platform_send_init_74_clocks)(struct sdhci_host *host,

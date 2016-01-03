@@ -1,0 +1,135 @@
+Index: linux-2.6.29.6/arch/arm/mach-mx2/Kconfig
+===================================================================
+--- linux-2.6.29.6.orig/arch/arm/mach-mx2/Kconfig	2011-05-18 11:28:48.000000000 +0200
++++ linux-2.6.29.6/arch/arm/mach-mx2/Kconfig	2011-05-18 11:57:01.000000000 +0200
+@@ -10,6 +10,15 @@
+ comment "MX2 Platforms"
+ 	depends on ARCH_MX2
+ 
++config MACH_APF27
++	bool "Armadeus Systems APF27"
++	depends on MACH_MX27
++	select MXC_ULPI
++	select SERIAL_IMX_UART1
++	help
++	  Include support for APF27 platform. This includes specific
++	  configurations for the module and its peripherals.
++
+ config MACH_MX27ADS
+ 	bool "MX27ADS platform"
+ 	depends on MACH_MX27
+@@ -26,15 +35,98 @@
+ 
+ choice
+ 	prompt "Baseboard"
+-	depends on MACH_PCM038
++	depends on MACH_PCM038 || MACH_APF27
+ 	default MACH_PCM970_BASEBOARD
+ 
+ config MACH_PCM970_BASEBOARD
+ 	prompt "PHYTEC PCM970 development board"
+ 	bool
++	depends on MACH_PCM038
+ 	select MXC_ULPI
+ 	help
+ 	  This adds board specific devices that can be found on Phytec's
+ 	  PCM970 evaluation board.
+ 
++config MACH_APF27_DEV
++	prompt "Armadeus Systems APF27Dev development board"
++	bool
++	depends on MACH_APF27
++	select SERIAL_IMX_UART3
++	help
++	  This selects the APF27Dev as baseboard. You have to manually
++	  activates the devices you want to use if you have the "Full"
++	  version.
++
+ endchoice
++
++config MACH_APF27_DEV_EXT
++	bool
++
++choice
++	prompt "Extension board"
++	depends on MACH_APF27_DEV
++	default MACH_APF27_DEV_EXT_NONE
++
++config MACH_APF27_DEV_EXT_NONE
++	prompt "No extension"
++	bool
++	help
++	  No extension board connected to APF27Dev baseboard.
++
++config MACH_APF27_DEV_EXT_WIRELESS
++	prompt "Wireless (APW)"
++	bool
++	select MACH_APF27_DEV_EXT
++	help
++	  Wireless extension board connected to APF27Dev baseboard.
++
++endchoice
++
++config MACH_APF27_DEV_EXT_WIRELESS_GSM
++	bool "GSM/GPRS Modem"
++	depends on MACH_APF27_DEV_EXT_WIRELESS
++	select SERIAL_IMX_UART2
++	select SERIAL_IMX_UART2_USE_RTSCTS
++	default y
++	help
++	  Activates support for the GSM modem on the APW extension board.
++
++config MACH_APF27_DEV_EXT_WIRELESS_BT_WIFI
++	bool "Bluetooth & WiFi module"
++	depends on MACH_APF27_DEV_EXT_WIRELESS
++	help
++	  Activates support for the Bluetooth+WiFi module on the APW extension
++	  board.
++
++config MACH_APF27_DEV_EXT_WIRELESS_WIFI
++	bool "WiFi"
++	depends on MACH_APF27_DEV_EXT_WIRELESS_BT_WIFI
++	default y
++	help
++	  Only activates WiFi part of the module.
++
++config MACH_APF27_DEV_EXT_WIRELESS_BT
++	bool "Bluetooth"
++	depends on MACH_APF27_DEV_EXT_WIRELESS_BT_WIFI
++	select SERIAL_IMX_UART6
++	select SERIAL_IMX_UART6_USE_RTSCTS
++	help
++	  Only activates Bluetooth part of the module
++
++config MACH_APF27_DEV_EXT_WIRELESS_CAMERA
++	bool "CSI (Camera) pass-through"
++	depends on (MACH_APF27_DEV_EXT_WIRELESS) && (!MACH_APF27_DEV_EXT_WIRELESS_GPS) && (!MACH_APF27_DEV_EXT_WIRELESS_BT)
++
++comment "Please check that J3 is unplugged"
++	depends on MACH_APF27_DEV_EXT_WIRELESS_CAMERA
++
++config MACH_APF27_DEV_EXT_WIRELESS_GPS
++	bool "GPS module"
++	depends on MACH_APF27_DEV_EXT_WIRELESS
++	select SERIAL_IMX_UART5
++	help
++	  Activates support for the GPS module on the APW extension board.
++
++comment "Please check that J3 is plugged in"
++	depends on MACH_APF27_DEV_EXT_WIRELESS_GPS
++
+Index: linux-2.6.29.6/arch/arm/mach-mx2/Makefile
+===================================================================
+--- linux-2.6.29.6.orig/arch/arm/mach-mx2/Makefile	2011-05-18 11:28:48.000000000 +0200
++++ linux-2.6.29.6/arch/arm/mach-mx2/Makefile	2011-05-18 11:56:17.000000000 +0200
+@@ -10,6 +10,10 @@
+ obj-$(CONFIG_MACH_MX27) += clock_imx27.o
+ obj-$(CONFIG_CPU_FREQ_IMX27) +=  cpufreq_imx27.o
+ 
++obj-$(CONFIG_MACH_APF27) += apf27.o
++obj-$(CONFIG_MACH_APF27_DEV) += apf27-dev.o
++obj-$(CONFIG_MACH_APF27_DEV) += apf27-lcd.o
++obj-$(CONFIG_MACH_APF27_DEV_EXT_WIRELESS) += apf27-dev-ext-apw.o
+ obj-$(CONFIG_MACH_MX27ADS) += mx27ads.o
+ obj-$(CONFIG_MACH_PCM038) += pcm038.o
+ obj-$(CONFIG_MACH_PCM970_BASEBOARD) += pcm970-baseboard.o

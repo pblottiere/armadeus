@@ -1,0 +1,9 @@
+config BR2_PACKAGE_IMX28_USB_DOWNLOADER
+	bool "imx28-usb-downloader (target)"
+	help
+	  Target tool to download i.MX28 binary through USB.
+
+config BR2_PACKAGE_HOST_IMX28_USB_DOWNLOADER
+	bool "imx28-usb-downloader (host)"
+	help
+	  Host tool to download i.MX28 binary through USB.

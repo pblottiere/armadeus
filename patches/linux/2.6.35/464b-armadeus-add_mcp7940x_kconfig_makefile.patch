@@ -1,0 +1,39 @@
+Add mcp79400 Linux driver on 2.6.35.x kernel
+
+Signed-off-by: Fabien Marteau <fabien.marteau@armadeus.com>
+
+---
+
+Index: linux-2.6.35.3/drivers/rtc/Kconfig
+===================================================================
+--- linux-2.6.35.3.orig/drivers/rtc/Kconfig	2013-07-22 10:15:39.469490871 +0200
++++ linux-2.6.35.3/drivers/rtc/Kconfig	2013-07-22 15:07:23.917032031 +0200
+@@ -245,6 +245,16 @@
+ 	  This driver can also be built as a module. If so, the module
+ 	  will be called rtc-m41t80.
+ 
++config RTC_DRV_MCP7940X
++	tristate "Microchip MCP7940X"
++	depends on RTC_CLASS && I2C
++	help
++	  If you say yes here you get support for Microchip
++	  MCP7940x real-time clock chips.
++
++	  This driver can also be built as a module. If so, the module
++	  will be called rtc-mcp7940x.
++
+ config RTC_DRV_M41T80_WDT
+ 	bool "ST M41T65/M41T80 series RTC watchdog timer"
+ 	depends on RTC_DRV_M41T80
+Index: linux-2.6.35.3/drivers/rtc/Makefile
+===================================================================
+--- linux-2.6.35.3.orig/drivers/rtc/Makefile	2013-07-22 10:15:39.469490871 +0200
++++ linux-2.6.35.3/drivers/rtc/Makefile	2013-07-22 15:08:09.837030826 +0200
+@@ -57,6 +57,7 @@
+ obj-$(CONFIG_RTC_DRV_MAX8925)	+= rtc-max8925.o
+ obj-$(CONFIG_RTC_DRV_MAX6902)	+= rtc-max6902.o
+ obj-$(CONFIG_RTC_DRV_MC13783)	+= rtc-mc13783.o
++obj-$(CONFIG_RTC_DRV_MCP7940X) += rtc-mcp7940x.o
+ obj-$(CONFIG_RTC_DRV_MSM6242)	+= rtc-msm6242.o
+ obj-$(CONFIG_RTC_DRV_MPC5121)	+= rtc-mpc5121.o
+ obj-$(CONFIG_RTC_DRV_MV)	+= rtc-mv.o

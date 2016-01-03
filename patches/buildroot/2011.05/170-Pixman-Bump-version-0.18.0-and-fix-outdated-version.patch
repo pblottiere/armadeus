@@ -1,0 +1,24 @@
+Pixman: Bump version 0.18.0 and fix outdated version
+
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+ package/pixman/pixman.mk |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/package/pixman/pixman.mk b/package/pixman/pixman.mk
+index 2b39a77..9f4a0fd 100644
+--- a/package/pixman/pixman.mk
++++ b/package/pixman/pixman.mk
+@@ -3,7 +3,7 @@
+ # pixman
+ #
+ ################################################################################
+-PIXMAN_VERSION = 0.17.6
++PIXMAN_VERSION = 0.18.0
+ PIXMAN_SOURCE = pixman-$(PIXMAN_VERSION).tar.gz
+ PIXMAN_SITE = http://cairographics.org/releases/
+ PIXMAN_AUTORECONF = NO
+-- 
+1.7.0.4
+

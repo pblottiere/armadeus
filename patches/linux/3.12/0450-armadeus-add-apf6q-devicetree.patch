@@ -1,0 +1,214 @@
+Index: linux-3.12.7/arch/arm/boot/dts/imx6q-apf6.dts
+===================================================================
+--- /dev/null
++++ linux-3.12.7/arch/arm/boot/dts/imx6q-apf6.dts
+@@ -0,0 +1,197 @@
++/*
++ * Copyright 2014 Armadeus Systems
++ *
++ * Author: Armadeus Systems <support@armadeus.com>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ *
++ */
++
++/dts-v1/;
++#include "imx6q.dtsi"
++
++/ {
++        model = "Armadeus APF6 i.MX6 Quad Board";
++        compatible = "armadeus,imx6q-apf6", "fsl,imx6q";
++
++        memory {
++                reg = <0x10000000 0x80000000>;
++        };
++
++        regulators {
++                compatible = "simple-bus";
++
++                reg_2p5v: 2p5v {
++                        compatible = "regulator-fixed";
++                        regulator-name = "2P5V";
++                        regulator-min-microvolt = <2500000>;
++                        regulator-max-microvolt = <2500000>;
++                        regulator-always-on;
++                };
++
++                reg_3p3v: 3p3v {
++                        compatible = "regulator-fixed";
++                        regulator-name = "3P3V";
++                        regulator-min-microvolt = <3300000>;
++                        regulator-max-microvolt = <3300000>;
++                        regulator-always-on;
++                };
++        };
++
++	leds {
++		compatible = "gpio-leds";
++
++		user-led {
++			label = "User LED";
++			gpios = <&gpio7 12 0>;
++			linux,default-trigger = "heartbeat";
++			default-state = "on";
++		};
++	};
++
++	keys {
++		compatible = "gpio-keys";
++
++		user-button {
++			label = "User button";
++			gpios = <&gpio1 9 0>;
++			linux,code = <100>;
++		};
++	};
++};
++
++&sata {
++        status = "okay";
++};
++
++/*
++&audmux {
++        pinctrl-names = "default";
++        pinctrl-0 = <&pinctrl_audmux_2>;
++        status = "okay";
++};
++*/
++
++&hdmi {
++       ddc = <&i2c1>;
++       status = "okay";
++};
++
++&i2c1 {
++       clock-frequency = <100000>;
++       pinctrl-names = "default";
++       pinctrl-0 = <&pinctrl_i2c1_1>;
++       status = "okay";
++};
++
++&i2c2 {
++        clock-frequency = <100000>;
++        pinctrl-names = "default";
++        pinctrl-0 = <&pinctrl_i2c2_2>;
++        status = "okay";
++};
++
++&iomuxc {
++        pinctrl-names = "default";
++        pinctrl-0 = <&pinctrl_hog>;
++
++        hog {
++                pinctrl_hog: hoggrp {
++                        fsl,pins = <
++                                MX6QDL_PAD_SD4_DAT0__GPIO2_IO08	0x80000000	/* WL_EN */
++                                MX6QDL_PAD_SD4_DAT3__GPIO2_IO11 0x80000000	/* BT_EN */
++				MX6QDL_PAD_GPIO_9__GPIO1_IO09   0x80000000
++				MX6QDL_PAD_GPIO_17__GPIO7_IO12  0x80000000
++                        >;
++                };
++
++		pinctrl_uart2_3: uart2grp-3 {
++			fsl,pins = <
++				MX6QDL_PAD_SD4_DAT4__UART2_RX_DATA 0x1b0b1
++				MX6QDL_PAD_SD4_DAT5__UART2_RTS_B   0x1b0b1
++				MX6QDL_PAD_SD4_DAT6__UART2_CTS_B   0x1b0b1
++				MX6QDL_PAD_SD4_DAT7__UART2_TX_DATA 0x1b0b1
++			>;
++		};
++
++		pinctrl_uart3_3: uart3grp-3 {
++			fsl,pins = <
++				MX6QDL_PAD_EIM_D23__UART3_CTS_B   0x1b0b1
++				MX6QDL_PAD_EIM_D24__UART3_TX_DATA 0x1b0b1
++				MX6QDL_PAD_EIM_D25__UART3_RX_DATA 0x1b0b1
++				MX6QDL_PAD_EIM_D31__UART3_RTS_B   0x1b0b1
++			>;
++		};
++
++                pinctrl_uart4_2: uart4grp-2 {
++                	fsl,pins = <
++                        	MX6QDL_PAD_CSI0_DAT13__UART4_TX_DATA 0x1b0b1
++                        	MX6QDL_PAD_CSI0_DAT13__UART4_RX_DATA 0x1b0b1
++                    	>;
++                };
++        };
++};
++
++&fec {
++        pinctrl-names = "default";
++        pinctrl-0 = <&pinctrl_enet_1>;
++        phy-mode = "rgmii";
++        status = "okay";
++};
++
++/* GPS */
++&uart1 {
++        pinctrl-names = "default";
++        pinctrl-0 = <&pinctrl_uart1_1>;
++        status = "okay";
++};
++
++/* Bluetooth */
++&uart2 {
++        pinctrl-names = "default";
++        pinctrl-0 = <&pinctrl_uart2_3>;
++        status = "okay";
++};
++
++/* GSM */
++&uart3 {
++        pinctrl-names = "default";
++        pinctrl-0 = <&pinctrl_uart3_3>;
++        status = "okay";
++};
++
++/* console */
++&uart4 {
++        pinctrl-names = "default";
++        pinctrl-0 = <&pinctrl_uart4_2>;
++        status = "okay";
++};
++
++&usbh1 {
++        status = "okay";
++};
++
++/* Wi-Fi */
++&usdhc1 {
++        pinctrl-names = "default";
++        pinctrl-0 = <&pinctrl_usdhc1_2>;
++        status = "okay";
++};
++
++/* microSD */
++&usdhc2 {
++        pinctrl-names = "default";
++        pinctrl-0 = <&pinctrl_usdhc2_2>;
++        cd-gpios = <&gpio1 2 0>;
++        status = "okay";
++};
++
++/* eMMC */
++&usdhc3 {
++        pinctrl-names = "default";
++        pinctrl-0 = <&pinctrl_usdhc3_1>;
++        //non-removable;
++        status = "okay";
++};
+Index: linux-3.12.7/arch/arm/boot/dts/Makefile
+===================================================================
+--- linux-3.12.7.orig/arch/arm/boot/dts/Makefile
++++ linux-3.12.7/arch/arm/boot/dts/Makefile
+@@ -136,6 +136,7 @@ dtb-$(CONFIG_ARCH_MXC) += \
+ 	imx6dl-sabreauto.dtb \
+ 	imx6dl-sabresd.dtb \
+ 	imx6dl-wandboard.dtb \
++	imx6q-apf6.dtb \
+ 	imx6q-arm2.dtb \
+ 	imx6q-phytec-pbab01.dtb \
+ 	imx6q-sabreauto.dtb \

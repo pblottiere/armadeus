@@ -1,0 +1,64 @@
+ifeq ($(strip $(BR2_TARGET_ARMADEUS)),y)
+
+ARMADEUS_PATH:=target/device/armadeus
+BOARD_NAME:=$(call qstrip,$(BR2_BOARD_NAME))
+BOARD_PATH:=$(call qstrip,$(BR2_BOARD_PATH))
+CPU_NAME:=$(call qstrip,$(BR2_CPU_NAME))
+
+ARMADEUS_LINUX_IMAGE_NAME:=$(addsuffix -linux.bin,$(BOARD_NAME))
+ARMADEUS_DTB_IMAGE_NAME:=$(addsuffix .dtb,$(BOARD_NAME))
+# for very old BR:
+LINUX26_KERNEL_NAME:=$(BOARD_NAME)-linux.bin
+
+# !! if you modify the following, please also update scripts/quiltify.sh !!
+define UBOOT_ARMADEUS_SPECIFIC_PATCH_HOOK
+	support/scripts/apply-patches.sh $(@D) $(BR2_TARGET_UBOOT_CUSTOM_PATCH_DIR) \*.patch
+endef
+UBOOT_POST_PATCH_HOOKS += UBOOT_ARMADEUS_SPECIFIC_PATCH_HOOK
+
+ifneq ($(BR2_CPU_NAME), "imx6")
+define UBOOT_UPDATE_CONFIG_HEADER
+	$(SED) "s,^#define CONFIG_BOARD_NAME.*,#define CONFIG_BOARD_NAME $(BOARD_NAME),g;"\
+		$(@D)/include/configs/$(UBOOT_BOARD_NAME).h
+$(ifneq ($(BR2_TARGET_ARMADEUS_SDRAM_SIZE),))
+	$(SED) "s,^#define CONFIG_SYS_SDRAM_MBYTE_SYZE.*,#define CONFIG_SYS_SDRAM_MBYTE_SYZE $(BR2_TARGET_ARMADEUS_SDRAM_SIZE),g;"\
+		$(@D)/include/configs/$(UBOOT_BOARD_NAME).h
+$(endif)
+$(ifneq ($(strip $(BR2_TARGET_ARMADEUS_NR_SDRAM)),))
+	$(SED) "s,^#define CONFIG_NR_DRAM_POPULATED.*,#define CONFIG_NR_DRAM_POPULATED $(BR2_TARGET_ARMADEUS_NR_SDRAM),g;"\
+		$(@D)/include/configs/$(UBOOT_BOARD_NAME).h
+$(endif)
+endef
+UBOOT_POST_CONFIGURE_HOOKS += UBOOT_UPDATE_CONFIG_HEADER
+
+define UBOOT_POST_INSTALL_IMAGES_ACTION
+	@if [ -e "$(BINARIES_DIR)/$(UBOOT_BIN)" ]; then \
+		rm -f $(BINARIES_DIR)/$(BOARD_NAME)-$(UBOOT_BIN) ;\
+		mv $(BINARIES_DIR)/$(UBOOT_BIN) $(BINARIES_DIR)/$(BOARD_NAME)-$(UBOOT_BIN) ; \
+	fi
+	@if [ ! -e "$(BINARIES_DIR)/$(BOARD_NAME)-u-boot.bin" ]; then \
+		ln -sf $(BINARIES_DIR)/$(BOARD_NAME)-$(UBOOT_BIN) $(BINARIES_DIR)/$(BOARD_NAME)-u-boot.bin ; \
+	fi
+	@if [ ! -e "$(BINARIES_DIR)/$(BOARD_NAME)-u-boot-nand.bin" ]; then \
+		ln -sf $(BINARIES_DIR)/$(BOARD_NAME)-$(UBOOT_BIN) $(BINARIES_DIR)/$(BOARD_NAME)-u-boot-nand.bin ; \
+	fi
+	@if [ -e "$(BINARIES_DIR)/uboot-env.bin" ]; then \
+		rm -f $(BINARIES_DIR)/$(BOARD_NAME)-u-boot-env.bin ;\
+		mv $(BINARIES_DIR)/uboot-env.bin $(BINARIES_DIR)/$(BOARD_NAME)-u-boot-env.bin ; \
+		chmod a+r $(BINARIES_DIR)/$(BOARD_NAME)-u-boot-env.bin ; \
+		cp $(BR2_TARGET_UBOOT_ENVIMAGE_SOURCE) $(BINARIES_DIR)/$(BOARD_NAME)-u-boot-env.txt ; \
+	fi
+endef
+
+UBOOT_POST_INSTALL_IMAGES_HOOKS += UBOOT_POST_INSTALL_IMAGES_ACTION
+endif # BR2_BOARD_NAME != apf6
+
+define LINUX_PRE_CONFIGURE_ACTION
+	ln -sf $(ARMADEUS_TOPDIR)/target/linux/modules $(@D)/drivers/armadeus
+	$(SED) "s,^ARCH.*,ARCH=$(KERNEL_ARCH),g;" $(@D)/Makefile
+	$(SED) "s,^CROSS_COMPILE.*,CROSS_COMPILE=$(KERNEL_CROSS),g;" $(@D)/Makefile
+endef
+
+LINUX_PRE_CONFIGURE_HOOKS += LINUX_PRE_CONFIGURE_ACTION
+
+endif

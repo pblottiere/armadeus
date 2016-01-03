@@ -1,0 +1,70 @@
+- Fix mx28 16 bits video modes of freescale mxs framebuffer driver
+- Fix mx28 video flickering 
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+
+Index: linux-2.6.35.3/drivers/video/mxs/mxsfb.c
+===================================================================
+--- linux-2.6.35.3/drivers/video/mxs/mxsfb.c
++++ linux-2.6.35.3/drivers/video/mxs/mxsfb.c
+@@ -466,21 +466,21 @@ static int mxsfb_check_var(struct fb_var
+ 	if (var->bits_per_pixel == 16) {
+ 		/* RGBA 5551 */
+ 		if (var->transp.length) {
+-			var->red.offset = 0;
+-			var->red.length = 5;
++			var->blue.offset = 0;
++			var->blue.length = 5;
+ 			var->green.offset = 5;
+ 			var->green.length = 5;
+-			var->blue.offset = 10;
+-			var->blue.length = 5;
++			var->red.offset = 10;
++			var->red.length = 5;
+ 			var->transp.offset = 15;
+ 			var->transp.length = 1;
+ 		} else {	/* RGB 565 */
+-			var->red.offset = 0;
+-			var->red.length = 5;
++			var->blue.offset = 0;
++			var->blue.length = 5;
+ 			var->green.offset = 5;
+ 			var->green.length = 6;
+-			var->blue.offset = 11;
+-			var->blue.length = 5;
++			var->red.offset = 11;
++			var->red.length = 5;
+ 			var->transp.offset = 0;
+ 			var->transp.length = 0;
+ 		}
+@@ -620,7 +620,7 @@ static void init_timings(struct mxs_fb_d
+ 	__raw_writel(timings, data->regbase + HW_LCDIF_TIMING);
+ }
+ 
+-#ifdef CONFIG_CPU_FREQ
++#if defined(CONFIG_CPU_FREQ) && defined(CONFIG_MXS_RAM_FREQ_SCALING)
+ 
+ struct mxsfb_notifier_block {
+ 	struct mxs_fb_data *fb_data;
+@@ -665,7 +665,7 @@ static struct mxsfb_notifier_block mxsfb
+ 	       .notifier_call = mxsfb_notifier,
+ 	       },
+ };
+-#endif /* CONFIG_CPU_FREQ */
++#endif /* CONFIG_CPU_FREQ && CONFIG_MXS_RAM_FREQ_SCALING*/
+ 
+ static int get_max_memsize(struct mxs_platform_fb_entry *pentry,
+ 			   void *data, int ret_prev)
+@@ -851,10 +851,10 @@ static int __devinit mxsfb_probe(struct
+ 	data->cur_phys = data->phys_start;
+ 	dev_dbg(&pdev->dev, "LCD running now\n");
+ 
+-#ifdef CONFIG_CPU_FREQ
++#if defined(CONFIG_CPU_FREQ) && defined(CONFIG_MXS_RAM_FREQ_SCALING)
+ 	mxsfb_nb.fb_data = data;
+ 	cpufreq_register_notifier(&mxsfb_nb.nb, CPUFREQ_TRANSITION_NOTIFIER);
+-#endif /* CONFIG_CPU_FREQ */
++#endif /* CONFIG_CPU_FREQ && CONFIG_MXS_RAM_FREQ_SCALING */
+ 
+ 	goto out;
+ 

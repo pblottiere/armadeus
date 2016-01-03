@@ -1,0 +1,11 @@
+
+config ARMADEUS_FPGA_BOARD_DESIGNS_TWIN_UARTS_UARTS
+	tristate "board twin uarts"
+	default n
+	depends on ARMADEUS_FPGA_BOARD_DESIGNS_TWIN_UARTS
+	select SERIAL_8250
+	---help---
+	  Board support for fpga designs twin uarts used
+	  for gsm/gps on apf51Dev board.
+		If selected as module, it will be named :
+		twin_uarts_16750

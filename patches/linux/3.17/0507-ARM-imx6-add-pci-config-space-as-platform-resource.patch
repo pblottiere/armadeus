@@ -1,0 +1,30 @@
+diff --git a/Documentation/devicetree/bindings/pci/fsl,imx6q-pcie.txt b/Documentation/devicetree/bindings/pci/fsl,imx6q-pcie.txt
+index 9455fd0ec830..6fbba53a309b 100644
+--- a/Documentation/devicetree/bindings/pci/fsl,imx6q-pcie.txt
++++ b/Documentation/devicetree/bindings/pci/fsl,imx6q-pcie.txt
+@@ -17,7 +17,9 @@ Example:
+ 
+ 	pcie@0x01000000 {
+ 		compatible = "fsl,imx6q-pcie", "snps,dw-pcie";
+-		reg = <0x01ffc000 0x4000>;
++		reg = <0x01ffc000 0x04000>,
++		      <0x01f00000 0x80000>;
++		reg-names = "dbi", "config";
+ 		#address-cells = <3>;
+ 		#size-cells = <2>;
+ 		device_type = "pci";
+diff --git a/arch/arm/boot/dts/imx6qdl.dtsi b/arch/arm/boot/dts/imx6qdl.dtsi
+index ce0599134a69..6b5da2a98aaf 100644
+--- a/arch/arm/boot/dts/imx6qdl.dtsi
++++ b/arch/arm/boot/dts/imx6qdl.dtsi
+@@ -133,7 +133,9 @@
+ 
+ 		pcie: pcie@0x01000000 {
+ 			compatible = "fsl,imx6q-pcie", "snps,dw-pcie";
+-			reg = <0x01ffc000 0x4000>; /* DBI */
++			reg = <0x01ffc000 0x04000>,
++			      <0x01f00000 0x80000>;
++			reg-names = "dbi", "config";
+ 			#address-cells = <3>;
+ 			#size-cells = <2>;
+ 			device_type = "pci";

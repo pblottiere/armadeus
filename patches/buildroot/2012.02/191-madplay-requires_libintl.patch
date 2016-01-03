@@ -1,0 +1,29 @@
+Otherwise compilation fails (in intl/relocatable.c)
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/multimedia/madplay/Config.in
+===================================================================
+--- buildroot.orig/package/multimedia/madplay/Config.in	2012-08-08 09:56:30.000000000 +0200
++++ buildroot/package/multimedia/madplay/Config.in	2012-08-08 09:57:12.000000000 +0200
+@@ -2,6 +2,7 @@
+ 	bool "madplay"
+ 	select BR2_PACKAGE_LIBMAD
+ 	select BR2_PACKAGE_LIBID3TAG
++	select BR2_PACKAGE_LIBINTL
+ 	help
+ 	  Command-line front-end to libmad, a high-quality MPEG audio decoder.
+ 	  It currently supports MPEG-1 and the MPEG-2 extension to lower
+Index: buildroot/package/multimedia/madplay/madplay.mk
+===================================================================
+--- buildroot.orig/package/multimedia/madplay/madplay.mk	2012-08-08 10:04:31.000000000 +0200
++++ buildroot/package/multimedia/madplay/madplay.mk	2012-08-08 10:04:51.000000000 +0200
+@@ -7,7 +7,7 @@
+ MADPLAY_SOURCE:=madplay-$(MADPLAY_VERSION).tar.gz
+ MADPLAY_SITE:=http://$(BR2_SOURCEFORGE_MIRROR).dl.sourceforge.net/sourceforge/mad
+ MADPLAY_LIBTOOL_PATCH=NO
+-MADPLAY_DEPENDENCIES=libmad libid3tag
++MADPLAY_DEPENDENCIES=libmad libid3tag libintl
+ 
+ # Check if ALSA is built, then we should configure after alsa-lib so
+ # ./configure can find alsa-lib.

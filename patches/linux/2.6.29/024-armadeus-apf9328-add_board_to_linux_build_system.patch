@@ -1,0 +1,90 @@
+Index: linux-2.6.29.6/arch/arm/mach-imx/include/mach/hardware.h
+===================================================================
+--- linux-2.6.29.6.orig/arch/arm/mach-imx/include/mach/hardware.h	2009-07-03 01:41:20.000000000 +0200
++++ linux-2.6.29.6/arch/arm/mach-imx/include/mach/hardware.h	2011-06-15 14:19:53.000000000 +0200
+@@ -88,4 +88,8 @@
+ #include "mx1ads.h"
+ #endif
+ 
++#ifdef CONFIG_MACH_APF9328
++#include "apf9328.h"
++#endif
++
+ #endif
+Index: linux-2.6.29.6/arch/arm/mach-imx/Kconfig
+===================================================================
+--- linux-2.6.29.6.orig/arch/arm/mach-imx/Kconfig	2009-07-03 01:41:20.000000000 +0200
++++ linux-2.6.29.6/arch/arm/mach-imx/Kconfig	2011-06-15 12:28:37.000000000 +0200
+@@ -1,6 +1,10 @@
+ menu "IMX Implementations"
+ 	depends on ARCH_IMX
+ 
++choice
++    prompt "Development board selection"
++    depends on ARCH_IMX
++
+ config ARCH_MX1ADS
+ 	bool "mx1ads"
+ 	depends on ARCH_IMX
+@@ -8,4 +12,40 @@
+ 	help
+ 	  Say Y here if you are using the Motorola MX1ADS board
+ 
++config MACH_APF9328
++	bool "APF9328"
++	depends on ARCH_IMX
++	help
++	  Say Yes here if you are using the Armadeus APF9328 development board
++
++endchoice
++
++choice
++       prompt "Flash available on board"
++       depends on MACH_APF9328
++       default IMX_APF9328_FLASH_16MB
++
++config IMX_APF9328_FLASH_8MB
++       bool "8MB"
++
++config IMX_APF9328_FLASH_16MB
++       bool "16MB"
++
++endchoice
++
++choice
++        prompt "Baseboard"
++        depends on MACH_APF9328
++        default MACH_APF9328_DEV
++
++config MACH_APF9328_DEV
++        prompt "DevLight/DevFull"
++        bool
++        help
++          This selects the APF9328_DevLight/DevFull as baseboard. You have
++	  to manually activates the devices you want to use if you have a
++	  DevFull.
++
++endchoice
++
+ endmenu
+Index: linux-2.6.29.6/arch/arm/mach-imx/Makefile
+===================================================================
+--- linux-2.6.29.6.orig/arch/arm/mach-imx/Makefile	2009-07-03 01:41:20.000000000 +0200
++++ linux-2.6.29.6/arch/arm/mach-imx/Makefile	2011-06-15 11:57:47.000000000 +0200
+@@ -10,6 +10,8 @@
+ 
+ # Specific board support
+ obj-$(CONFIG_ARCH_MX1ADS) += mx1ads.o
++obj-$(CONFIG_MACH_APF9328) += apf9328.o
++obj-$(CONFIG_MACH_APF9328_DEV) += apf9328-dev.o
+ 
+ # Support for blinky lights
+ led-y := leds.o
+Index: linux-2.6.29.6/arch/arm/mach-imx/Makefile.boot
+===================================================================
+--- linux-2.6.29.6.orig/arch/arm/mach-imx/Makefile.boot	2009-07-03 01:41:20.000000000 +0200
++++ linux-2.6.29.6/arch/arm/mach-imx/Makefile.boot	2011-06-15 11:57:47.000000000 +0200
+@@ -1,2 +1,3 @@
+     zreladdr-$(CONFIG_ARCH_MX1ADS)	:= 0x08008000
++    zreladdr-$(CONFIG_MACH_APF9328) := 0x08008000
+ 

@@ -1,0 +1,27 @@
+apf51: add apf51 in Kconfig
+
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+--- a/arch/arm/Kconfig
++++ b/arch/arm/Kconfig
+@@ -264,6 +264,11 @@ config TARGET_APF9328
+ 	bool "Support apf9328"
+ 	select CPU_ARM920T
+ 
++config TARGET_APF51
++	bool "Support apf51"
++	select CPU_V7
++	select SUPPORT_SPL
++
+ config TARGET_IMX27LITE
+ 	bool "Support imx27lite"
+ 	select CPU_ARM926EJS
+@@ -857,6 +862,7 @@ source "board/afeb9260/Kconfig"
+ source "board/altera/socfpga/Kconfig"
+ source "board/armadeus/apf27/Kconfig"
+ source "board/armadeus/apf9328/Kconfig"
++source "board/armadeus/apf51/Kconfig"
+ source "board/armltd/integrator/Kconfig"
+ source "board/armltd/vexpress/Kconfig"
+ source "board/armltd/vexpress64/Kconfig"

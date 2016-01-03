@@ -1,0 +1,28 @@
+Do not configure PCIe clock with Linux. PCIe Frequency clock is configured
+under U-Boot.
+Enable sata_ref_100M clock. It's needed to have PCIe registers access.
+
+Signed-off-by: Fabien Marteau <fabien.marteau@armadeus.com>
+Signed-off-by: Sébastien Szymanski <sebastien.szymanski@armadeus.com>
+---
+
+Index: linux-3.19.3/arch/arm/mach-imx/clk-imx6q.c
+===================================================================
+--- linux-3.19.3.orig/arch/arm/mach-imx/clk-imx6q.c
++++ linux-3.19.3/arch/arm/mach-imx/clk-imx6q.c
+@@ -522,8 +522,13 @@ static void __init imx6q_clocks_init(str
+ 	clk_set_parent(clk[IMX6QDL_CLK_SPDIF_SEL], clk[IMX6QDL_CLK_PLL3_PFD3_454M]);
+ 
+ 	/* All existing boards with PCIe use LVDS1 */
+-	if (IS_ENABLED(CONFIG_PCI_IMX6))
+-		clk_set_parent(clk[IMX6QDL_CLK_LVDS1_SEL], clk[IMX6QDL_CLK_SATA_REF_100M]);
++	if (IS_ENABLED(CONFIG_PCI_IMX6)) {
++		if (of_machine_is_compatible("armadeus,imx6dl-apf6") ||
++		    of_machine_is_compatible("armadeus,imx6q-apf6"))
++			clk_prepare_enable(clk[IMX6QDL_CLK_SATA_REF_100M]);
++		else
++			clk_set_parent(clk[IMX6QDL_CLK_LVDS1_SEL], clk[IMX6QDL_CLK_SATA_REF_100M]);
++	}
+ 
+ 	/* Set initial power mode */
+	imx6q_set_lpm(WAIT_CLOCKED);

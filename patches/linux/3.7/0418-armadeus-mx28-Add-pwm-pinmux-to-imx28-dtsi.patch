@@ -1,0 +1,25 @@
+
+Signed-off-by: Gwenhaël Goavec-Merou <gwen@trabucayre.com>
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: linux-3.7-rc3/arch/arm/boot/dts/imx28.dtsi
+===================================================================
+--- linux-3.7-rc3.orig/arch/arm/boot/dts/imx28.dtsi
++++ linux-3.7-rc3/arch/arm/boot/dts/imx28.dtsi
+@@ -492,6 +492,16 @@
+ 					fsl,pull-up = <0>;
+ 				};
+ 
++				pwm3_pins_a: pwm3@0 {
++					reg = <0>;
++					fsl,pinmux-ids = <
++						0x31C0 /* MX28_PAD_PWM3__PWM_3 */
++					>;
++					fsl,drive-strength = <0>;
++					fsl,voltage = <1>;
++					fsl,pull-up = <0>;
++				};
++
+ 				pwm4_pins_a: pwm4@0 {
+ 					reg = <0>;
+ 					fsl,pinmux-ids = <

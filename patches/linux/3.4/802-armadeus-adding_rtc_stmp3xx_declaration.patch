@@ -1,0 +1,20 @@
+Index: linux-3.4.28/arch/arm/mach-mxs/devices/Kconfig
+===================================================================
+--- linux-3.4.28.orig/arch/arm/mach-mxs/devices/Kconfig	2013-02-20 12:39:46.000000000 +0100
++++ linux-3.4.28/arch/arm/mach-mxs/devices/Kconfig	2013-02-20 12:42:14.000000000 +0100
+@@ -38,3 +38,6 @@
+ 
+ config MXS_HAVE_PLATFORM_MXS_LRADC
+ 	bool
++
++config MXS_HAVE_PLATFORM_RTC_STMP3XXX
++	bool
+Index: linux-3.4.28/arch/arm/mach-mxs/devices/Makefile
+===================================================================
+--- linux-3.4.28.orig/arch/arm/mach-mxs/devices/Makefile	2013-02-20 12:39:41.000000000 +0100
++++ linux-3.4.28/arch/arm/mach-mxs/devices/Makefile	2013-02-20 12:40:56.000000000 +0100
+@@ -12,3 +12,4 @@
+ obj-$(CONFIG_MXS_HAVE_PLATFORM_MXSFB) += platform-mxsfb.o
+ obj-$(CONFIG_MXS_HAVE_PLATFORM_MXS_SAIF) += platform-mxs-saif.o
+ obj-$(CONFIG_MXS_HAVE_PLATFORM_MXS_LRADC) += platform-mxs-lradc.o
++obj-$(CONFIG_MXS_HAVE_PLATFORM_RTC_STMP3XXX) += platform-rtc-stmp3xxx.o

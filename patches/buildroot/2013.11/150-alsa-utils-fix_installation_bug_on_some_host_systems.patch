@@ -1,0 +1,19 @@
+Depending on "cp" version, alsa-utils install may fail with:
+	"$(TARGET_DIR)/usr/share/alsa/ directory doesn't exist"
+This patch fixes it.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/alsa-utils/alsa-utils.mk
+===================================================================
+--- buildroot.orig/package/alsa-utils/alsa-utils.mk	2012-02-21 16:43:24.000000000 +0100
++++ buildroot/package/alsa-utils/alsa-utils.mk	2012-02-21 16:45:59.000000000 +0100
+@@ -52,7 +52,7 @@
+ 	if [ -x "$(TARGET_DIR)/usr/sbin/alsactl" ]; then \
+ 		mkdir -p $(TARGET_DIR)/usr/share/; \
+ 		rm -rf $(TARGET_DIR)/usr/share/alsa/; \
+-		cp -rdpf $(STAGING_DIR)/usr/share/alsa/ $(TARGET_DIR)/usr/share/alsa/; \
++		cp -rdpf $(STAGING_DIR)/usr/share/alsa $(TARGET_DIR)/usr/share/alsa; \
+ 	fi
+ endef
+ 

@@ -1,0 +1,1673 @@
+Index: u-boot-2010.03/board/armadeus/apf51/apf51.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ u-boot-2010.03/board/armadeus/apf51/apf51.c	2011-06-21 16:59:15.000000000 +0200
+@@ -0,0 +1,1160 @@
++/*
++ * (C) Copyright 2010 Eric Jarrige, Armadeus Project
++ *
++ * See file CREDITS for list of people who contributed to this
++ * project.
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of
++ * the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
++ * MA 02111-1307 USA
++ */
++
++#include <common.h>
++#include <command.h>
++#include <asm/io.h>
++#include <asm/arch/imx-regs.h>
++#include <asm/arch/asm-offsets.h>
++#include <asm/arch/mx51_pins.h>
++#include <asm/arch/iomux.h>
++#include <asm/errno.h>
++#include <i2c.h>
++//#include <asm/arch/imx_spi.h>
++//#include <asm/arch/gpio.h>
++#include <asm/arch/mxc_nand.h>
++#include "fpga.h"
++#include <nand.h>
++
++
++DECLARE_GLOBAL_DATA_PTR;
++
++static u32 system_rev;
++unsigned long boot_verb = 0;
++
++
++static int read_firmware (size_t offset, size_t end, u_char * buf)
++{
++	size_t amount_loaded = 0;
++	size_t blocksize;
++
++	u_char *char_ptr;
++
++	blocksize = nand_info[0].erasesize;
++
++	while (offset < end) {
++		if (nand_block_isbad(&nand_info[0], offset)) {
++			offset += blocksize;
++		} else {
++			char_ptr = &buf[amount_loaded];
++			if (nand_read(&nand_info[0], offset, &blocksize, char_ptr))
++				return 1;
++			offset += blocksize;
++			amount_loaded += blocksize;
++		}
++	}
++
++	return amount_loaded;
++}
++
++
++u32 get_board_rev(void)
++{
++	return system_rev;
++}
++
++int dram_init(void)
++{
++#if ( CONFIG_SYS_NR_DRAM_BANKS > 0 )
++	gd->bd->bi_dram[0].start = CONFIG_SYS_SDRAM_1_BASE;
++	gd->bd->bi_dram[0].size = CONFIG_SYS_SDRAM_1_SIZE;
++#endif
++#if ( CONFIG_SYS_NR_DRAM_BANKS > 1 )
++	gd->bd->bi_dram[1].start = CONFIG_SYS_SDRAM_2_BASE;
++	gd->bd->bi_dram[1].size = CONFIG_SYS_SDRAM_2_SIZE;
++#endif
++	return 0;
++}
++
++void setup_usb(void)
++{
++	/*
++	 * Configure iomux for USB interfaces
++	 */
++#define USB_PAD_CFG		(PAD_CTL_HYS_NONE | PAD_CTL_PKE_ENABLE |	\
++				 PAD_CTL_PUE_KEEPER | PAD_CTL_100K_PU |		\
++				 PAD_CTL_DRV_HIGH | PAD_CTL_SRE_FAST)
++	/*
++	 * usboh1
++	 */
++	mxc_request_iomux(MX51_PIN_USBH1_CLK, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_USBH1_DIR, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_USBH1_STP, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_USBH1_NXT, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_USBH1_DATA0, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_USBH1_DATA1, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_USBH1_DATA2, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_USBH1_DATA3, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_USBH1_DATA4, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_USBH1_DATA5, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_USBH1_DATA6, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_USBH1_DATA7, IOMUX_CONFIG_ALT0);
++
++	mxc_iomux_set_pad(MX51_PIN_USBH1_CLK, USB_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_USBH1_DIR, USB_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_USBH1_STP, USB_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_USBH1_NXT, USB_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_USBH1_DATA0, USB_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_USBH1_DATA1, USB_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_USBH1_DATA2, USB_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_USBH1_DATA3, USB_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_USBH1_DATA4, USB_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_USBH1_DATA5, USB_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_USBH1_DATA6, USB_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_USBH1_DATA7, USB_PAD_CFG);
++	/*
++	 * usboh2
++	 */
++	mxc_request_iomux(MX51_PIN_EIM_D16, IOMUX_CONFIG_ALT2);
++	mxc_request_iomux(MX51_PIN_EIM_D17, IOMUX_CONFIG_ALT2);
++	mxc_request_iomux(MX51_PIN_EIM_D18, IOMUX_CONFIG_ALT2);
++	mxc_request_iomux(MX51_PIN_EIM_D19, IOMUX_CONFIG_ALT2);
++	mxc_request_iomux(MX51_PIN_EIM_D20, IOMUX_CONFIG_ALT2);
++	mxc_request_iomux(MX51_PIN_EIM_D21, IOMUX_CONFIG_ALT2);
++	mxc_request_iomux(MX51_PIN_EIM_D22, IOMUX_CONFIG_ALT2);
++	mxc_request_iomux(MX51_PIN_EIM_D23, IOMUX_CONFIG_ALT2);
++	mxc_request_iomux(MX51_PIN_EIM_A24, IOMUX_CONFIG_ALT2);
++	mxc_request_iomux(MX51_PIN_EIM_A25, IOMUX_CONFIG_ALT2);
++	mxc_request_iomux(MX51_PIN_EIM_A26, IOMUX_CONFIG_ALT2);
++	mxc_request_iomux(MX51_PIN_EIM_A27, IOMUX_CONFIG_ALT2);
++	mxc_request_iomux(MX51_PIN_GPIO1_8, IOMUX_CONFIG_ALT1);
++	mxc_request_iomux(MX51_PIN_GPIO1_9, IOMUX_CONFIG_ALT1);
++
++	mxc_iomux_set_pad(MX51_PIN_EIM_D16, USB_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_EIM_D17, USB_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_EIM_D18, USB_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_EIM_D19, USB_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_EIM_D20, USB_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_EIM_D21, USB_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_EIM_D22, USB_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_EIM_D23, USB_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_EIM_A24, USB_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_EIM_A25, USB_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_EIM_A26, USB_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_EIM_A27, USB_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_GPIO1_8, USB_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_GPIO1_9, USB_PAD_CFG);
++}
++
++void setup_uart(void)
++{
++	/*
++	 * Configure iomux for UART interfaces
++	 */
++#define UART_PAD_CFG		(PAD_CTL_HYS_NONE | PAD_CTL_PKE_ENABLE |	\
++				 PAD_CTL_PUE_PULL | PAD_CTL_100K_PU |		\
++				 PAD_CTL_DRV_HIGH | PAD_CTL_SRE_FAST)
++	/*
++	 * uart1
++	 */
++	mxc_request_iomux(MX51_PIN_UART1_RTS, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_UART1_CTS, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_UART1_RXD, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_UART1_TXD, IOMUX_CONFIG_ALT0);
++
++	mxc_iomux_set_pad(MX51_PIN_UART1_RTS, UART_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_UART1_CTS, UART_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_UART1_RXD, UART_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_UART1_TXD, UART_PAD_CFG);
++
++	/*
++	 * uart2
++	 */
++	mxc_request_iomux(MX51_PIN_EIM_D25, IOMUX_CONFIG_ALT4);
++	mxc_request_iomux(MX51_PIN_EIM_D26, IOMUX_CONFIG_ALT4);
++	mxc_request_iomux(MX51_PIN_UART2_RXD, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_UART2_TXD, IOMUX_CONFIG_ALT0);
++
++	mxc_iomux_set_pad(MX51_PIN_EIM_D25, UART_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_EIM_D26, UART_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_UART2_RXD, UART_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_UART2_TXD, UART_PAD_CFG);
++
++	mxc_iomux_set_input(MUX_IN_UART2_IPP_UART_RXD_MUX_SELECT_INPUT,INPUT_CTL_PATH2);
++	mxc_iomux_set_input(MUX_IN_UART2_IPP_UART_RTS_B_SELECT_INPUT,INPUT_CTL_PATH3);
++	/*
++	 * uart3
++	 */
++#ifdef APF51_RECOVER  /* temporary */
++	mxc_request_iomux(MX51_PIN_AUD3_BB_RXD, IOMUX_CONFIG_ALT1);
++	mxc_request_iomux(MX51_PIN_AUD3_BB_FS, IOMUX_CONFIG_ALT1);
++	mxc_iomux_set_pad(MX51_PIN_AUD3_BB_RXD, UART_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_AUD3_BB_FS, UART_PAD_CFG);
++	mxc_iomux_set_input(MUX_IN_UART3_IPP_UART_RXD_MUX_SELECT_INPUT,INPUT_CTL_PATH2);dddd
++#else
++	mxc_request_iomux(MX51_PIN_UART3_RXD, IOMUX_CONFIG_ALT1);
++	mxc_request_iomux(MX51_PIN_UART3_TXD, IOMUX_CONFIG_ALT1);
++
++	mxc_iomux_set_pad(MX51_PIN_UART3_RXD, UART_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_UART3_TXD, UART_PAD_CFG);
++
++	mxc_iomux_set_input(MUX_IN_UART3_IPP_UART_RXD_MUX_SELECT_INPUT,INPUT_CTL_PATH4);
++#endif
++}
++
++void setup_audio(void)
++{
++	/*
++	 * Configure iomux for audio interfaces
++	 */
++#define AUD_PAD_CFG		(PAD_CTL_HYS_NONE | PAD_CTL_PKE_ENABLE |	\
++				 PAD_CTL_PUE_KEEPER | PAD_CTL_100K_PU |		\
++				 PAD_CTL_DRV_HIGH | PAD_CTL_SRE_FAST)
++	/*
++	 * audmux3
++	 */
++	mxc_request_iomux(MX51_PIN_AUD3_BB_TXD, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_AUD3_BB_RXD, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_AUD3_BB_CK, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_AUD3_BB_FS, IOMUX_CONFIG_ALT0);
++
++	mxc_iomux_set_pad(MX51_PIN_AUD3_BB_TXD, AUD_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_AUD3_BB_RXD, AUD_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_AUD3_BB_CK, AUD_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_AUD3_BB_FS, AUD_PAD_CFG);
++	/*
++	 * audmux5
++	 */
++	mxc_request_iomux(MX51_PIN_EIM_EB2, IOMUX_CONFIG_ALT6);
++	mxc_request_iomux(MX51_PIN_EIM_EB3, IOMUX_CONFIG_ALT6);
++	mxc_request_iomux(MX51_PIN_EIM_CS2, IOMUX_CONFIG_ALT6);
++	mxc_request_iomux(MX51_PIN_EIM_CS3, IOMUX_CONFIG_ALT6);
++	mxc_request_iomux(MX51_PIN_EIM_CS4, IOMUX_CONFIG_ALT6);
++	mxc_request_iomux(MX51_PIN_EIM_CS5, IOMUX_CONFIG_ALT6);
++
++	mxc_iomux_set_pad(MX51_PIN_EIM_EB2, AUD_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_EIM_EB3, AUD_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_EIM_CS2, AUD_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_EIM_CS3, AUD_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_EIM_CS4, AUD_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_EIM_CS5, AUD_PAD_CFG);
++
++	mxc_iomux_set_input(MUX_IN_AUDMUX_P5_INPUT_TXCLK_AMX_SELECT_INPUT,INPUT_CTL_PATH1);
++	mxc_iomux_set_input(MUX_IN_AUDMUX_P5_INPUT_TXFS_AMX_SELECT_INPUT,INPUT_CTL_PATH1);
++	/*
++	 * audmux6
++	 */
++	mxc_request_iomux(MX51_PIN_EIM_D28, IOMUX_CONFIG_ALT5);
++	mxc_request_iomux(MX51_PIN_EIM_D29, IOMUX_CONFIG_ALT5);
++	mxc_request_iomux(MX51_PIN_EIM_D30, IOMUX_CONFIG_ALT5);
++	mxc_request_iomux(MX51_PIN_EIM_D31, IOMUX_CONFIG_ALT5);
++
++	mxc_iomux_set_pad(MX51_PIN_EIM_D28, AUD_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_EIM_D29, AUD_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_EIM_D30, AUD_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_EIM_D31, AUD_PAD_CFG);
++}
++
++void setup_csi(void)
++{
++	/*
++	 * Configure iomux for CSI interfaces
++	 */
++#define CSI_PAD_CFG		(PAD_CTL_HYS_NONE | PAD_CTL_PKE_ENABLE |	\
++				 PAD_CTL_PUE_KEEPER | PAD_CTL_100K_PU |		\
++				 PAD_CTL_DRV_HIGH | PAD_CTL_SRE_FAST)
++	/*
++	 * csi1
++	 */
++	mxc_request_iomux(MX51_PIN_CSI1_D8 , IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_CSI1_D9 , IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_CSI1_D10, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_CSI1_D11, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_CSI1_D12, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_CSI1_D13, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_CSI1_D14, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_CSI1_D15, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_CSI1_D16, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_CSI1_D17, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_CSI1_D18, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_CSI1_D19, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_CSI1_VSYNC, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_CSI1_HSYNC, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_CSI1_PIXCLK, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_CSI1_MCLK, IOMUX_CONFIG_ALT0);
++
++	mxc_iomux_set_pad(MX51_PIN_CSI1_D8 , CSI_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_CSI1_D9 , CSI_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_CSI1_D10, CSI_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_CSI1_D11, CSI_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_CSI1_D12, CSI_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_CSI1_D13, CSI_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_CSI1_D14, CSI_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_CSI1_D15, CSI_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_CSI1_D16, CSI_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_CSI1_D17, CSI_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_CSI1_D18, CSI_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_CSI1_D19, CSI_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_CSI1_VSYNC, CSI_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_CSI1_HSYNC, CSI_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_CSI1_PIXCLK, CSI_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_CSI1_MCLK, CSI_PAD_CFG);
++}
++
++void setup_eim(void)
++{
++	/*
++	 * Configure iomux for EIM interface
++	 */
++	mxc_request_iomux(MX51_PIN_EIM_DA0, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_EIM_DA1, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_EIM_DA2, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_EIM_DA3, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_EIM_DA4, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_EIM_DA5, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_EIM_DA6, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_EIM_DA7, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_EIM_DA8, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_EIM_DA9, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_EIM_DA10, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_EIM_DA11, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_EIM_DA12, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_EIM_DA13, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_EIM_DA14, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_EIM_DA15, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_EIM_EB0, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_EIM_EB1, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_EIM_OE , IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_EIM_CS0, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_EIM_CS1, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_EIM_DTACK, IOMUX_CONFIG_ALT0);
++// missing in DS	mxc_request_iomux(MX51_PIN_EIM_WAIT, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_EIM_LBA, IOMUX_CONFIG_ALT0);
++// missing in DS	mxc_request_iomux(MX51_PIN_EIM_BCLK, IOMUX_CONFIG_ALT0);
++// missing in DS	mxc_request_iomux(MX51_PIN_EIM_RW , IOMUX_CONFIG_ALT0);
++
++	/*
++	 * Configure Register for each chip select
++	 */
++	__REG(CONFIG_WCR_ADDR)	= CONFIG_WCR_VALUE;
++	__REG(CONFIG_WIAR_ADDR)	= CONFIG_WIAR_VALUE;
++
++	__REG(CONFIG_CS1GCR1_ADDR) = CONFIG_CS1GCR1_VALUE;
++	__REG(CONFIG_CS2GCR1_ADDR) = CONFIG_CS2GCR1_VALUE;
++	__REG(CONFIG_CS3GCR1_ADDR) = CONFIG_CS3GCR1_VALUE;
++	__REG(CONFIG_CS4GCR1_ADDR) = CONFIG_CS4GCR1_VALUE;
++	__REG(CONFIG_CS5GCR1_ADDR) = CONFIG_CS5GCR1_VALUE;
++
++	__REG(CONFIG_CS1GCR2_ADDR) = CONFIG_CS1GCR2_VALUE;
++	__REG(CONFIG_CS2GCR2_ADDR) = CONFIG_CS2GCR2_VALUE;
++	__REG(CONFIG_CS3GCR2_ADDR) = CONFIG_CS3GCR2_VALUE;
++	__REG(CONFIG_CS4GCR2_ADDR) = CONFIG_CS4GCR2_VALUE;
++	__REG(CONFIG_CS5GCR2_ADDR) = CONFIG_CS5GCR2_VALUE;
++
++	__REG(CONFIG_CS1RCR1_ADDR) = CONFIG_CS1RCR1_VALUE;
++	__REG(CONFIG_CS2RCR1_ADDR) = CONFIG_CS2RCR1_VALUE;
++	__REG(CONFIG_CS3RCR1_ADDR) = CONFIG_CS3RCR1_VALUE;
++	__REG(CONFIG_CS4RCR1_ADDR) = CONFIG_CS4RCR1_VALUE;
++	__REG(CONFIG_CS5RCR1_ADDR) = CONFIG_CS5RCR1_VALUE;
++
++	__REG(CONFIG_CS1RCR2_ADDR) = CONFIG_CS1RCR2_VALUE;
++	__REG(CONFIG_CS2RCR2_ADDR) = CONFIG_CS2RCR2_VALUE;
++	__REG(CONFIG_CS3RCR2_ADDR) = CONFIG_CS3RCR2_VALUE;
++	__REG(CONFIG_CS4RCR2_ADDR) = CONFIG_CS4RCR2_VALUE;
++	__REG(CONFIG_CS5RCR2_ADDR) = CONFIG_CS5RCR2_VALUE;
++
++	__REG(CONFIG_CS1WCR1_ADDR) = CONFIG_CS1WCR1_VALUE;
++	__REG(CONFIG_CS2WCR1_ADDR) = CONFIG_CS2WCR1_VALUE;
++	__REG(CONFIG_CS3WCR1_ADDR) = CONFIG_CS3WCR1_VALUE;
++	__REG(CONFIG_CS4WCR1_ADDR) = CONFIG_CS4WCR1_VALUE;
++	__REG(CONFIG_CS5WCR1_ADDR) = CONFIG_CS5WCR1_VALUE;
++
++	__REG(CONFIG_CS1WCR2_ADDR) = CONFIG_CS1WCR2_VALUE;
++	__REG(CONFIG_CS2WCR2_ADDR) = CONFIG_CS2WCR2_VALUE;
++	__REG(CONFIG_CS3WCR2_ADDR) = CONFIG_CS3WCR2_VALUE;
++	__REG(CONFIG_CS4WCR2_ADDR) = CONFIG_CS4WCR2_VALUE;
++	__REG(CONFIG_CS5WCR2_ADDR) = CONFIG_CS5WCR2_VALUE;
++
++}
++
++void setup_keypad(void)
++{
++	/*
++	 * Configure iomux for KEYPAD interfaces
++	 */
++	mxc_request_iomux(MX51_PIN_KEY_ROW0, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_KEY_ROW1, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_KEY_ROW2, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_KEY_ROW3, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_KEY_COL0, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_KEY_COL1, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_KEY_COL2, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_KEY_COL3, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_KEY_COL4, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_KEY_COL5, IOMUX_CONFIG_ALT0);
++}
++
++void setup_misc(void)
++{
++	/*
++	 * Configure iomux for misc interfaces
++	 */
++#define GPIO_PAD_CFG		(PAD_CTL_HYS_NONE | PAD_CTL_PKE_ENABLE |	\
++				 PAD_CTL_PUE_KEEPER | PAD_CTL_100K_PU |		\
++				 PAD_CTL_DRV_HIGH | PAD_CTL_SRE_FAST)
++
++	/* pwm 1 & 2 */
++	mxc_request_iomux(MX51_PIN_GPIO1_2, IOMUX_CONFIG_ALT1);
++	mxc_iomux_set_pad(MX51_PIN_GPIO1_2, GPIO_PAD_CFG);
++
++	mxc_request_iomux(MX51_PIN_GPIO1_3, IOMUX_CONFIG_ALT1);
++	mxc_iomux_set_pad(MX51_PIN_GPIO1_3, GPIO_PAD_CFG);
++
++	/* touch detect# */
++	mxc_request_iomux(MX51_PIN_GPIO1_4, IOMUX_CONFIG_ALT0);
++	mxc_iomux_set_pad(MX51_PIN_GPIO1_4, GPIO_PAD_CFG);
++
++	/* clko */
++	mxc_request_iomux(MX51_PIN_GPIO1_5, IOMUX_CONFIG_ALT5);
++	mxc_iomux_set_pad(MX51_PIN_GPIO1_5, GPIO_PAD_CFG);
++
++	/* touch eoc# */
++	mxc_request_iomux(MX51_PIN_GPIO1_6, IOMUX_CONFIG_ALT0);
++	mxc_iomux_set_pad(MX51_PIN_GPIO1_6, GPIO_PAD_CFG);
++
++	/* PMIC IRQ */
++	mxc_request_iomux(MX51_PIN_GPIO1_7, IOMUX_CONFIG_ALT0);
++
++	/* FEC PHY RST# */
++	mxc_request_iomux(MX51_PIN_DI1_PIN11, IOMUX_CONFIG_ALT4);
++	mxc_iomux_set_pad(MX51_PIN_DI1_PIN11, GPIO_PAD_CFG);
++
++	/* USBHOST RST# */
++	mxc_request_iomux(MX51_PIN_DI1_PIN12, IOMUX_CONFIG_ALT4);
++	mxc_iomux_set_pad(MX51_PIN_DI1_PIN12, GPIO_PAD_CFG);
++
++	/* PMIC SLEEP# */
++	mxc_request_iomux(MX51_PIN_DISPB2_SER_CLK, IOMUX_CONFIG_ALT4);
++	mxc_iomux_set_pad(MX51_PIN_DISPB2_SER_CLK, GPIO_PAD_CFG);
++
++	/* PMIC OFF# */
++	mxc_request_iomux(MX51_PIN_DISPB2_SER_RS, IOMUX_CONFIG_ALT4);
++	mxc_iomux_set_pad(MX51_PIN_DISPB2_SER_RS, GPIO_PAD_CFG);
++}
++
++void setup_fpga(void)
++{
++        /* FPGA PWR */
++        mxc_request_iomux(CONFIG_SYS_FPGA_PWR, IOMUX_CONFIG_ALT4);
++        mxc_iomux_set_pad(CONFIG_SYS_FPGA_PWR, GPIO_PAD_CFG);
++
++        /* FPGA SUSPEND */
++        mxc_request_iomux(CONFIG_SYS_FPGA_SUSPEND, IOMUX_CONFIG_ALT4);
++        mxc_iomux_set_pad(CONFIG_SYS_FPGA_SUSPEND, GPIO_PAD_CFG);
++
++        /* FPGA PROG */
++        mxc_request_iomux(CONFIG_SYS_FPGA_PRG, IOMUX_CONFIG_ALT3);
++        mxc_iomux_set_pad(CONFIG_SYS_FPGA_PRG, GPIO_PAD_CFG);
++
++        /* FPGA DONE */
++        mxc_request_iomux(CONFIG_SYS_FPGA_DONE, IOMUX_CONFIG_ALT3);
++        mxc_iomux_set_pad(CONFIG_SYS_FPGA_DONE, GPIO_PAD_CFG);
++
++        /* FPGA INIT# */
++        mxc_request_iomux(CONFIG_SYS_FPGA_INIT, IOMUX_CONFIG_ALT3);
++        mxc_iomux_set_pad(CONFIG_SYS_FPGA_INIT, GPIO_PAD_CFG);
++
++}
++
++void setup_display(void)
++{
++	/*
++	 * Configure iomux for display 1 interface
++	 */
++	mxc_request_iomux(MX51_PIN_DI1_D1_CS, IOMUX_CONFIG_ALT4);
++// missing in DS	mxc_request_iomux(MX51_PIN_DI1_DISP_CLK, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DI1_PIN2, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DI1_PIN3, IOMUX_CONFIG_ALT0);
++// missing in DS	mxc_request_iomux(MX51_PIN_DI1_PIN15, IOMUX_CONFIG_ALT0);
++
++	mxc_request_iomux(MX51_PIN_DISP1_DAT0, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DISP1_DAT1, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DISP1_DAT2, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DISP1_DAT3, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DISP1_DAT4, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DISP1_DAT5, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DISP1_DAT6, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DISP1_DAT7, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DISP1_DAT8, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DISP1_DAT9, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DISP1_DAT10, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DISP1_DAT11, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DISP1_DAT12, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DISP1_DAT13, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DISP1_DAT14, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DISP1_DAT15, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DISP1_DAT16, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DISP1_DAT17, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DISP1_DAT18, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DISP1_DAT19, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DISP1_DAT20, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DISP1_DAT21, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DISP1_DAT22, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_DISP1_DAT23, IOMUX_CONFIG_ALT0);
++}
++
++void setup_nfc(void)
++{
++	/*
++	 * Configure iomux for NFC interface
++	 */
++#define NAND_PAD47K_CFG		(PAD_CTL_DRV_VOT_HIGH | PAD_CTL_HYS_NONE |	\
++				 PAD_CTL_PKE_ENABLE | PAD_CTL_47K_PU | 		\
++				 PAD_CTL_DRV_HIGH)
++
++#define NAND_PAD100K_CFG	(PAD_CTL_DRV_VOT_HIGH | PAD_CTL_HYS_NONE |	\
++				 PAD_CTL_PKE_ENABLE | PAD_CTL_100K_PU | 	\
++				 PAD_CTL_DRV_HIGH)
++
++	mxc_request_iomux(MX51_PIN_NANDF_WE_B, IOMUX_CONFIG_ALT0);
++        mxc_iomux_set_pad(MX51_PIN_NANDF_WE_B, NAND_PAD47K_CFG);
++
++	mxc_request_iomux(MX51_PIN_NANDF_RE_B, IOMUX_CONFIG_ALT0);
++        mxc_iomux_set_pad(MX51_PIN_NANDF_RE_B, NAND_PAD47K_CFG);
++
++	mxc_request_iomux(MX51_PIN_NANDF_ALE , IOMUX_CONFIG_ALT0);
++        mxc_iomux_set_pad(MX51_PIN_NANDF_ALE , NAND_PAD47K_CFG);
++
++	mxc_request_iomux(MX51_PIN_NANDF_CLE , IOMUX_CONFIG_ALT0);
++        mxc_iomux_set_pad(MX51_PIN_NANDF_CLE , NAND_PAD47K_CFG);
++
++	mxc_request_iomux(MX51_PIN_NANDF_WP_B, IOMUX_CONFIG_ALT0);
++        mxc_iomux_set_pad(MX51_PIN_NANDF_WP_B, NAND_PAD100K_CFG);
++
++	mxc_request_iomux(MX51_PIN_NANDF_RB0 , IOMUX_CONFIG_ALT0);
++        mxc_iomux_set_pad(MX51_PIN_NANDF_RB0 , PAD_CTL_DRV_VOT_HIGH |
++					PAD_CTL_HYS_NONE | PAD_CTL_PKE_ENABLE |
++					PAD_CTL_PUE_PULL | PAD_CTL_100K_PU);
++
++	mxc_request_iomux(MX51_PIN_NANDF_CS0, IOMUX_CONFIG_ALT0);
++
++	/* MX51_PIN_NANDF_RDY_INT */
++
++	mxc_request_iomux(MX51_PIN_NANDF_D0, IOMUX_CONFIG_ALT0);
++        mxc_iomux_set_pad(MX51_PIN_NANDF_D0, NAND_PAD100K_CFG);
++
++	mxc_request_iomux(MX51_PIN_NANDF_D1, IOMUX_CONFIG_ALT0);
++        mxc_iomux_set_pad(MX51_PIN_NANDF_D1, NAND_PAD100K_CFG);
++
++	mxc_request_iomux(MX51_PIN_NANDF_D2, IOMUX_CONFIG_ALT0);
++        mxc_iomux_set_pad(MX51_PIN_NANDF_D2, NAND_PAD100K_CFG);
++
++	mxc_request_iomux(MX51_PIN_NANDF_D3, IOMUX_CONFIG_ALT0);
++        mxc_iomux_set_pad(MX51_PIN_NANDF_D3, NAND_PAD100K_CFG);
++
++	mxc_request_iomux(MX51_PIN_NANDF_D4, IOMUX_CONFIG_ALT0);
++        mxc_iomux_set_pad(MX51_PIN_NANDF_D4, NAND_PAD100K_CFG);
++
++	mxc_request_iomux(MX51_PIN_NANDF_D5, IOMUX_CONFIG_ALT0);
++        mxc_iomux_set_pad(MX51_PIN_NANDF_D5, NAND_PAD100K_CFG);
++
++	mxc_request_iomux(MX51_PIN_NANDF_D6, IOMUX_CONFIG_ALT0);
++        mxc_iomux_set_pad(MX51_PIN_NANDF_D6, NAND_PAD100K_CFG);
++
++	mxc_request_iomux(MX51_PIN_NANDF_D7, IOMUX_CONFIG_ALT0);
++        mxc_iomux_set_pad(MX51_PIN_NANDF_D7, NAND_PAD100K_CFG);
++
++	writel(0, NFC_IPC);
++	NFC_SET_FW(1);
++}
++
++void setup_spi_io(void)
++{
++	/*
++	 * Configure iomux for SPI interface
++	 */
++#define CSPI_PAD_CFG		(PAD_CTL_HYS_NONE | PAD_CTL_PKE_ENABLE |	\
++				 PAD_CTL_PUE_KEEPER | PAD_CTL_100K_PU |		\
++				 PAD_CTL_DRV_HIGH | PAD_CTL_SRE_FAST)
++	/*
++	 * ECSPI1
++	 */
++	mxc_request_iomux(MX51_PIN_CSPI1_MOSI, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_CSPI1_MISO, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_CSPI1_SS0, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_CSPI1_SS1, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_CSPI1_RDY, IOMUX_CONFIG_ALT0);
++	mxc_request_iomux(MX51_PIN_CSPI1_SCLK, IOMUX_CONFIG_ALT0);
++
++	/*
++	 * ECSPI2
++	 */
++	mxc_request_iomux(MX51_PIN_NANDF_RB1, IOMUX_CONFIG_ALT2);
++	mxc_request_iomux(MX51_PIN_NANDF_RB2, IOMUX_CONFIG_ALT2);
++	mxc_request_iomux(MX51_PIN_NANDF_RB3, IOMUX_CONFIG_ALT2);
++	mxc_request_iomux(MX51_PIN_NANDF_D12, IOMUX_CONFIG_ALT2);
++	mxc_request_iomux(MX51_PIN_NANDF_D13, IOMUX_CONFIG_ALT2);
++	mxc_request_iomux(MX51_PIN_NANDF_D14, IOMUX_CONFIG_ALT2);
++	mxc_request_iomux(MX51_PIN_NANDF_D15, IOMUX_CONFIG_ALT2);
++
++	mxc_iomux_set_pad(MX51_PIN_NANDF_RB1, CSPI_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_NANDF_RB2, CSPI_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_NANDF_RB3, CSPI_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_NANDF_D12, CSPI_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_NANDF_D13, CSPI_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_NANDF_D14, CSPI_PAD_CFG);
++	mxc_iomux_set_pad(MX51_PIN_NANDF_D15, CSPI_PAD_CFG);
++
++	mxc_iomux_set_input(MUX_IN_CSPI_IPP_IND_SS_B_1_SELECT_INPUT,
++					INPUT_CTL_PATH1);
++}
++
++#define GPIO_DR		0x00	/* Data Register */
++#define GPIO_GDIR	0x04	/* GPIO direction */
++#define GPIO_PSR	0x08	/* Pad Status Reg */
++#define GPIO_ICR1	0x0c	/* Interrupt Configuration Reg 1 */
++#define GPIO_ICR2	0x10	/* Interrupt Configuration Reg 2 */
++#define GPIO_IMR	0x14	/* Interrupt Mask Reg */
++#define GPIO_ISR	0x18	/* Interrupt Status Reg */
++#define GPIO_EDR	0x1c	/* Edge Detect Reg */
++
++#define PORT_BADDR(n)	(GPIO1_BASE_ADDR + (n) * 0x4000)
++
++void imx_gpio_pin_cfg_dir(unsigned int pin, int dir)
++{
++	u32 gpio_num = IOMUX_TO_GPIO(pin);
++	u32 gpio_off = GPIO_TO_INDEX(gpio_num);
++	u32 baddr = PORT_BADDR(GPIO_TO_PORT(gpio_num));
++
++	if (dir)
++		__REG(baddr + GPIO_GDIR) |= (1 << gpio_off);
++	else
++		__REG(baddr + GPIO_GDIR) &= ~(1 << gpio_off);
++}
++
++void imx_gpio_pin_set(unsigned int pin, int value)
++{
++	u32 gpio_num = IOMUX_TO_GPIO(pin);
++	u32 gpio_off = GPIO_TO_INDEX(gpio_num);
++	u32 baddr = PORT_BADDR(GPIO_TO_PORT(gpio_num));
++
++	if (value)
++		__REG(baddr + GPIO_DR) |= (1 << gpio_off);
++	else
++		__REG(baddr + GPIO_DR) &= ~(1 << gpio_off);
++}
++
++int imx_gpio_pin_get(unsigned int pin)
++{
++        u32 gpio_num = IOMUX_TO_GPIO(pin);
++        u32 gpio_off = GPIO_TO_INDEX(gpio_num);
++        u32 baddr = PORT_BADDR(GPIO_TO_PORT(gpio_num));
++
++        return (__REG(baddr + GPIO_PSR) >> gpio_off) & 1;
++}
++
++
++#ifdef CONFIG_I2C_MXC
++#define I2C_PAD_CFG	(PAD_CTL_SRE_FAST | PAD_CTL_DRV_HIGH | \
++	PAD_CTL_ODE_OPENDRAIN_ENABLE | PAD_CTL_100K_PU | PAD_CTL_HYS_ENABLE)
++static void setup_i2c(unsigned int module_base)
++{
++	/*
++	 * Configure iomux for I2C interfaces
++	 */
++	switch (module_base) {
++	case I2C1_BASE_ADDR:
++		/* SCL */
++		mxc_request_iomux(MX51_PIN_I2C1_CLK,
++					IOMUX_CONFIG_ALT0 | IOMUX_CONFIG_SION);
++
++		/* SDA */
++		mxc_request_iomux(MX51_PIN_I2C1_DAT,
++					IOMUX_CONFIG_ALT0 | IOMUX_CONFIG_SION);
++		break;
++
++	case I2C2_BASE_ADDR: /* do not use without disabling UART3 first */
++		/* SCL */
++		mxc_request_iomux(MX51_PIN_EIM_D24,
++					IOMUX_CONFIG_ALT4 | IOMUX_CONFIG_SION);
++
++		/* SDA */
++		mxc_request_iomux(MX51_PIN_EIM_D27,
++					IOMUX_CONFIG_ALT4 | IOMUX_CONFIG_SION);
++		mxc_iomux_set_input(MUX_IN_I2C2_IPP_SDA_IN_SELECT_INPUT,
++					INPUT_CTL_PATH0);
++		break;
++
++	default:
++		printf("Invalid I2C base: 0x%x\n", module_base);
++		break;
++	}
++}
++#endif
++
++static void setup_fec(void)
++{
++#ifdef CONFIG_FEC_MXC
++#define CFG_FEC_PAD		(PAD_CTL_DRV_MEDIUM | PAD_CTL_PUE_KEEPER | \
++				 PAD_CTL_HYS_ENABLE | PAD_CTL_DRV_VOT_HIGH)
++
++	/* Ethernet PHY Reset */
++	imx_gpio_pin_set(CONFIG_SYS_PHY_RESET_GPIO,0);
++	imx_gpio_pin_cfg_dir(CONFIG_SYS_PHY_RESET_GPIO, 1);
++
++	/* FEC TX_ER muxed with DI_GP3 */
++	mxc_request_iomux(MX51_PIN_DI_GP3, IOMUX_CONFIG_ALT2);
++	mxc_iomux_set_pad(MX51_PIN_DI_GP3, CFG_FEC_PAD);
++
++	/* FEC CRS muxed with DI2_PIN4 */
++	mxc_request_iomux(MX51_PIN_DI2_PIN4, IOMUX_CONFIG_ALT2);
++	mxc_iomux_set_pad(MX51_PIN_DI2_PIN4, CFG_FEC_PAD);
++
++	/* FEC MDC muxed with DI2_PIN2 */
++	mxc_request_iomux(MX51_PIN_DI2_PIN2, IOMUX_CONFIG_ALT2);
++	mxc_iomux_set_pad(MX51_PIN_DI2_PIN2, CFG_FEC_PAD);
++
++	/* FEC MDIO muxed with DI2_PIN3 */
++	mxc_request_iomux(MX51_PIN_DI2_PIN3, IOMUX_CONFIG_ALT2);
++	mxc_iomux_set_pad(MX51_PIN_DI2_PIN3, CFG_FEC_PAD);
++
++	/* FEC RDATA[1] muxed with DI2_DISP_CLK */
++	mxc_request_iomux(MX51_PIN_DI2_DISP_CLK, IOMUX_CONFIG_ALT2);
++	mxc_iomux_set_pad(MX51_PIN_DI2_DISP_CLK, CFG_FEC_PAD);
++
++	/* FEC RDATA[2] muxed with DI_GP4 */
++	mxc_request_iomux(MX51_PIN_DI_GP4, IOMUX_CONFIG_ALT2);
++	mxc_iomux_set_pad(MX51_PIN_DI_GP4, CFG_FEC_PAD);
++
++	/* FEC RDATA[3] muxed with DISP2_DAT0 */
++	mxc_request_iomux(MX51_PIN_DISP2_DAT0, IOMUX_CONFIG_ALT2);
++	mxc_iomux_set_pad(MX51_PIN_DISP2_DAT0, CFG_FEC_PAD);
++
++	/* FEC RX_ER muxed with DISP2_DAT1 */
++	mxc_request_iomux(MX51_PIN_DISP2_DAT1, IOMUX_CONFIG_ALT2);
++	mxc_iomux_set_pad(MX51_PIN_DISP2_DAT1, CFG_FEC_PAD);
++
++	/* FEC TDATA[1] muxed with DISP2_DAT6 */
++	mxc_request_iomux(MX51_PIN_DISP2_DAT6, IOMUX_CONFIG_ALT2);
++	mxc_iomux_set_pad(MX51_PIN_DISP2_DAT6, CFG_FEC_PAD);
++
++	/* FEC TDATA[2] muxed with DISP2_DAT7 */
++	mxc_request_iomux(MX51_PIN_DISP2_DAT7, IOMUX_CONFIG_ALT2);
++	mxc_iomux_set_pad(MX51_PIN_DISP2_DAT7, CFG_FEC_PAD);
++
++	/* FEC TDATA[3] muxed with DISP2_DAT8 */
++	mxc_request_iomux(MX51_PIN_DISP2_DAT8, IOMUX_CONFIG_ALT2);
++	mxc_iomux_set_pad(MX51_PIN_DISP2_DAT8, CFG_FEC_PAD);
++
++	/* FEC TX_EN muxed with DISP2_DAT9 */
++	mxc_request_iomux(MX51_PIN_DISP2_DAT9, IOMUX_CONFIG_ALT2);
++	mxc_iomux_set_pad(MX51_PIN_DISP2_DAT9, CFG_FEC_PAD);
++
++	/* FEC COL muxed with DISP_DATA10 */
++	mxc_request_iomux(MX51_PIN_DISP2_DAT10, IOMUX_CONFIG_ALT2);
++	mxc_iomux_set_pad(MX51_PIN_DISP2_DAT10, CFG_FEC_PAD);
++
++	/* FEC RX_CLK muxed with DISP2_DAT11 */
++	mxc_request_iomux(MX51_PIN_DISP2_DAT11, IOMUX_CONFIG_ALT2);
++	mxc_iomux_set_pad(MX51_PIN_DISP2_DAT11, CFG_FEC_PAD);
++
++	/* FEC RX_DV muxed with DISP2_DAT12 */
++	mxc_request_iomux(MX51_PIN_DISP2_DAT12, IOMUX_CONFIG_ALT2);
++	mxc_iomux_set_pad(MX51_PIN_DISP2_DAT12, CFG_FEC_PAD);
++
++	/* FEC TX_CLK muxed with DISP2_DAT13 */
++	mxc_request_iomux(MX51_PIN_DISP2_DAT13, IOMUX_CONFIG_ALT2);
++	mxc_iomux_set_pad(MX51_PIN_DISP2_DAT13, CFG_FEC_PAD);
++
++	/* FEC RDATA[0] muxed with DISP2_DAT14 */
++	mxc_request_iomux(MX51_PIN_DISP2_DAT14, IOMUX_CONFIG_ALT2);
++	mxc_iomux_set_pad(MX51_PIN_DISP2_DAT14, CFG_FEC_PAD);
++
++	/* FEC TDATA[0] muxed with DISP2_DAT15 */
++	mxc_request_iomux(MX51_PIN_DISP2_DAT15, IOMUX_CONFIG_ALT2);
++	mxc_iomux_set_pad(MX51_PIN_DISP2_DAT15, CFG_FEC_PAD);
++
++	/* FEC signals involved in daisy chain should be mapped to DISP2/DI2 pads */
++	mxc_iomux_set_input(MUX_IN_FEC_FEC_COL_SELECT_INPUT, INPUT_CTL_PATH1);
++	mxc_iomux_set_input(MUX_IN_FEC_FEC_CRS_SELECT_INPUT, INPUT_CTL_PATH1);
++	mxc_iomux_set_input(MUX_IN_FEC_FEC_MDI_SELECT_INPUT, INPUT_CTL_PATH1);
++	mxc_iomux_set_input(MUX_IN_FEC_FEC_RDATA_0_SELECT_INPUT, INPUT_CTL_PATH1);
++	mxc_iomux_set_input(MUX_IN_FEC_FEC_RDATA_1_SELECT_INPUT, INPUT_CTL_PATH1);
++	mxc_iomux_set_input(MUX_IN_FEC_FEC_RDATA_2_SELECT_INPUT, INPUT_CTL_PATH1);
++	mxc_iomux_set_input(MUX_IN_FEC_FEC_RDATA_3_SELECT_INPUT, INPUT_CTL_PATH1);
++	mxc_iomux_set_input(MUX_IN_FEC_FEC_RX_CLK_SELECT_INPUT, INPUT_CTL_PATH1);
++	mxc_iomux_set_input(MUX_IN_FEC_FEC_RX_DV_SELECT_INPUT, INPUT_CTL_PATH1);
++	mxc_iomux_set_input(MUX_IN_FEC_FEC_RX_ER_SELECT_INPUT, INPUT_CTL_PATH1);
++	mxc_iomux_set_input(MUX_IN_FEC_FEC_TX_CLK_SELECT_INPUT, INPUT_CTL_PATH1);
++
++	imx_gpio_pin_set(CONFIG_SYS_PHY_RESET_GPIO,1);
++#endif
++}
++
++#ifdef CONFIG_NET_MULTI
++int board_eth_init(bd_t *bis)
++{
++	int rc = -ENODEV;
++	return rc;
++}
++#endif
++
++#ifdef CONFIG_FSL_MMC
++volatile u32 *esdhc_base_pointer;
++int esdhc_active = CONFIG_DEFAULT_MMC;
++#define SD1_PAD_CFG		(PAD_CTL_DRV_MAX | PAD_CTL_DRV_VOT_HIGH |	\
++				 PAD_CTL_HYS_NONE | PAD_CTL_47K_PU |		\
++				 PAD_CTL_PUE_PULL | PAD_CTL_PKE_ENABLE |	\
++				 PAD_CTL_SRE_FAST)
++int sdhc_init(void)
++{
++	s32 status = 0;
++
++	switch (esdhc_active) {
++	case 0:
++		esdhc_base_pointer = (volatile u32 *)MMC_SDHC1_BASE_ADDR;
++
++//		mxc_request_iomux(MX51_PIN_GPIO1_0, IOMUX_CONFIG_ALT0 | IOMUX_CONFIG_SION);
++//		mxc_iomux_set_pad(MX51_PIN_GPIO1_0, SD1_PAD_CFG);
++
++		/* SD1_CMD */
++		mxc_request_iomux(MX51_PIN_SD1_CMD, IOMUX_CONFIG_ALT0);
++		mxc_iomux_set_pad(MX51_PIN_SD1_CMD, SD1_PAD_CFG);
++
++		/* SD1_CLK */
++		mxc_request_iomux(MX51_PIN_SD1_CLK, IOMUX_CONFIG_ALT0);
++		mxc_iomux_set_pad(MX51_PIN_SD1_CLK, SD1_PAD_CFG);
++
++		/* SD1_DATA0 */
++		mxc_request_iomux(MX51_PIN_SD1_DATA0, IOMUX_CONFIG_ALT0);
++		mxc_iomux_set_pad(MX51_PIN_SD1_DATA0, SD1_PAD_CFG);
++
++		/* SD1_DATA1 */
++		mxc_request_iomux(MX51_PIN_SD1_DATA1, IOMUX_CONFIG_ALT0);
++		mxc_iomux_set_pad(MX51_PIN_SD1_DATA1, SD1_PAD_CFG);
++
++		/* SD1_DATA2 */
++		mxc_request_iomux(MX51_PIN_SD1_DATA2, IOMUX_CONFIG_ALT0);
++		mxc_iomux_set_pad(MX51_PIN_SD1_DATA2, SD1_PAD_CFG);
++
++		/* SD1_DATA3 */
++		mxc_request_iomux(MX51_PIN_SD1_DATA3, IOMUX_CONFIG_ALT0);
++		mxc_iomux_set_pad(MX51_PIN_SD1_DATA3, SD1_PAD_CFG);
++		break;
++
++		status = 1;
++		break;
++	case 1:
++		esdhc_base_pointer = (volatile u32 *)MMC_SDHC2_BASE_ADDR;
++
++//		mxc_request_iomux(MX51_PIN_GPIO1_0, IOMUX_CONFIG_ALT0 | IOMUX_CONFIG_SION);
++//		mxc_iomux_set_pad(MX51_PIN_GPIO1_0, SD1_PAD_CFG);
++
++		/* SD2_CMD */
++		mxc_request_iomux(MX51_PIN_SD2_CMD, IOMUX_CONFIG_ALT0);
++		mxc_iomux_set_pad(MX51_PIN_SD2_CMD, SD1_PAD_CFG);
++
++		/* SD2_CLK */
++		mxc_request_iomux(MX51_PIN_SD2_CLK, IOMUX_CONFIG_ALT0);
++		mxc_iomux_set_pad(MX51_PIN_SD2_CLK, SD1_PAD_CFG);
++
++		/* SD2_DATA0 */
++		mxc_request_iomux(MX51_PIN_SD2_DATA0, IOMUX_CONFIG_ALT0);
++		mxc_iomux_set_pad(MX51_PIN_SD2_DATA0, SD1_PAD_CFG);
++
++		/* SD2_DATA1 */
++		mxc_request_iomux(MX51_PIN_SD2_DATA1, IOMUX_CONFIG_ALT0);
++		mxc_iomux_set_pad(MX51_PIN_SD2_DATA1, SD1_PAD_CFG);
++
++		/* SD2_DATA2 */
++		mxc_request_iomux(MX51_PIN_SD2_DATA2, IOMUX_CONFIG_ALT0);
++		mxc_iomux_set_pad(MX51_PIN_SD2_DATA2, SD1_PAD_CFG);
++
++		/* SD2_DATA3 */
++		mxc_request_iomux(MX51_PIN_SD2_DATA3, IOMUX_CONFIG_ALT0);
++		mxc_iomux_set_pad(MX51_PIN_SD2_DATA3, SD1_PAD_CFG);
++		break;
++
++		status = 1;
++		break;
++	case 2:
++	case 3:
++	default:
++		printf("*** ERROR: SD/MMC interface %d not supported\n", esdhc_active);
++		status = 1;
++		break;
++	}
++
++	return status;
++}
++#endif
++
++int board_init(void)
++{
++	system_rev = get_cpu_rev();
++
++	/* Increase freq to CONFIG_ARM_CLK_FREQ (800MHz) */
++	writel((CONFIG_PLL1_FREQ/CONFIG_ARM_CLK_FREQ)-1,
++		CCM_BASE_ADDR + CLKCTL_CACRR);
++
++	/* Disable warm reset */
++	writel(0x560, SRC_BASE_ADDR);
++
++	gd->bd->bi_arch_number = CONFIG_MACH_TYPE;
++	/* address of boot parameters */
++	gd->bd->bi_boot_params = CONFIG_SYS_SDRAM_1_BASE + 0x100;
++
++	setup_misc();
++	setup_uart();
++	setup_spi_io();
++	setup_nfc();
++	setup_fec();
++#ifdef CONFIG_I2C_MXC
++	setup_i2c(I2C2_BASE_ADDR);
++	i2c_init(CONFIG_SYS_I2C_SPEED, CONFIG_SYS_I2C_SLAVE);
++#endif
++	setup_display();
++	setup_usb();
++	setup_audio();
++	setup_eim();
++	setup_csi();
++	setup_keypad();
++#ifdef CONFIG_FPGA
++	setup_fpga();
++#endif
++	return 0;
++}
++
++/*
++ * Miscellaneous intialization
++ */
++int
++misc_init_r (void)
++{
++	char *s;
++	u_char * firmware_buffer = (u_char *)(CONFIG_SYS_LOAD_ADDR + CONFIG_SYS_MONITOR_LEN);
++	size_t end	= 0;
++	size_t size	= 0;
++	size_t offset	= -1;
++ 	char *autoload = getenv ("firmware_autoload");
++
++#if defined(CONFIG_FPGA)
++	/* init and download fpga */
++	if (( autoload ) && (0 == strcmp(autoload, "1"))) {
++		if ((s = getenv("firmware_offset")) != NULL) {
++			offset = simple_strtoul(s, NULL, 16);
++		}
++		if ((s = getenv("firmware_len")) != NULL) {
++			end = offset + simple_strtoul(s, NULL, 16);
++		}
++		if ((-1 != offset) && (offset != end)) {
++			size = read_firmware (offset, end, firmware_buffer);
++		}
++	}
++	APF51_init_fpga (firmware_buffer, size);
++#endif
++
++	/* detect compatibility issue of environment version */
++	s = getenv ("env_version");
++	if (( NULL == s ) || (0 != strcmp(s, CONFIG_ENV_VERSION))) {
++		printf("*** Warning - Environment version change suggests: "
++			"run flash_reset_env; reset\n");
++	}
++
++	return 0;
++}
++
++#ifdef BOARD_LATE_INIT
++int board_late_init(void)
++{
++	return 0;
++}
++#endif
++
++/*************************************************************************
++ *  hw_watchdog_reset
++ *
++ *	This routine is called to reset (keep alive) the watchdog timer
++ *
++ ************************************************************************/
++#if defined(CONFIG_HW_WATCHDOG)
++void hw_watchdog_reset(void)
++{
++	struct wdog *imx_wdog1 = (struct wdog *)WDOG1_BASE_ADDR;
++	__raw_writew(0x5555, &imx_wdog1->wsr);
++	__raw_writew(0xaaaa, &imx_wdog1->wsr);
++}
++#endif
++
++int checkboard(void)
++{
++	printf("Board: Armadeus APF51 ");
++
++	puts("[");
++	switch (__raw_readl(SRC_BASE_ADDR + 0x8)) {
++	case 0x0001:
++		puts("POR");
++		break;
++	case 0x0009:
++		puts("RST");
++		break;
++	case 0x0010:
++	case 0x0011:
++		puts("WDOG");
++		break;
++	default:
++		puts("unknown");
++	}
++	puts("]\n");
++
++	return 0;
++}
++
++/*
++ * display dcd table. to delete
++ */
++int do_mx51_show_dcd_tab(cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
++{
++	ulong i = 1;
++	char dcd_item[] = "MXC_DCD_ITEM(%ld, %ld, %#010lX, %#010lX)\n";
++
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_PAD_DRAM_RAS,
++				CONFIG_IOMUX_PAD_DRAM_RAS);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_PAD_DRAM_CAS,
++				CONFIG_IOMUX_PAD_DRAM_CAS);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_PAD_DRAM_SDWE,
++				CONFIG_IOMUX_PAD_DRAM_SDWE);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_PAD_DRAM_SDCKE0,
++				CONFIG_IOMUX_PAD_DRAM_SDCKE0);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_PAD_DRAM_SDCKE1,
++				CONFIG_IOMUX_PAD_DRAM_SDCKE1);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_PAD_DRAM_SDCLK,
++				CONFIG_IOMUX_PAD_DRAM_SDCLK);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_PAD_DRAM_SDQS0,
++				CONFIG_IOMUX_PAD_DRAM_SDQS0);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_PAD_DRAM_SDQS1,
++				CONFIG_IOMUX_PAD_DRAM_SDQS1);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_PAD_DRAM_SDQS2,
++				CONFIG_IOMUX_PAD_DRAM_SDQS2);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_PAD_DRAM_SDQS3,
++				CONFIG_IOMUX_PAD_DRAM_SDQS3);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_PAD_DRAM_CS0,
++				CONFIG_IOMUX_PAD_DRAM_CS0);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_PAD_DRAM_CS1,
++				CONFIG_IOMUX_PAD_DRAM_CS1);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_PAD_DRAM_DQM0,
++				CONFIG_IOMUX_PAD_DRAM_DQM0);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_PAD_DRAM_DQM1,
++				CONFIG_IOMUX_PAD_DRAM_DQM1);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_PAD_DRAM_DQM2,
++				CONFIG_IOMUX_PAD_DRAM_DQM2);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_PAD_DRAM_DQM3,
++				CONFIG_IOMUX_PAD_DRAM_DQM3);
++//	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_PAD_EIM_SDBA2,
++//				CONFIG_IOMUX_PAD_EIM_SDBA2);
++//	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_PAD_EIM_SDODT1,
++//				CONFIG_IOMUX_PAD_EIM_SDODT1);
++//	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_PAD_EIM_SDODT0,
++//				CONFIG_IOMUX_PAD_EIM_SDODT0);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_DDRPKS,
++				CONFIG_IOMUX_GRP_DDRPKS);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_DRAM_B4,
++				CONFIG_IOMUX_GRP_DRAM_B4);
++//	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_INDDR,
++//				CONFIG_IOMUX_GRP_INDDR);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_PKEDDR,
++				CONFIG_IOMUX_GRP_PKEDDR);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_DDR_A0,
++				CONFIG_IOMUX_GRP_DDR_A0);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_DDR_A1,
++				CONFIG_IOMUX_GRP_DDR_A1);
++//	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_DDRAPUS,
++//				CONFIG_IOMUX_GRP_DDRAPUS);
++//	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_HYSDDR0,
++//				CONFIG_IOMUX_GRP_HYSDDR0);
++//	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_HYSDDR1,
++//				CONFIG_IOMUX_GRP_HYSDDR1);
++//	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_HYSDDR2,
++//				CONFIG_IOMUX_GRP_HYSDDR2);
++//	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_HVDDR,
++//				CONFIG_IOMUX_GRP_HVDDR);
++//	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_HYSDDR3,
++//				CONFIG_IOMUX_GRP_HYSDDR3);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_DRAM_SR_B0,
++				CONFIG_IOMUX_GRP_DRAM_SR_B0);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_DDRAPKS,
++				CONFIG_IOMUX_GRP_DDRAPKS);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_DRAM_SR_B1,
++				CONFIG_IOMUX_GRP_DRAM_SR_B1);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_DDRPUS,
++				CONFIG_IOMUX_GRP_DDRPUS);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_DRAM_SR_B2,
++				CONFIG_IOMUX_GRP_DRAM_SR_B2);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_PKEADDR,
++				CONFIG_IOMUX_GRP_PKEADDR);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_DRAM_SR_B4,
++				CONFIG_IOMUX_GRP_DRAM_SR_B4);
++//	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_INMODE1,
++//				CONFIG_IOMUX_GRP_INMODE1);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_DRAM_B0,
++				CONFIG_IOMUX_GRP_DRAM_B0);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_DRAM_B1,
++				CONFIG_IOMUX_GRP_DRAM_B1);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_DDR_SR_A0,
++				CONFIG_IOMUX_GRP_DDR_SR_A0);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_DRAM_B2,
++				CONFIG_IOMUX_GRP_DRAM_B2);
++	printf(dcd_item, i++, 4, IOMUXC_BASE_ADDR + IOMUXC_SW_PAD_CTL_GRP_DDR_SR_A1,
++				CONFIG_IOMUX_GRP_DDR_SR_A1);
++
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDCTL0, (CONFIG_SYS_SDRAM_ESDCTL_REGISTER_VAL&0x8FFFFFFF));
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDSCR, CONFIG_SYS_DRR_PRECHARGE_CMD(0, 0));
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDSCR, CONFIG_SYS_DRR_AUTOREFRESH_CMD(0));
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDSCR, CONFIG_SYS_DRR_AUTOREFRESH_CMD(0));
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDSCR, CONFIG_SYS_DRR_LMR_CMD(0, 0, CONFIG_SYS_DRR_MR_VAL));
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDSCR, CONFIG_SYS_DRR_LMR_CMD(0, 2, CONFIG_SYS_DRR_EMR_VAL));
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDSCR, CONFIG_SYS_DDR_NOP_CMD(0));
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDCTL0, CONFIG_SYS_SDRAM_ESDCTL_REGISTER_VAL);
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDCFG0, CONFIG_SYS_SDRAM_ESDCFG_REGISTER_VAL);
++#if (CONFIG_NR_DRAM_BANKS > 1)
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDCTL1, (CONFIG_SYS_SDRAM_ESDCTL_REGISTER_VAL&0x8FFFFFFF));
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDSCR, CONFIG_SYS_DRR_PRECHARGE_CMD(1, 0));
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDSCR, CONFIG_SYS_DRR_AUTOREFRESH_CMD(1));
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDSCR, CONFIG_SYS_DRR_AUTOREFRESH_CMD(1));
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDSCR, CONFIG_SYS_DRR_LMR_CMD(1, 0, CONFIG_SYS_DRR_MR_VAL));
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDSCR, CONFIG_SYS_DRR_LMR_CMD(1, 2, CONFIG_SYS_DRR_EMR_VAL));
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDSCR, CONFIG_SYS_DDR_NOP_CMD(1));
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDCTL1, CONFIG_SYS_SDRAM_ESDCTL_REGISTER_VAL);
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDCFG1, CONFIG_SYS_SDRAM_ESDCFG_REGISTER_VAL);
++#endif  /* CONFIG_NR_DRAM_BANKS > 1 */
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDMISC, CONFIG_SYS_SDRAM_ESDMISC_REGISTER_VAL);
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDSCR, 0x00000000);
++
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDCDLYGD, CONFIG_SYS_SDRAM_ESDGPR_REGISTER_VAL);
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDCDLY1, CONFIG_SYS_SDRAM_ESDCDLY1_REGISTER_VAL);
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDCDLY2, CONFIG_SYS_SDRAM_ESDCDLY2_REGISTER_VAL);
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDCDLY3, CONFIG_SYS_SDRAM_ESDCDLY3_REGISTER_VAL);
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDCDLY4, CONFIG_SYS_SDRAM_ESDCDLY4_REGISTER_VAL);
++	printf(dcd_item, i++, 4, ESDCTL_BASE_ADDR + ESDCTL_ESDCDLY5, CONFIG_SYS_SDRAM_ESDCDLY5_REGISTER_VAL);
++
++	return 0;
++}
++
++/***************************************************/
++
++U_BOOT_CMD(
++	dcdshow,	CONFIG_SYS_MAXARGS,	1,	do_mx51_show_dcd_tab,
++	"display mx51 dcd tab\n",
++	""
++);
++
++
+Index: u-boot-2010.03/board/armadeus/apf51/config.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ u-boot-2010.03/board/armadeus/apf51/config.mk	2011-06-21 16:03:13.000000000 +0200
+@@ -0,0 +1,2 @@
++LDSCRIPT := $(SRCTREE)/board/$(BOARDDIR)/u-boot.lds
++TEXT_BASE = 0x9FF00000
+Index: u-boot-2010.03/board/armadeus/apf51/Makefile
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ u-boot-2010.03/board/armadeus/apf51/Makefile	2011-06-21 16:03:13.000000000 +0200
+@@ -0,0 +1,50 @@
++#
++# Copyright (C) 2007, Guennadi Liakhovetski <lg@denx.de>
++#
++# (C) Copyright 2009 Freescale Semiconductor, Inc.
++# (C) Copyright 2010 Eric Jarrige, Armadeus Project
++#
++# This program is free software; you can redistribute it and/or
++# modify it under the terms of the GNU General Public License as
++# published by the Free Software Foundation; either version 2 of
++# the License, or (at your option) any later version.
++#
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++# GNU General Public License for more details.
++#
++# You should have received a copy of the GNU General Public License
++# along with this program; if not, write to the Free Software
++# Foundation, Inc., 59 Temple Place, Suite 330, Boston,
++# MA 02111-1307 USA
++#
++
++include $(TOPDIR)/config.mk
++
++LIB	 = $(obj)lib$(BOARD).a
++
++COBJS	:= apf51.o fpga.o
++SOBJS	:=
++
++SRCS	:= $(SOBJS:.o=.S) $(COBJS:.o=.c)
++OBJS	:= $(addprefix $(obj),$(COBJS))
++SOBJS	:= $(addprefix $(obj),$(SOBJS))
++
++$(LIB):	$(obj).depend $(OBJS) $(SOBJS)
++	$(AR) $(ARFLAGS) $@ $(OBJS) $(SOBJS)
++
++clean:
++	rm -f $(SOBJS) $(OBJS)
++
++distclean:	clean
++	rm -f $(LIB) core *.bak .depend
++
++#########################################################################
++
++# defines $(obj).depend target
++include $(SRCTREE)/rules.mk
++
++sinclude $(obj).depend
++
++#########################################################################
+Index: u-boot-2010.03/board/armadeus/apf51/u-boot.lds
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ u-boot-2010.03/board/armadeus/apf51/u-boot.lds	2011-06-21 16:03:13.000000000 +0200
+@@ -0,0 +1,64 @@
++/*
++ * January 2004 - Changed to support H4 device
++ * Copyright (c) 2004 Texas Instruments
++ *
++ * (C) Copyright 2002
++ * Gary Jennejohn, DENX Software Engineering, <gj@denx.de>
++ *
++ * (C) Copyright 2009 Freescale Semiconductor, Inc.
++ * (C) Copyright 2010 Eric Jarrige, Armadeus Project
++ *
++ * See file CREDITS for list of people who contributed to this
++ * project.
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of
++ * the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	 See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
++ * MA 02111-1307 USA
++ */
++
++OUTPUT_FORMAT("elf32-littlearm", "elf32-littlearm", "elf32-littlearm")
++OUTPUT_ARCH(arm)
++ENTRY(_start)
++SECTIONS
++{
++	. = 0x00000000;
++
++	. = ALIGN(4);
++	.text	   :
++	{
++	  /* WARNING - the following is hand-optimized to fit within	*/
++	  /* the sector layout of our flash chips!	XXX FIXME XXX	*/
++	  cpu/arm_cortexa8/start.o
++	  *(.text)
++	}
++
++	. = ALIGN(4);
++	.rodata : { *(.rodata) }
++
++	. = ALIGN(4);
++	.data : { *(.data) }
++
++	. = ALIGN(4);
++	.got : { *(.got) }
++
++	. = .;
++	__u_boot_cmd_start = .;
++	.u_boot_cmd : { *(.u_boot_cmd) }
++	__u_boot_cmd_end = .;
++
++	. = ALIGN(4);
++	__bss_start = .;
++	.bss : { *(.bss) }
++	_end = .;
++}
+Index: u-boot-2010.03/include/asm-arm/mach-types.h
+===================================================================
+--- u-boot-2010.03.orig/include/asm-arm/mach-types.h	2010-03-31 23:54:39.000000000 +0200
++++ u-boot-2010.03/include/asm-arm/mach-types.h	2011-06-21 16:03:13.000000000 +0200
+@@ -2699,6 +2699,7 @@
+ #define MACH_TYPE_MX53_EVK             2716
+ #define MACH_TYPE_IGEP0030             2717
+ #define MACH_TYPE_AXELL_H40_H50_CTRL   2718
++#define MACH_TYPE_APF51                2795
+ 
+ #ifdef CONFIG_ARCH_EBSA110
+ # ifdef machine_arch_type
+@@ -34944,6 +34945,18 @@
+ # define machine_is_axell_h40_h50_ctrl()	(0)
+ #endif
+ 
++#ifdef CONFIG_MACH_APF51
++# ifdef machine_arch_type
++#  undef machine_arch_type
++#  define machine_arch_type	__machine_arch_type
++# else
++#  define machine_arch_type	MACH_TYPE_APF51
++# endif
++# define machine_is_apf51()	(machine_arch_type == MACH_TYPE_APF51)
++#else
++# define machine_is_apf51()	(0)
++#endif
++
+ /*
+  * These have not yet been registered
+  */
+Index: u-boot-2010.03/MAKEALL
+===================================================================
+--- u-boot-2010.03.orig/MAKEALL	2011-06-21 16:03:13.000000000 +0200
++++ u-boot-2010.03/MAKEALL	2011-06-21 16:03:13.000000000 +0200
+@@ -549,6 +549,7 @@
+ 	ap946es			\
+ 	ap966			\
+ 	apf27			\
++	apf51			\
+ 	cp920t			\
+ 	cp922_XA10		\
+ 	cp926ejs		\
+Index: u-boot-2010.03/Makefile
+===================================================================
+--- u-boot-2010.03.orig/Makefile	2011-06-21 16:03:13.000000000 +0200
++++ u-boot-2010.03/Makefile	2011-06-21 16:03:13.000000000 +0200
+@@ -2735,6 +2735,9 @@
+ apf27_config		:	unconfig
+ 	@$(MKCONFIG) $(@:_config=) arm arm926ejs apf27 armadeus mx27
+ 
++apf51_config		:	unconfig
++	@$(MKCONFIG) $(@:_config=) arm arm_cortexa8 apf51 armadeus mx51
++
+ at91cap9adk_config	:	unconfig
+ 	@$(MKCONFIG) $(@:_config=) arm arm926ejs at91cap9adk atmel at91
+ 
+Index: u-boot-2010.03/board/armadeus/apf51/fpga.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ u-boot-2010.03/board/armadeus/apf51/fpga.h	2011-06-21 17:00:43.000000000 +0200
+@@ -0,0 +1,39 @@
++/*
++ * (C) Copyright 2002-2010
++ * Eric Jarrige <eric.jarrige@armadeus.org>
++ * Rich Ireland, Enterasys Networks, rireland@enterasys.com.
++ * Keith Outwater, keith_outwater@mvis.com.
++ *
++ * See file CREDITS for list of people who contributed to this
++ * project.
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of
++ * the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
++ * MA 02111-1307 USA
++ *
++ */
++extern int APF51_init_fpga (u_char * buffer, size_t size);
++
++extern int fpga_pre_fn (int cookie);
++extern int fpga_pgm_fn (int assert_pgm, int flush, int cookie);
++extern int fpga_cs_fn (int assert_cs, int flush, int cookie);
++extern int fpga_init_fn (int cookie);
++extern int fpga_done_fn (int cookie);
++extern int fpga_clk_fn (int assert_clk, int flush, int cookie);
++extern int fpga_wr_fn (int assert_write, int flush, int cookie);
++extern int fpga_rdata_fn ( unsigned char *data, int cookie );
++extern int fpga_wdata_fn ( unsigned char data, int cookie );
++extern int fpga_abort_fn (int cookie);
++extern int fpga_post_fn (int cookie);
++extern int fpga_busy_fn (int cookie);
+Index: u-boot-2010.03/board/armadeus/apf51/fpga.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ u-boot-2010.03/board/armadeus/apf51/fpga.c	2011-06-21 17:10:59.000000000 +0200
+@@ -0,0 +1,271 @@
++/*
++ * (C) Copyright 2002-2010
++ * Nicolas Colombain <nicolas.colombain@armadeus.com>
++ * Rich Ireland, Enterasys Networks, rireland@enterasys.com.
++ * Keith Outwater, keith_outwater@mvis.com.
++ *
++ * See file CREDITS for list of people who contributed to this
++ * project.
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of
++ * the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
++ * MA 02111-1307 USA
++ *
++ */
++#include <common.h>
++
++#if defined(CONFIG_FPGA)
++
++#include <asm/arch/imx-regs.h>
++#include <asm/arch/asm-offsets.h>
++#include <asm/io.h>
++#include <command.h>
++#include <config.h>
++#include <asm/arch/iomux.h>
++#include "fpga.h"
++#include <spartan3.h>
++
++#ifdef FPGA_DEBUG
++#define		PRINTF(fmt,args...)	printf (fmt ,##args)
++#else
++#define		PRINTF(fmt,args...)
++#endif
++
++extern void imx_gpio_pin_set(unsigned int pin, int value);
++extern void imx_gpio_pin_cfg_dir(unsigned int pin, int dir);
++extern int imx_gpio_pin_get(unsigned int pin);
++
++u32 temp_clk; /* use to restore the emi_clk_sel after donwload */
++u32 temp_rcr1;
++u32 temp_wcr1;
++
++/* Note that these are pointers to code that is in Flash.  They will be
++ * relocated at runtime.
++ * Spartan2 code is used to download our Spartan 6 :) code is compatible.
++ * Just take care about the file size
++*/
++Xilinx_Spartan3_Slave_Parallel_fns fpga_fns = {
++	fpga_pre_fn,
++	fpga_pgm_fn,
++	fpga_init_fn,
++	NULL,
++	fpga_done_fn,
++	fpga_clk_fn,
++	fpga_cs_fn,
++	fpga_wr_fn,
++	fpga_rdata_fn,
++	fpga_wdata_fn,
++   	fpga_busy_fn,
++	fpga_abort_fn,
++	fpga_post_fn,
++};
++
++Xilinx_desc fpga[CONFIG_FPGA_COUNT] = {
++	{Xilinx_Spartan3,
++	 slave_parallel,
++	 3713568l/8,
++	 (void *) &fpga_fns,
++	 0}
++};
++
++/*
++ *
++ */
++int
++fpga_pre_fn (int cookie)
++{
++#define EMI_CLK_SEL		1<<26
++
++	temp_rcr1 = __REG(CONFIG_CS1RCR1_ADDR);
++	__REG(CONFIG_CS1RCR1_ADDR) = 0x01000010;
++
++	temp_wcr1 = __REG(CONFIG_CS1WCR1_ADDR);
++	__REG(CONFIG_CS1WCR1_ADDR) = 0x01000008;
++
++	/* change emi_clk_sel to ensure blck smaller than 50MHz */
++	temp_clk = __REG(CCM_BASE_ADDR + CLKCTL_CBCDR);
++	__REG(CCM_BASE_ADDR + CLKCTL_CBCDR) = temp_clk | EMI_CLK_SEL;
++
++	/* FPGA PROG */
++	imx_gpio_pin_set(CONFIG_SYS_FPGA_PRG, 1);
++	imx_gpio_pin_cfg_dir(CONFIG_SYS_FPGA_PRG, 1);
++
++	/* FPGA SUSPEND */
++	imx_gpio_pin_set(CONFIG_SYS_FPGA_SUSPEND, 1);
++	imx_gpio_pin_cfg_dir(CONFIG_SYS_FPGA_SUSPEND, 1);
++
++	/* FPGA DONE */
++	imx_gpio_pin_cfg_dir(CONFIG_SYS_FPGA_DONE, 0);
++
++	/* FPGA INIT# */
++	imx_gpio_pin_cfg_dir(CONFIG_SYS_FPGA_INIT, 0);
++
++	/* FPGA PWR */
++	imx_gpio_pin_set(CONFIG_SYS_FPGA_PWR, 1);
++	imx_gpio_pin_cfg_dir(CONFIG_SYS_FPGA_PWR, 1);
++
++	PRINTF("FPGA power enabled\n");
++
++	return cookie;
++}
++
++/*
++ * Set the FPGA's active-low program line to the specified level
++ */
++int
++fpga_pgm_fn (int assert, int flush, int cookie)
++{
++	PRINTF ("%s:%d: FPGA PROGRAM %s\n", __FUNCTION__, __LINE__,
++					assert?"high":"low");
++	imx_gpio_pin_set(CONFIG_SYS_FPGA_PRG, !assert);
++	return assert;
++}
++
++/*
++ * Set the FPGA's active-high clock line to the specified level
++ */
++int
++fpga_clk_fn (int assert_clk, int flush, int cookie)
++{
++	return assert_clk;
++}
++
++/*
++ * Test the state of the active-low FPGA INIT line.  Return 1 on INIT
++ * asserted (low).
++ */
++int
++fpga_init_fn (int cookie)
++{
++	int value;
++	PRINTF ("%s:%d: INIT check... \n", __FUNCTION__, __LINE__);
++	value = imx_gpio_pin_get(CONFIG_SYS_FPGA_INIT);
++	PRINTF ("init value read %x\n",value);
++	if (value)
++		return 0;
++	return 1;
++}
++
++/*
++ * Test the state of the active-high FPGA DONE pin
++ */
++int
++fpga_done_fn (int cookie)
++{
++	int value;
++	value = imx_gpio_pin_get(CONFIG_SYS_FPGA_DONE);
++	PRINTF ("%s:%d: DONE check... %s", __FUNCTION__, __LINE__,
++					value?"high":"low");
++	return(value?FPGA_SUCCESS:FPGA_FAIL);
++}
++
++/*
++ * Set the FPGA's wr line to the specified level
++ */
++int
++fpga_wr_fn (int assert_write, int flush, int cookie)
++{
++	return assert_write;
++}
++
++int
++fpga_cs_fn (int assert_cs, int flush, int cookie)
++{
++	return assert_cs;
++}
++
++int
++fpga_rdata_fn ( unsigned char *data, int cookie )
++{
++	PRINTF ("%s:%d: FPGA READ DATA %02X \n", __FUNCTION__, __LINE__,
++					*((char*)CONFIG_SYS_FPGA_RDATA));
++	*data = (unsigned char)((*((unsigned short*)CONFIG_SYS_FPGA_RDATA))&0x00FF);
++	return *data;
++}
++
++int
++fpga_wdata_fn ( unsigned char data, int cookie )
++{
++	PRINTF ("%s:%d: FPGA WRITE DATA %02X \n", __FUNCTION__, __LINE__,
++					data);
++	static u32 temp;
++	static u32 index = 0;
++
++	switch (index++) {
++		case 0: temp = data << 8; break;
++		case 1: temp = temp + data; break;
++		case 2: temp = temp + (data << 24); break;
++		default:
++			*((volatile unsigned long*)CONFIG_SYS_FPGA_WDATA) = temp + (data << 16);
++			index = 0;
++			break;
++	}
++
++	return data;
++}
++
++int
++fpga_abort_fn ( int cookie )
++{
++	return cookie;
++}
++
++
++int
++fpga_busy_fn ( int cookie )
++{
++	return 1;
++}
++
++int
++fpga_post_fn (int cookie)
++{
++	PRINTF ("%s:%d: FPGA POST \n", __FUNCTION__, __LINE__);
++	/* restore emi_clk_sel */
++	__REG(CCM_BASE_ADDR + CLKCTL_CBCDR) = temp_clk;
++	udelay(10); /* wait a few us after emi_clk_sel change */
++	__REG(CONFIG_CS1RCR1_ADDR) = temp_rcr1;
++	__REG(CONFIG_CS1WCR1_ADDR) = temp_wcr1;
++	return cookie;
++}
++
++/*
++ * Initialize the fpga.  Return 1 on success, 0 on failure.
++ */
++int
++APF51_init_fpga (u_char * buffer, size_t size)
++{
++	int i, lout = 0;
++
++	fpga_init();
++
++	for (i = 0; i < CONFIG_FPGA_COUNT; i++) {
++		PRINTF ("%s:%d: Adding fpga %d\n", __FUNCTION__, __LINE__, i);
++		fpga_add (fpga_xilinx, &fpga[i]);
++	}
++
++	if ((size >= fpga[0].size)) {
++		printf("Loading FPGA...");
++		if (FPGA_SUCCESS != fpga_load( 0, (void *)buffer, size )) {
++			lout = 1;
++			printf("firmware download failed!\n");
++		} else {
++			printf("firmware successfully programmed\n");
++		}
++	}
++
++	return lout;
++}
++
++#endif /* CONFIG_FPGA */

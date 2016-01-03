@@ -1,0 +1,16 @@
+Needed by Armadeus UDC test to know if driver is up or not.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: linux-3.7-rc4/drivers/usb/gadget/imx_udc.c
+===================================================================
+--- linux-3.7-rc4.orig/drivers/usb/gadget/imx_udc.c	2012-11-06 08:50:16.000000000 +0100
++++ linux-3.7-rc4/drivers/usb/gadget/imx_udc.c	2012-11-06 09:05:55.000000000 +0100
+@@ -1490,6 +1490,7 @@
+ 	if (ret)
+ 		goto fail4;
+ 
++	printk("%s probed\n", driver_name);
+ 	return 0;
+ fail4:
+ 	for (i = 0; i < IMX_USB_NB_EP + 1; i++)

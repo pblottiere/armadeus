@@ -1,0 +1,162 @@
+Add slideshow package to BR.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2015-03-12 09:50:41.996444715 +0100
++++ buildroot/package/Config.in	2015-03-12 10:23:35.000000000 +0100
+@@ -197,6 +197,7 @@
+ 	source "package/mesa3d-demos/Config.in"
+ 	source "package/qt5cinex/Config.in"
+ 	source "package/rrdtool/Config.in"
++	source "package/slideshow/Config.in"
+ 
+ comment "Graphic libraries"
+ 	source "package/cegui06/Config.in"
+Index: buildroot/package/slideshow/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/slideshow/Config.in	2015-03-12 09:50:41.992444715 +0100
+@@ -0,0 +1,8 @@
++config BR2_PACKAGE_SLIDESHOW
++	bool "Slideshow"
++	depends on BR2_PACKAGE_SDL && BR2_PACKAGE_SDL_IMAGE
++	help
++	  Perigee Slideshow is a command line program that searches a directory
++	  for supported graphic files and displays them in a slideshow.
++
++	  http://www.xmission.com/~jstanley/slideshow.html
+Index: buildroot/package/slideshow/slideshow.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/slideshow/slideshow.mk	2015-03-12 10:22:50.624512814 +0100
+@@ -0,0 +1,31 @@
++#############################################################
++#
++# slideshow
++#
++#############################################################
++
++SLIDESHOW_VERSION = 1.1
++SLIDESHOW_SOURCE = slideshow-source-$(SLIDESHOW_VERSION).zip
++SLIDESHOW_SITE = http://www.xmission.com/~jstanley/
++
++SLIDESHOW_DEPENDENCIES += sdl sdl_image
++
++# -a option is to remove win*$! carriage return (^W)
++define SLIDESHOW_EXTRACT_CMDS
++	$(UNZIP) -a -d $(BUILD_DIR) $(DL_DIR)/$(SLIDESHOW_SOURCE)
++	mv $(BUILD_DIR)/slideshow/* $(@D)
++	rm -rf $(BUILD_DIR)/slideshow/
++endef
++
++define SLIDESHOW_BUILD_CMDS
++	$(MAKE) CC="$(TARGET_CXX)" \
++		CFLAGS="$(TARGET_CFLAGS) `sh $(STAGING_DIR)/usr/bin/sdl-config --cflags`" \
++		LFLAGS="`sh $(STAGING_DIR)/usr/bin/sdl-config --libs` -lSDL_image" \
++		-C $(@D)
++endef
++
++define SLIDESHOW_INSTALL_TARGET_CMDS
++	cp -dpf $(SLIDESHOW_DIR)/slideshow $(TARGET_DIR)/usr/bin
++endef
++
++$(eval $(generic-package))
+Index: buildroot/package/slideshow/slideshow-01-restart-after-end.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/slideshow/slideshow-01-restart-after-end.patch	2015-03-12 09:50:41.992444715 +0100
+@@ -0,0 +1,19 @@
++Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
++
++diff -urN slideshow-1.1/slideshow.cpp slideshow-1.1.mod/slideshow.cpp
++--- slideshow-1.1/slideshow.cpp	2013-08-31 11:35:19.932650303 +0200
+++++ slideshow-1.1.mod/slideshow.cpp	2013-08-31 11:34:48.396493925 +0200
++@@ -228,9 +228,10 @@
++ 			break;
++ 		}
++
++-		// stop the auto-advance when the last picture is about to be shown
++-		if ( m_image_index == m_file_list->count() - 1 )
++-			stop_timer();
+++		// Restart from beginning when the last picture is shown
+++		if ( m_image_index == m_file_list->count() )
+++			m_image_index = 0;
+++			m_prev_image_index = -1;
++ 	}
++
++ 	return true;
+Index: buildroot/package/slideshow/slideshow-02-remove-compile-warning.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/slideshow/slideshow-02-remove-compile-warning.patch	2015-03-12 09:50:41.992444715 +0100
+@@ -0,0 +1,13 @@
++--- slideshow.org/SDLFont.cpp	2007-11-17 19:25:02.000000000 +0100
+++++ slideshow/SDLFont.cpp	2007-11-17 20:06:20.000000000 +0100
++@@ -84,8 +84,8 @@
++
++     Uint8 *pixloc = (Uint8 *)pDisplay->pixels + dpitch * y + Bpp * x;
++     Uint8 *pChar, *pScreen;
++-    char c;
++-    int i, j;
+++    //char c;
+++    int i, j, c;
++
++     for(const char *p = text; *p != '\0'; p++)
++     {
+Index: buildroot/package/slideshow/slideshow-03-fix_compilation_errors_with_recent_gcc.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/slideshow/slideshow-03-fix_compilation_errors_with_recent_gcc.patch	2015-03-12 09:50:41.992444715 +0100
+@@ -0,0 +1,28 @@
++On recent gcc some includes are needed to have string stuff defined.
++
++Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
++
++Index: slideshow-1.1/file_list.cpp
++===================================================================
++--- slideshow-1.1.orig/file_list.cpp	2011-07-01 18:58:49.000000000 +0200
+++++ slideshow-1.1/file_list.cpp	2011-07-01 18:59:10.000000000 +0200
++@@ -8,6 +8,7 @@
++ #include <fstream>
++ #include <stdlib.h>
++ #include <ctype.h>
+++#include <string.h>
++
++ #ifdef WIN32
++ #include <io.h>
++Index: slideshow-1.1/slideshow.h
++===================================================================
++--- slideshow-1.1.orig/slideshow.h	2011-07-01 18:59:56.000000000 +0200
+++++ slideshow-1.1/slideshow.h	2011-07-01 19:00:02.000000000 +0200
++@@ -9,6 +9,7 @@
++ #pragma once
++ #endif // _MSC_VER > 1000
++
+++#include <iostream>
++ #include "SDL.h"
++ #include "cache.h"
++
+Index: buildroot/package/slideshow/slideshow-04-fix_sdl_crash.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/slideshow/slideshow-04-fix_sdl_crash.patch	2015-03-12 09:50:41.992444715 +0100
+@@ -0,0 +1,17 @@
++Otherwise crashes on APF27.
++
++Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
++
++Index: slideshow-1.1/slideshow.cpp
++===================================================================
++--- slideshow-1.1.orig/slideshow.cpp	2011-07-02 13:19:00.000000000 +0200
+++++ slideshow-1.1/slideshow.cpp	2011-07-02 13:19:17.000000000 +0200
++@@ -411,7 +411,7 @@
++ 	else
++ 		flags |= SDL_FULLSCREEN;
++
++-	m_sdl = SDL_SetVideoMode(m_options->width, m_options->height, 32, flags);
+++	m_sdl = SDL_SetVideoMode(m_options->width, m_options->height, 16 /*32*/, flags);
++
++ 	if ( !m_sdl )
++ 	{

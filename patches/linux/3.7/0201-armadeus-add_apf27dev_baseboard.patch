@@ -1,0 +1,1534 @@
+
+Adds support for Armadeus Systems APF27Dev baseboard and APW extension board.
+
+Signed-off-by: Fabien Marteau <fabien.marteau@armadeus.com>
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+Signed-off-by: Nicolas Colombain <nicolas.colombain@armadeus.com>
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+Signed-off-by: Jeremie Scheer <jeremie.scheer@armadeus.com>
+Signed-off-by: Kevin Joly <joly.kevin25@gmail.com>
+
+Index: linux-3.7.6/arch/arm/mach-imx/apf27-dev.c
+===================================================================
+--- /dev/null
++++ linux-3.7.6/arch/arm/mach-imx/apf27-dev.c
+@@ -0,0 +1,1032 @@
++ /*
++ * apf27-dev.c
++ * Support for AFP27 module's development baseboard
++ *
++ * Copyright (C) 2009-2012 Armadeus Systems
++ * Authors: Julien Boibessot <julien.boibessot@armadeus.com>
++ *          Nicolas Colombain <nicolas.colombain@armadeus.com>
++ *
++ * Based on code which is:
++ * Copyright 2007 Robert Schwebel <r.schwebel@pengutronix.de>, Pengutronix
++ * Copyright (C) 2009 Sascha Hauer (kernel@pengutronix.de)
++ * + Freescale
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License
++ * as published by the Free Software Foundation; either version 2
++ * of the License, or (at your option) any later version.
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
++ */
++
++#define IMX_NEEDS_DEPRECATED_SYMBOLS
++
++#include <linux/platform_device.h>
++#include <linux/spi/spi.h>
++#include <linux/spi/spidev.h>
++#include <linux/gpio_keys.h>
++#include <linux/i2c.h>
++#include <linux/input.h>
++#include <linux/leds.h>
++#include <linux/serial.h>
++#include <linux/delay.h>
++#include <linux/irq.h>
++#include <linux/cpufreq.h>
++#include <linux/clk.h>
++#include <linux/dma-mapping.h>
++#ifdef CONFIG_FB_IMX
++#include <linux/platform_data/video-imxfb.h>
++#endif
++
++#include <asm/io.h>
++#include <linux/gpio.h> /* gpio_to_irq */
++#include <asm/mach/arch.h>
++#include <asm/mach-types.h>
++#include <asm/mach/time.h>
++#include <mach/common.h>
++#include <mach/hardware.h>
++#include <mach/iomux-mx27.h>
++#include <linux/fb.h>
++#include <mach/ulpi.h>
++#ifdef CONFIG_MAX1027
++#include <linux/spi/max1027.h>
++#endif
++#ifdef CONFIG_SPI_TSC2102
++#include <linux/spi/tsc2102.h>
++#endif
++#include <linux/can/platform/mcp251x.h>
++#if 0
++#include <mach/imx_dam.h>
++#include <mach/imx_sound.h>
++#include <mach/imx-alsa.h>
++#include <mach/imx_cam.h>
++#endif
++//#include <mach/ssi.h>
++
++#ifdef CONFIG_AD9889
++#include <media/ad9889.h>
++#endif
++
++#include <media/soc_camera.h>
++#if defined(CONFIG_CPU_FREQ_IMX27) || defined(CONFIG_CPU_FREQ_IMX27_MODULE)
++#include "cpufreq_imx.h"
++#endif
++//#include <mach/board-apf27.h>
++#include <asm/mach/map.h>
++
++#include "devices-imx27.h"
++//#include "crm_regs.h"
++
++#include <mach/mx27.h>
++#define VA_GPIO_BASE	MX27_IO_ADDRESS(MX27_GPIO_BASE_ADDR)
++
++#if defined(CONFIG_FB_IMX)
++extern void apf27_lcd_init(void);
++#endif
++#ifdef CONFIG_MACH_APF27_DEV_EXT
++extern void apf27dev_extension_init(void);
++extern void apf27dev_extension_resume(void);
++extern void apf27dev_extension_suspend(void);
++#endif
++
++#ifdef CONFIG_ARMADEUS_MAX1027_MODULE
++#define CONFIG_ARMADEUS_MAX1027 1
++#endif
++#ifdef CONFIG_SPI_TSC2102_MODULE
++#define CONFIG_SPI_TSC2102 1
++#endif
++#ifdef CONFIG_CAN_MCP251X_MODULE
++#define CONFIG_CAN_MCP251X 1
++#endif
++#ifdef CONFIG_SPI_SPIDEV_MODULE
++#define CONFIG_SPI_SPIDEV 1
++#endif
++#ifdef CONFIG_IMX_BACKLIGHT_MODULE
++#define CONFIG_IMX_BACKLIGHT
++#endif
++#ifdef CONFIG_VIDEO_AD9889_MODULE
++#define CONFIG_VIDEO_AD9889 1
++#endif
++#ifdef CONFIG_VIDEO_MX27_MODULE
++#define CONFIG_VIDEO_MX27 1
++#endif
++#ifdef CONFIG_SOC_CAMERA_OV96XX_MODULE
++#define CONFIG_SOC_CAMERA_OV96XX 1
++#endif
++#ifdef CONFIG_PWM_IMX_MODULE
++#define CONFIG_PWM_IMX 1
++#endif
++
++#define TSC2101_INT 17
++#define CONFIG_SPI_MXC_SELECT1
++#define CONFIG_SPI_MXC_SELECT2
++
++#define SPI1_SS0		IMX_GPIO_NR(4, 28)
++#define SPI2_TSC2102_CS	IMX_GPIO_NR(4, 21)
++#define SPI2_MCP251X_CS	IMX_GPIO_NR(4, 20)
++#define SPI2_SPIDEV_SS	IMX_GPIO_NR(2,17)
++#define TSC2101_INT_GPIO	IMX_GPIO_NR(6, TSC2101_INT)
++#define USER_LED		IMX_GPIO_NR(6, 14)	/* PF14 */
++#define USER_BUTTON		IMX_GPIO_NR(6, 13)	/* PF13 */
++
++static int apf27dev_pins[] = {
++	/* I2C1 */
++	PD17_PF_I2C_DATA,
++	PD18_PF_I2C_CLK,
++	/* USBH1 */
++	PB22_PF_USBH1_SUSP,
++	PB23_PF_USB_PWR,
++	PB24_PF_USB_OC,
++	PB25_PF_USBH1_RCV,
++	PB26_PF_USBH1_FS,
++	PB27_PF_USBH1_OE,
++	PB28_PF_USBH1_TXDM,
++	PB29_PF_USBH1_TXDP,
++	PB30_PF_USBH1_RXDM,
++	PB31_PF_USBH1_RXDP,
++	/* SPI1 */
++#ifdef CONFIG_SPI_MXC_SELECT1
++	/* PD28_PF_CSPI1_SS0, Preferably use CS pin as GPIO */
++	PD29_PF_CSPI1_SCLK,
++	PD30_PF_CSPI1_MISO,
++	PD31_PF_CSPI1_MOSI,
++	SPI1_SS0 | GPIO_GPIO | GPIO_OUT,
++#endif
++	/* SPI2 */
++#ifdef CONFIG_SPI_MXC_SELECT2
++	/* PD19_PF_CSPI2_SS2,
++	PD20_PF_CSPI2_SS1, Preferably use CS pin as GPIO
++	PD21_PF_CSPI2_SS0, */
++	SPI2_TSC2102_CS|GPIO_OUT|GPIO_GPIO,
++	SPI2_MCP251X_CS|GPIO_OUT|GPIO_GPIO,
++	SPI2_SPIDEV_SS|GPIO_OUT|GPIO_GPIO,
++	PD22_PF_CSPI2_SCLK,
++	PD23_PF_CSPI2_MISO,
++	PD24_PF_CSPI2_MOSI,
++#endif
++	/* SPI3 */
++#ifdef CONFIG_SPI_MXC_SELECT3
++	/*
++	PE21_AF_CSPI3_SS,
++	Preferably use CS pin as GPIO
++	*/
++	PE23_AF_CSPI3_SCLK,
++	PE18_AF_CSPI3_MISO,
++	PE22_AF_CSPI3_MOSI,
++#endif
++	/* UART2 (J8 connector / multiplexed with Keypad) */
++#ifdef CONFIG_SERIAL_IMX_UART2
++# ifdef CONFIG_SERIAL_IMX_UART2_USE_RTSCTS
++	PE3_PF_UART2_CTS,
++	PE4_PF_UART2_RTS,
++# endif
++	PE6_PF_UART2_TXD,
++	PE7_PF_UART2_RXD,
++#endif
++	/* UART5 (J9 connector / multiplexed with CSI) */
++#ifdef CONFIG_SERIAL_IMX_UART5
++	PB18_AF_UART5_TXD,
++	PB19_AF_UART5_RXD,
++# ifdef CONFIG_SERIAL_IMX_UART5_USE_RTSCTS
++	PB20_AF_UART5_CTS,
++	PB21_AF_UART5_RTS,
++# endif
++#endif
++	/* UART6 (J9 connector / multiplexed with CSI) */
++#ifdef CONFIG_SERIAL_IMX_UART6
++	PB10_AF_UART6_TXD,
++	PB11_AF_UART6_RXD,
++# ifdef CONFIG_SERIAL_IMX_UART6_USE_RTSCTS
++	PB12_AF_UART6_CTS,
++	PB13_AF_UART6_RTS,
++# endif
++#endif
++	/* SSI1 */
++	PC20_PF_SSI1_FS,
++	PC21_PF_SSI1_RXD,
++	PC22_PF_SSI1_TXD,
++	PC23_PF_SSI1_CLK,
++	/* SDHC2 */
++	PB4_PF_SD2_D0,
++	PB5_PF_SD2_D1,
++	PB6_PF_SD2_D2,
++	PB7_PF_SD2_D3,
++	PB8_PF_SD2_CMD,
++	PB9_PF_SD2_CLK,
++	/* GPIOs */
++	/* CS can be used as GPIO too, if communication with TSC is deactivated (thanks
++	   to TXB0108 chip (U23). INT pin can't and so must be reserved in any case */
++	TSC2101_INT_GPIO | GPIO_IN | GPIO_GPIO,
++	USER_LED | GPIO_GPIO | GPIO_OUT,
++	USER_BUTTON | GPIO_GPIO | GPIO_IN,
++#ifdef CONFIG_PWM_IMX
++	PE5_PF_PWMO,
++#endif
++};
++
++
++#if defined(CONFIG_KEYBOARD_GPIO) || defined(CONFIG_KEYBOARD_GPIO_MODULE)
++static struct gpio_keys_button apf27dev_gpio_keys[] = {
++	{
++		.code = BTN_EXTRA, /* See include/linux/input.h */
++		.gpio = USER_BUTTON,
++		.active_low = 1,
++		.desc = "s1", /* Button description*/
++		.wakeup = 0,
++	},
++};
++
++static struct gpio_keys_platform_data apf27dev_gpio_keys_data = {
++	.buttons = apf27dev_gpio_keys,
++	.nbuttons = ARRAY_SIZE(apf27dev_gpio_keys),
++};
++
++static struct platform_device apf27dev_gpio_keys_device = {
++	.name = "gpio-keys",
++	.id = -1,
++	.dev = {
++		.platform_data = &apf27dev_gpio_keys_data,
++	},
++};
++#endif /* CONFIG_KEYBOARD_GPIO */
++
++#if defined(CONFIG_LEDS_GPIO) || defined(CONFIG_LEDS_GPIO_MODULE)
++static struct gpio_led apf27dev_led[] = {
++	{
++		.name = "apfdev:green:user",
++		.default_trigger = "heartbeat",
++		.gpio = USER_LED,
++		.active_low = 1,
++	},
++};
++
++static struct gpio_led_platform_data apf27dev_led_data = {
++	.num_leds	= ARRAY_SIZE(apf27dev_led),
++	.leds		= apf27dev_led
++};
++
++static struct platform_device apf27dev_led_dev = {
++	.name		= "leds-gpio",
++	.id		= -1,
++	.dev		= {
++		.platform_data	= &apf27dev_led_data,
++	},
++};
++#endif /* CONFIG_LEDS_GPIO */
++
++#ifdef CONFIG_I2C
++
++/* APF27Dev makes I2C1 bus available */
++
++static struct imxi2c_platform_data apf27dev_i2c0_data __initconst = {
++	.bitrate = 400000,
++};
++
++/* I2C1 devices: RTC & Optionnal Camera */
++# ifdef CONFIG_SOC_CAMERA_OV96XX
++static struct soc_camera_link ov96xx_iclink; /* declared later */
++#endif
++
++static struct i2c_board_info apf27dev_i2c0_devices[] = {
++	[0] = {
++		/* APF27Dev has an RTC */
++		.type = "ds1374",
++		.addr = 0x68,	/* E0=0, E1=1, E2=0 */
++	},
++# ifdef CONFIG_SOC_CAMERA_OV96XX
++	[1] = {
++		.type = "ov96xx",
++		.addr = 0x30,
++		.platform_data = &ov96xx_iclink,
++	},
++# endif
++};
++
++
++/* APF27Dev has an optionnal HDMI video output (controlled with I2C2) */
++# ifdef CONFIG_VIDEO_AD9889
++#define AD9889_INT 15
++
++static int ad9889_pins[] = {
++	(GPIO_PORTC | GPIO_IN | GPIO_GPIO | AD9889_INT),
++};
++
++static int ad9889_init(void)
++{
++	return mxc_gpio_setup_multiple_pins(ad9889_pins, ARRAY_SIZE(ad9889_pins),
++						"AD9889");
++}
++
++static int ad9889_exit(void)
++{
++	mxc_gpio_release_multiple_pins(ad9889_pins, ARRAY_SIZE(ad9889_pins));
++
++	return 0;
++}
++
++struct ad9889_fb_data {
++	struct fb_var_screeninfo var;
++	int PA31_GIUS_old_state;
++};
++
++static struct ad9889_fb_data apf27_ad9889_fb_data;
++extern void console_lock(void);
++extern void console_unlock(void);
++
++static void ad9889_display_connected(void)
++{
++	struct fb_var_screeninfo temp_var;
++	struct fb_info *info = registered_fb[0];
++
++	apf27_ad9889_fb_data.PA31_GIUS_old_state = 0;
++	/* make sure the LCD OE_ACD pin is correctly configured */
++	if (__raw_readl(VA_GPIO_BASE + MXC_GIUS(0)) & 0x80000000) {
++		apf27_ad9889_fb_data.PA31_GIUS_old_state = 1;
++		mxc_gpio_mode(PA31_PF_OE_ACD);
++	}
++
++	/* save old FB params */
++	memcpy(&apf27_ad9889_fb_data.var, &info->var, sizeof(struct fb_var_screeninfo));
++	memcpy(&temp_var, &info->var, sizeof(struct fb_var_screeninfo));
++
++	/* set new FB params */
++	temp_var.xres = 640;
++	temp_var.yres = 480;
++	temp_var.xres_virtual = 640;
++	temp_var.yres_virtual = 480;
++	temp_var.pixclock = 37538;
++	temp_var.left_margin = 47;
++	temp_var.right_margin = 47; /* at least 3 & 1 */
++	temp_var.upper_margin = 33;
++	temp_var.lower_margin = 10;
++	temp_var.hsync_len = 63;
++	temp_var.vsync_len = 2;
++# ifdef CONFIG_FB_MXC
++	temp_var.sync = FB_SYNC_OE_ACT_HIGH; /* -> Will change PCR */
++# endif
++	temp_var.vmode = FB_VMODE_NONINTERLACED,
++	temp_var.nonstd = 0;
++
++	console_lock();
++	/* tel the FB client that params have been changed */
++	info->flags |= FBINFO_MISC_USEREVENT;
++	/* set new params */
++	fb_set_var(info, &temp_var);
++	info->flags &= ~FBINFO_MISC_USEREVENT;
++	console_unlock();
++}
++
++static void ad9889_display_disconnected(void)
++{
++	struct fb_info *info = registered_fb[0];
++
++	/* restore LCD OE_ACD pin */
++	if (apf27_ad9889_fb_data.PA31_GIUS_old_state)
++		mxc_gpio_mode(GPIO_PORTA | 31 | GPIO_OUT| GPIO_GPIO);
++
++	console_lock();
++	/* inform the console that the FB params have been changed */
++	info->flags |= FBINFO_MISC_USEREVENT;
++	/* restore old FB params */
++	fb_set_var(info, &apf27_ad9889_fb_data.var);
++	info->flags &= ~FBINFO_MISC_USEREVENT;
++	console_unlock();
++}
++
++static struct ad9889_config apf27_ad9889_config = {
++	.init = ad9889_init,
++	.exit = ad9889_exit,
++	.display_connected = ad9889_display_connected,
++	.display_disconnected = ad9889_display_disconnected,
++	.data = &apf27_ad9889_fb_data,
++	.EDID_I2C_addr = 0x3f
++};
++# endif /* CONFIG_VIDEO_AD9889 */
++
++
++/* I2C2 devices */
++static struct i2c_board_info apf27dev_i2c1_devices[] = {
++# ifdef CONFIG_VIDEO_AD9889
++	[0] = {
++		.type = "ad9889",
++		.addr = 0x39,
++		.platform_data = &apf27_ad9889_config,
++		.irq = IRQ_GPIOC(AD9889_INT)
++	},
++# endif
++};
++#endif /* CONFIG_I2C */
++
++
++/* UART2 signals are available on J8 connector (multiplexed with Keypad) */
++#ifdef CONFIG_SERIAL_IMX_UART2
++static struct imxuart_platform_data uart1_pdata = {
++# ifdef CONFIG_SERIAL_IMX_UART2_USE_RTSCTS
++	.flags = IMXUART_HAVE_RTSCTS,
++# else
++	.flags = 0,
++# endif
++};
++#endif
++
++
++/* UART5 signals are available on J9 connector (multiplexed with CSI) */
++#ifdef CONFIG_SERIAL_IMX_UART5
++static struct imxuart_platform_data uart4_pdata = {
++#ifdef CONFIG_SERIAL_IMX_UART5_USE_RTSCTS
++	.flags = IMXUART_HAVE_RTSCTS,
++#else
++	.flags = 0,
++#endif
++};
++#endif
++
++/* UART6 signals are available on J9 connector (multiplexed with CSI) */
++#ifdef CONFIG_SERIAL_IMX_UART6
++static struct imxuart_platform_data uart5_pdata = {
++#ifdef CONFIG_SERIAL_IMX_UART6_USE_RTSCTS
++	.flags = IMXUART_HAVE_RTSCTS,
++#else
++	.flags = 0,
++#endif
++};
++#endif
++
++
++/* SPI ports declarations */
++
++#ifdef CONFIG_SPI_MXC_SELECT1
++static int apf27_dev_spi0_cs[] = {
++	SPI1_SS0, /* 0: MAX1027 */
++};
++
++static struct spi_imx_master apf27dev_spi0_data = {
++	.chipselect = apf27_dev_spi0_cs,
++	.num_chipselect	= ARRAY_SIZE(apf27_dev_spi0_cs),
++};
++#endif
++
++#ifdef CONFIG_SPI_MXC_SELECT2
++static int apf27_dev_spi1_cs[] = {
++	SPI2_TSC2102_CS, /* 0: SPI2_SS0 used as GPIO for TSC2101_CS */
++	SPI2_MCP251X_CS, /* 1: MCP251X_CS */
++	SPI2_SPIDEV_SS,  /* 2: SPIDEV_CS (CSI_D5) */
++};
++
++static struct spi_imx_master apf27dev_spi1_data = {
++	.chipselect = apf27_dev_spi1_cs,
++	.num_chipselect	= ARRAY_SIZE(apf27_dev_spi1_cs),
++};
++#endif
++
++#ifdef CONFIG_SPI_MXC_SELECT3
++static int apf27_dev_spi2_cs[] = {
++};
++
++static struct spi_imx_master apf27dev_spi2_data = {
++	.chipselect = apf27_dev_spi2_cs,
++	.num_chipselect	= ARRAY_SIZE(apf27_dev_spi2_cs),
++};
++#endif
++
++
++/* APF27Dev has an optionnal 7 channels 10 bits ADC (on SPI1) */
++#ifdef CONFIG_ARMADEUS_MAX1027
++#define MAX1027_EOC_INT 15
++#define MAX1027_CNVST 14
++
++static int max1027_pins[] = {
++	(GPIO_PORTE | GPIO_IN | GPIO_GPIO | MAX1027_EOC_INT),
++	(GPIO_PORTE | GPIO_OUT | GPIO_GPIO | MAX1027_CNVST),
++};
++
++static int max1027_init(struct spi_device *spi)
++{
++	return mxc_gpio_setup_multiple_pins(max1027_pins, ARRAY_SIZE(max1027_pins), "MAX1027");
++}
++
++static int max1027_exit(struct spi_device *spi)
++{
++	return 0;
++}
++
++static struct max1027_config apf27_max1027_config = {
++	.conv = MAX1027_CONV_DEFAULT,
++	.setup = MAX1027_SETUP_DEFAULT,
++	.avg = MAX1027_AVG_DEFAULT,
++	.cnvst_pin = (int)(MAX1027_CNVST|GPIO_PORTE),
++	.init = max1027_init,
++	.exit = max1027_exit
++};
++#endif /* CONFIG_ARMADEUS_MAX1027 */
++
++#ifdef CONFIG_SPI_TSC2102
++/* APF27Dev has a SPI Touchscreen controller */
++
++static struct tsc210x_config apf27_tsc2101_config = {
++	.mclk =	12288000, /* MCLK value in Master mode */
++	.use_internal = 1, /* -> use internal voltage reference */
++	.monitor = TSC_BAT1 | TSC_AUX | TSC_TEMP,
++};
++#endif
++
++/* APF27Dev has an optional CAN Bus controller */
++#ifdef CONFIG_CAN_MCP251X
++
++#define CAN_MCP251X_INT 19
++
++static int mcp251x_pins[] = {
++	(GPIO_PORTD | CAN_MCP251X_INT | GPIO_IN | GPIO_GPIO), /* IRQ pin as GPIO */
++};
++
++static int mcp251x_init_irq(struct spi_device *spi)
++{
++	printk("%s \n", __func__);
++
++	/* Still needed here ?? */
++	mxc_gpio_setup_multiple_pins(mcp251x_pins, ARRAY_SIZE(mcp251x_pins), "MCP251x");
++
++	return 0;
++}
++
++static struct mcp251x_platform_data apf27_mcp251x_config = {
++	.oscillator_frequency  = 16000000,
++	.board_specific_setup  = mcp251x_init_irq,
++};
++#endif /* CONFIG_CAN_MCP251X */
++
++
++static struct spi_board_info apf27dev_spi_board_info[] __initdata = {
++#ifdef CONFIG_ARMADEUS_MAX1027
++	{
++		.modalias		= "max1027",
++		.max_speed_hz		= 8000000,
++		.bus_num		= 0, /* SPI1 */
++		.irq			= IRQ_GPIOE(MAX1027_EOC_INT),
++		.chip_select		= 0, /* SS0 */
++		.mode 			= 0,
++		.platform_data		= &apf27_max1027_config,
++	},
++#endif
++#ifdef CONFIG_SPI_TSC2102
++	{
++		.modalias		= "tsc210x",
++		.max_speed_hz		= 8000000,
++		.bus_num		= 1, /* SPI2 */
++		/*.irq			= (TSC2101_INT_GPIO),*/
++		.chip_select		= 0,
++		.mode 			= 0,
++		.platform_data		= &apf27_tsc2101_config,
++	},
++#endif
++#ifdef CONFIG_CAN_MCP251X
++	{
++		.modalias		= "mcp2515",
++		.max_speed_hz		= 8000000, /* 8MHz */
++		.bus_num		= 1, /* SPI2 */
++		.mode			= 0,
++		.chip_select		= 1,
++//		.irq			= IRQ_GPIOD(CAN_MCP251X_INT),
++		.platform_data		= &apf27_mcp251x_config,
++	},
++#endif
++#ifdef CONFIG_SPI_SPIDEV
++/* SPI2 can be used as userspace general SPI bus (CS 2) */
++	{
++		.modalias		= "spidev",
++		.max_speed_hz		= 8000000, /* 8MHz */
++		.bus_num		= 1, /* SPI2 */
++		.mode			= SPI_MODE_1,
++		.chip_select		= 2,
++	},
++#endif
++};
++
++/* APF27Dev adds an USB PHY on i.MX27 USB_HOST 1 */
++#if 0
++static int apf27_usbh1_init(struct platform_device *pdev)
++{
++	int ret = 0;
++	uint32_t temp;
++	struct clk *usbclk;
++        void __iomem *usb_base;
++        void __iomem *usbreg_base;
++
++        usb_base = ioremap(OTG_BASE_ADDR, SZ_4K);
++
++	printk("-------- apf27_usbh1_init\n");
++
++	usbclk = clk_get(&pdev->dev, "usb");
++	/* no clock -> no access to USB regs ! */
++
++        usbreg_base = usb_base + 0x600;
++	temp = __raw_readl(usbreg_base);
++	pr_debug("USB_CTRL before: 0x%08x\n", temp);
++	temp &= ~( (3 << 13) | (1 << 8) |  1 );
++	temp |=  (1 << 4) | (1 << 11) ;
++	__raw_writel(temp, usbreg_base);
++	pr_debug("USB_CTRL after: 0x%08x\n", temp);
++
++        usbreg_base = usb_base + 0x384;
++	temp = __raw_readl(usbreg_base);
++	pr_debug("PORTSC1 before: 0x%08x\n", temp);
++	temp &= ~(3 << 30);
++	temp |= 3 << 30;
++	__raw_writel(temp, usbreg_base);
++	pr_debug("PORTSC1 after: 0x%08x\n", temp);
++	mdelay(10);
++
++        usbreg_base = usb_base + 0x340;
++	temp = __raw_readl(usbreg_base);
++	temp |= 0x02; /* reset controller */
++	__raw_writel(temp, usbreg_base);
++	pr_debug("reset controller: 0x%08x\n", temp);
++	mdelay(10);
++
++        iounmap(usb_base);
++
++	return ret;
++}
++#endif
++
++static int apf27dev_usbh1_init(struct platform_device *pdev)
++{
++	printk("--- %s\n", __func__);
++
++	return mx27_initialize_usb_hw(pdev->id, MXC_EHCI_POWER_PINS_ENABLED);
++}
++
++struct mxc_usbh_platform_data usbh1_pdata = {
++/*	.init = apf27_usbh1_init, */
++	.init = apf27dev_usbh1_init,
++	.portsc = MXC_EHCI_MODE_SERIAL,
++};
++
++
++#if defined(CONFIG_SND_IMX_TSC2102) || defined(CONFIG_SND_IMX_TSC2102_MODULE)
++static struct imx_alsa_codec_config tsc2101_alsa_pdata;
++/*
++static struct resource ssi_resources[] = {
++	[0] = {
++		.start	= SSI1_BASE_ADDR,
++		.end	= SSI1_BASE_ADDR + 0x6F,
++		.flags	= IORESOURCE_MEM
++	},
++};
++*/
++static struct platform_device tsc2101_alsa_device = {
++	.name           = "tsc210x-alsa",
++	.id             = 0,
++	.num_resources  = ARRAY_SIZE(ssi_resources),
++	.resource       = ssi_resources,
++	.dev            = {
++				.platform_data = &tsc2101_alsa_pdata,
++			}
++};
++# define ALSA_SOUND &tsc2101_alsa_device,
++#else
++# define ALSA_SOUND
++#endif /* CONFIG_SND_IMX_TSC2102 || CONFIG_SND_IMX_TSC2102_MODULE */
++
++static struct platform_device *platform_devices[] __initdata = {
++#if defined(CONFIG_LEDS_GPIO) || defined(CONFIG_LEDS_GPIO_MODULE)
++	&apf27dev_led_dev,
++#endif
++#if defined(CONFIG_KEYBOARD_GPIO) || defined(CONFIG_KEYBOARD_GPIO_MODULE)
++	&apf27dev_gpio_keys_device,
++#endif
++	ALSA_SOUND
++};
++
++
++/* SSI1 port is directly connected to TSC2101 and can't be used for
++   anything else */
++/*
++static int gpio_ssi1_active(struct platform_device *pdev)
++{
++	int err;
++
++	err = mxc_gpio_setup_multiple_pins(mxc_ssi1_pins,
++					ARRAY_SIZE(mxc_ssi1_pins), "mx2-sound");
++	if (err < 0)
++		pr_err("Failed to register SSI pins\n");
++
++	return err;
++}
++
++static int gpio_ssi1_inactive(struct platform_device *pdev)
++{
++	mxc_gpio_release_multiple_pins(mxc_ssi1_pins, ARRAY_SIZE(mxc_ssi1_pins));
++	return 0;
++}
++*/
++
++static struct imx_ssi_platform_data apf27_ssi0_pdata = {
++	.flags = 0, /* TBDJB
++	.init = gpio_ssi1_active,
++	.exit = gpio_ssi1_inactive */
++};
++
++
++/* APF27Dev has a microSD connector */
++#ifdef CONFIG_MMC_MXC
++#define APF27DEV_SD_DETECT	IMX_GPIO_NR(2, 15)
++static int apf27_sdhc2_init(struct device *dev, irq_handler_t detect_irq, void *data)
++{
++//	int ret = 0;
++
++	return request_irq(gpio_to_irq(APF27DEV_SD_DETECT), detect_irq,
++	IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING, "sdhc2-card-detect", data);
++/*	if (ret)
++		printk(KERN_ERR
++			"apf27dev: Failed to request irq for sd/mmc detection\n");
++
++	irq_set_irq_type(gpio_to_irq(APF27DEV_SD_DETECT), IRQ_TYPE_EDGE_BOTH);
++
++	return ret;*/
++}
++
++static void apf27_sdhc2_exit(struct device *dev, void *data)
++{
++	free_irq(gpio_to_irq(APF27DEV_SD_DETECT), data);
++}
++
++static struct imxmmc_platform_data apf27_sdhc2_pdata __initconst = {
++	.init = apf27_sdhc2_init,
++	.exit = apf27_sdhc2_exit,
++};
++
++#endif /* CONFIG_MMC_MXC */
++
++
++/* APF27Dev can have an optionnal Camera module extension using i.MX27 CSI */
++#ifdef CONFIG_VIDEO_MX27
++# ifdef CONFIG_SOC_CAMERA_OV96XX
++#define OV9653_PWRDN	(GPIO_PORTC | 30) /* SSI3_TX as POWERDOWN*/
++#define OV9653_RESET	(GPIO_PORTC | 31) /* SSI3_CLK as RESET */
++
++static int apf27dev_ov9653_ctl_pins[] = {
++	(OV9653_PWRDN | GPIO_OUT | GPIO_GPIO),
++	(OV9653_RESET | GPIO_OUT | GPIO_GPIO),
++};
++# endif
++
++static int apf27dev_csi_pins[] = {
++	PB10_PF_CSI_D0,
++	PB11_PF_CSI_D1,
++	PB12_PF_CSI_D2,
++	PB13_PF_CSI_D3,
++	PB14_PF_CSI_D4,
++	PB15_PF_CSI_MCLK,
++	PB16_PF_CSI_PIXCLK,
++	PB17_PF_CSI_D5,
++	PB18_PF_CSI_D6,
++	PB19_PF_CSI_D7,
++	PB20_PF_CSI_VSYNC,
++	PB21_PF_CSI_HSYNC
++};
++
++static int apf27dev_camera_init(struct platform_device *pdev)
++{
++# ifdef CONFIG_SOC_CAMERA_OV96XX
++	int err;
++
++	/* Setup PWRDN/RESET pins default value */
++	gpio_set_value(OV9653_PWRDN, 0);
++	gpio_set_value(OV9653_RESET, 0);
++	err = mxc_gpio_setup_multiple_pins(apf27dev_ov9653_ctl_pins,
++			ARRAY_SIZE(apf27dev_ov9653_ctl_pins), "OV9653");
++	if (err)
++		printk("Error %s", __func__);
++# endif
++
++	return mxc_gpio_setup_multiple_pins(apf27dev_csi_pins,
++				ARRAY_SIZE(apf27dev_csi_pins), "CSI");
++}
++
++static int apf27dev_camera_exit(struct platform_device *pdev)
++{
++# ifdef CONFIG_SOC_CAMERA_OV96XX
++	mxc_gpio_release_multiple_pins(apf27dev_ov9653_ctl_pins,
++				ARRAY_SIZE(apf27dev_ov9653_ctl_pins));
++# endif
++
++	mxc_gpio_release_multiple_pins(apf27dev_csi_pins, ARRAY_SIZE(apf27dev_csi_pins));
++
++	return 0;
++}
++
++struct mx27_camera_platform_data apf27_camera = {
++	.init = apf27dev_camera_init,
++	.exit = apf27dev_camera_exit,
++	.clk  = 26600000,
++	.flags = MX27_CAMERA_HSYNC_HIGH | MX27_CAMERA_GATED_CLOCK |
++			MX27_CAMERA_SWAP16,
++};
++
++# ifdef CONFIG_SOC_CAMERA_OV96XX
++static int ov96xx_power(struct device *dev, int state)
++{
++        printk(KERN_DEBUG "*** %s %d\n", __func__, state);
++
++        if (state) /* UP */
++                gpio_set_value(OV9653_PWRDN, 0);
++        else /* DOWN */
++                gpio_set_value(OV9653_PWRDN, 1);
++
++        return 0;
++}
++
++static int ov96xx_reset(struct device *dev)
++{
++        printk(KERN_DEBUG "*** %s\n", __func__);
++
++        gpio_set_value(OV9653_RESET, 1);
++        msleep(10);
++        gpio_set_value(OV9653_RESET, 0);
++        msleep(10);
++
++        return 0;
++}
++
++static struct soc_camera_link ov96xx_iclink = {
++        .bus_id = 0,
++        .power = ov96xx_power,
++        .reset = ov96xx_reset,
++};
++# endif
++
++#endif /* CONFIG_VIDEO_MX27 */
++
++
++/* APF27Dev power management stuff */
++
++#define APF27DEV_USER_SWITCH		(USER_BUTTON)
++#define APF27DEV_USER_SWITCH_IRQ	(IRQ_GPIOF(13))
++#define APF27DEV_USER_LED		(USER_LED)
++#define APF27DEV_POWER_DOWN_NOT		(GPIO_PORTF | 16)
++
++static int apf27dev_pwr_ctl_pins[] = {
++	(APF27DEV_POWER_DOWN_NOT | GPIO_OUT | GPIO_GPIO),
++#ifdef CONFIG_USE_APF27DEV_IMX_SWITCH_FOR_PM
++	(APF27DEV_USER_SWITCH | GPIO_IN | GPIO_GPIO),
++#endif
++#ifdef CONFIG_USE_APF27DEV_IMX_LED_FOR_PM
++	(APF27DEV_USER_LED | GPIO_OUT | GPIO_GPIO),
++#endif
++};
++
++void apf27_baseboard_resume(void)
++{
++#ifdef CONFIG_MACH_APF27_DEV_EXT
++	apf27dev_extension_resume();
++#endif
++	gpio_set_value(APF27DEV_POWER_DOWN_NOT, 1);
++#ifdef CONFIG_USE_APF27DEV_IMX_LED_FOR_PM
++	gpio_set_value(GPIO_PORTF | 14, 0);
++#endif
++}
++
++void apf27_baseboard_suspend(void)
++{
++#ifdef CONFIG_MACH_APF27_DEV_EXT
++	apf27dev_extension_suspend();
++#endif
++	gpio_set_value(APF27DEV_POWER_DOWN_NOT, 0);
++#ifdef CONFIG_USE_APF27DEV_IMX_LED_FOR_PM
++	gpio_set_value(GPIO_PORTF | 14, 1);
++#endif
++}
++
++#ifdef CONFIG_USE_APF27DEV_IMX_SWITCH_FOR_PM
++static irqreturn_t apf27dev_user_switch_irq_handler(int irq, void *dev_id)
++{
++	return IRQ_HANDLED;
++}
++#endif
++
++static int apf27dev_pwr_ctrl_gpio_active(void)
++{
++	int err;
++
++	err = mxc_gpio_setup_multiple_pins(apf27dev_pwr_ctl_pins,
++					ARRAY_SIZE(apf27dev_pwr_ctl_pins), "pwr-ctl");
++	if (err < 0)
++		pr_err("Failed to register power control pins !\n");
++
++	gpio_set_value(APF27DEV_POWER_DOWN_NOT, 1);
++#ifdef CONFIG_USE_APF27DEV_IMX_LED_FOR_PM
++	gpio_set_value(GPIO_PORTF | 14, 0);
++#endif
++#ifdef CONFIG_USE_APF27DEV_IMX_SWITCH_FOR_PM
++	err = request_irq(APF27DEV_USER_SWITCH_IRQ, apf27dev_user_switch_irq_handler,
++				IRQF_TRIGGER_FALLING,
++				"PM irq", NULL);
++	if (err < 0)
++		pr_err("Failed to register PM irq !\n");
++#endif
++
++	return err;
++}
++
++void __init apf27_baseboard_init(void)
++{
++	int ret;
++	int i;
++
++	/* SSI unit (TBDL) */
++//	mxc_audmux_v1_configure_port(.....);
++
++	printk("APF27Dev baseboard\n");
++	ret = mxc_gpio_setup_multiple_pins(apf27dev_pins,
++			ARRAY_SIZE(apf27dev_pins), "APF27DEV");
++	if (ret)
++		printk(KERN_ERR "apf27dev: Failed to setup pins (%d)\n", ret);
++
++//	imx27_add_imx_ssi(0, &apf27_ssi0_pdata);
++
++	/* APF27Dev has an LCD connector */
++#ifdef CONFIG_FB_IMX
++	apf27_lcd_init();
++#endif
++
++//	apf27dev_pwr_ctrl_gpio_active();
++
++#ifdef CONFIG_SERIAL_IMX_UART2
++	imx27_add_imx_uart1(&uart1_pdata);
++#endif
++#ifdef CONFIG_SERIAL_IMX_UART5
++	imx27_add_imx_uart4(&uart4_pdata);
++#endif
++#ifdef CONFIG_SERIAL_IMX_UART6
++	imx27_add_imx_uart5(&uart5_pdata);
++#endif
++
++	imx27_add_mxc_ehci_hs(1, &usbh1_pdata);
++
++	i2c_register_board_info(0, apf27dev_i2c0_devices,
++				ARRAY_SIZE(apf27dev_i2c0_devices));
++	imx27_add_imx_i2c(0, &apf27dev_i2c0_data);
++	/* I2C2 bus already registered by APF27 module */
++	i2c_register_board_info(1, apf27dev_i2c1_devices,
++				ARRAY_SIZE(apf27dev_i2c1_devices));
++
++#ifdef CONFIG_SPI_MXC_SELECT1
++	/* Optionnal ADC */
++//	mxc_gpio_mode(GPIO_PORTD | 28 | GPIO_GPIO | GPIO_IN), /* 0: MAX1027 */
++	imx27_add_spi_imx0(&apf27dev_spi0_data);
++#endif
++#ifdef CONFIG_SPI_MXC_SELECT2
++	/* TSC2101 + optionnal CAN */
++	/* Can also be used as USB2 or external SPI, with jumper J23 */
++	/* Let hardware decide the state of CS at startup */
++	/*mxc_gpio_mode(GPIO_PORTD | 21 | GPIO_GPIO | GPIO_IN);
++	mxc_gpio_mode(GPIO_PORTD | 20 | GPIO_GPIO | GPIO_IN);
++	mxc_gpio_mode(GPIO_PORTB | 17 | GPIO_GPIO | GPIO_IN);*/
++	for (i=0; i< ARRAY_SIZE(apf27dev_spi_board_info);i++) {
++		if (!strcmp(apf27dev_spi_board_info[i].modalias, "tsc210x")) {
++			apf27dev_spi_board_info[i].irq = gpio_to_irq(TSC2101_INT_GPIO);
++		}
++	}
++
++	imx27_add_spi_imx1(&apf27dev_spi1_data);
++#endif
++#ifdef CONFIG_SPI_MXC_SELECT3
++	/* Output on J8 connector (muxed with SD1) */
++	imx27_add_spi_imx2(&apf27dev_spi2_data);
++#endif
++	spi_register_board_info(apf27dev_spi_board_info,
++				ARRAY_SIZE(apf27dev_spi_board_info));
++
++	platform_add_devices(platform_devices, ARRAY_SIZE(platform_devices));
++
++#ifdef CONFIG_PWM_IMX
++	imx27_add_mxc_pwm();
++#endif
++
++#if 0
++#ifdef CONFIG_SPI_TSC2102
++	/* Due to an hardware "bug", force TSC2101 ChipSelect at startup
++	   (on some APF27Dev boards CS stays low, due to TXB0108 chip (U23))
++	   and too weak i.MX27 internal pullup resistors */
++	tsc2101_init_gpio();
++	tsc2101_release_gpio();
++#endif
++#endif
++
++//	imx27_add_mxc_mmc(1, &apf27_sdhc2_pdata);
++
++#ifdef CONFIG_VIDEO_MX27
++	mxc_register_device(&mx27_camera_device, &apf27_camera);
++#endif
++#ifdef CONFIG_MACH_APF27_DEV_EXT
++	apf27dev_extension_init();
++#endif
++}
++
+Index: linux-3.7.6/arch/arm/mach-imx/apf27-lcd.c
+===================================================================
+--- /dev/null
++++ linux-3.7.6/arch/arm/mach-imx/apf27-lcd.c
+@@ -0,0 +1,157 @@
++/*
++ * apf27-lcd.c
++ *
++ * Handle support of multiple LCDs on the APF27Dev
++ *
++ * Copyright (C) 2009-2011 Armadeus Systems
++ * Authors: Julien Boibessot <julien.boibessot@armadeus.com>
++ *          Nicolas Colombain <nicolas.colombain@armadeus.com>
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License
++ * as published by the Free Software Foundation; either version 2
++ * of the License, or (at your option) any later version.
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
++ */
++
++#ifdef CONFIG_FB_IMX
++
++#include <linux/fb.h>
++#include <linux/delay.h>
++#include <linux/gpio.h>
++#include <linux/platform_data/video-imxfb.h>
++
++#include <mach/iomux-mx27.h>
++#include <mach/common.h>
++
++#include "devices-imx27.h"
++
++static int apf27_fb_init(struct platform_device*);
++
++static void apf_lcd_custom_init(const char *name)
++{
++	if (!name)
++		return;
++
++	if (!strcmp("Optrex-T51638D084", name)) {
++		/* Activates LCD at startup: PS is used as LCD Display ON/OFF */
++		gpio_set_value((GPIO_PORTA | 26), 1);
++		mxc_gpio_mode(GPIO_PORTA | 26 | GPIO_OUT | GPIO_GPIO);
++	} else if (!strcmp("Sharp-LQ057", name)) {
++		/* Activates backlight at startup: CONTRAST is used as backlight's ON/OFF */
++		gpio_set_value((GPIO_PORTA | 30), 0);
++		mxc_gpio_mode(GPIO_PORTA | 30 | GPIO_OUT | GPIO_GPIO);
++	} else if (!strcmp("Sharp-LQ043", name)) {
++		/* Activates LCD at startup: OE_ACD is used as LCD Display ON/OFF */
++		gpio_set_value((GPIO_PORTA | 31), 1);
++		mxc_gpio_mode(GPIO_PORTA | 31 | GPIO_OUT | GPIO_GPIO);
++	} else if (!strcmp("Custom", name)) {
++		/* Please always let the custom LCD in this (last) position: */
++		;
++	} else {
++		/* "Chimei-LW700AT9003" / "Hitachi-TX12D17VM1BDP" */
++		;
++	}
++/* Please let these 2 lines here
++*/
++}
++
++static int mxc_lcd_pins[] = {
++	PA5_PF_LSCLK,
++	PA6_PF_LD0,
++	PA7_PF_LD1,
++	PA8_PF_LD2,
++	PA9_PF_LD3,
++	PA10_PF_LD4,
++	PA11_PF_LD5,
++	PA12_PF_LD6,
++	PA13_PF_LD7,
++	PA14_PF_LD8,
++	PA15_PF_LD9,
++	PA16_PF_LD10,
++	PA17_PF_LD11,
++	PA18_PF_LD12,
++	PA19_PF_LD13,
++	PA20_PF_LD14,
++	PA21_PF_LD15,
++	PA22_PF_LD16,
++	PA23_PF_LD17,
++	PA24_PF_REV,
++	PA25_PF_CLS,
++	PA26_PF_PS,
++	PA27_PF_SPL_SPR,
++	PA28_PF_HSYNC,
++	PA29_PF_VSYNC,
++	PA30_PF_CONTRAST,
++	PA31_PF_OE_ACD
++};
++
++#include "apf9328_lcd_config.h"
++
++static int apf27_fb_init(struct platform_device *pdev)
++{
++	int ret;
++
++	ret = mxc_gpio_setup_multiple_pins(mxc_lcd_pins,
++						ARRAY_SIZE(mxc_lcd_pins), "LCD");
++	if (ret)
++		return ret;
++#if 0
++	apf_lcd_custom_init(lcd_name);
++#endif
++	return 0;
++}
++
++#ifdef CONFIG_FB_MXC
++void apf27_lcd_startup(void)
++{
++	int i;
++
++	/* force LCD data/control lines to 0 before powering the LCD
++	otherwise start up conditions may not be respected */
++	for (i = 5; i <=  31; i++) {
++		if (i != 30) {
++			gpio_set_value(GPIO_PORTA | i, 0);
++			mxc_gpio_mode(GPIO_PORTA | i | GPIO_OUT| GPIO_GPIO);
++		}
++	}
++	/* wait a few milli */
++	mdelay(100);
++}
++#endif
++
++void apf27_lcd_init(void)
++{
++	char *opt, *name = NULL, *options = NULL;
++
++	if (fb_get_options("imxfb", &options))
++		goto end;
++
++	if (!options || !*options)
++		goto end;
++
++	while ((opt = strsep(&options, ",")) != NULL) {
++		if (!*opt)
++			continue;
++		else
++			name = opt;
++	}
++
++#ifdef CONFIG_FB_MXC
++	apf27_lcd_startup();
++#endif
++	apf_set_lcd_name(name);
++	apf_fb_set_default_contrast();
++	imx27_add_imx_fb(&apf_fb_data);
++end:
++	return;
++}
++
++#endif
+Index: linux-3.7.6/arch/arm/mach-imx/apf27-dev-ext-apw.c
+===================================================================
+--- /dev/null
++++ linux-3.7.6/arch/arm/mach-imx/apf27-dev-ext-apw.c
+@@ -0,0 +1,175 @@
++ /*
++ * apf27-dev-ext-apw.c
++ * Support for AFP27Dev's wireless extension board (APW).
++ *
++ * Copyright (C) 2009-2011 Armadeus Systems
++ * Authors: Julien Boibessot <julien.boibessot@armadeus.com>
++ *          Nicolas Colombain <nicolas.colombain@armadeus.com>
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License
++ * as published by the Free Software Foundation; either version 2
++ * of the License, or (at your option) any later version.
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
++ */
++
++#include <linux/platform_device.h>
++#include <linux/delay.h>
++
++#include <mach/common.h>
++#include <mach/iomux-mx27.h>
++#include <mach/gpio.h>
++#include <mach/mmc.h>
++
++#include "devices-imx27.h"
++
++/* An optional GSM module can be added to wireless extension board */
++#ifdef CONFIG_MACH_APF27_DEV_EXT_WIRELESS_GSM
++
++#define GSM_POK_IN	(GPIO_PORTE | 11)	/* UART3_RTS */
++
++static int apw_gsm_pins[] = {
++	(GSM_POK_IN | GPIO_OUT | GPIO_GPIO) /* GSM_PWR_ON_not */
++};
++
++static int apw_gsm_init(void)
++{
++	int res = mxc_gpio_setup_multiple_pins(apw_gsm_pins,
++			ARRAY_SIZE(apw_gsm_pins), "GSM");
++	gpio_set_value(GSM_POK_IN, 0); /* start GSM */
++	mdelay(5000);
++	gpio_set_value(GSM_POK_IN, 1); /* start GSM */
++
++	return res;
++}
++#endif
++
++
++/* An optionnal GPS module can be mounted on wireless extension board */
++#ifdef CONFIG_MACH_APF27_DEV_EXT_WIRELESS_GPS
++
++#define GPS_WAKEUP	(GPIO_PORTB | 20)	/* CSI_VSYNC_UART5_CTS */
++#define GPS_TIMEPULSE	(GPIO_PORTB | 21)	/* CSI_HSYNC_UART5_RTS */
++
++static int apw_gps_pins[] = {
++	(GPS_WAKEUP | GPIO_OUT | GPIO_GPIO),
++	(GPS_TIMEPULSE | GPIO_IN | GPIO_GPIO),
++};
++
++static int apw_gps_init(void)
++{
++	int res = mxc_gpio_setup_multiple_pins(apw_gps_pins,
++			ARRAY_SIZE(apw_gps_pins), "GPS");
++	gpio_set_value(GPS_WAKEUP, 1); /* start GPS */
++
++	return res;
++}
++#endif
++
++
++/* An optional Bluetooth + WiFi module (Wi2Wi) can be mounted on wireless
++   extension board */
++#ifdef CONFIG_MACH_APF27_DEV_EXT_WIRELESS_BT_WIFI
++
++#define BT_RESETn	(GPIO_PORTB | 14)	/* shared with CSI_D4;
++						   driven by userspace */
++#define WIFI_PWRDNn	(GPIO_PORTE | 10)	/* UART3_CTS */
++
++static int apw_bt_wifi_pins[] = {
++	(WIFI_PWRDNn | GPIO_OUT | GPIO_GPIO),
++};
++
++/* SDHC1 is used for WiFi */
++static int mxc_sdhc1_pins[] = {
++	PE18_PF_SD1_D0,
++	PE19_PF_SD1_D1,
++	PE20_PF_SD1_D2,
++	PE21_PF_SD1_D3,
++	PE22_PF_SD1_CMD,
++	PE23_PF_SD1_CLK,
++};
++
++static int apw_sdhc1_init(struct device *dev, irq_handler_t handler, void *data)
++{
++	return mxc_gpio_setup_multiple_pins(mxc_sdhc1_pins,
++				ARRAY_SIZE(mxc_sdhc1_pins),
++				"SDHC1");
++}
++
++static void apw_sdhc1_exit(struct device *pdev, void *data)
++{
++	mxc_gpio_release_multiple_pins(mxc_sdhc1_pins, ARRAY_SIZE(mxc_sdhc1_pins));
++}
++
++static struct imxmmc_platform_data apw_sdhc1_pdata = {
++	.init = apw_sdhc1_init,
++	.exit = apw_sdhc1_exit,
++};
++
++/* UART6 is used for Bluetooth (init done in apf27-dev.c depending on
++   Linux config) */
++
++static int apw_bt_wifi_init(void)
++{
++	int res;
++
++	gpio_set_value(WIFI_PWRDNn, 1);	/* WiFi on */
++	res = mxc_gpio_setup_multiple_pins(apw_bt_wifi_pins,
++			ARRAY_SIZE(apw_bt_wifi_pins), "BT_WIFI");
++	if (!res)
++		imx27_add_mxc_mmc(0, &apw_sdhc1_pdata);
++
++	return res;
++}
++#endif /* CONFIG_MACH_APF27_DEV_EXT_WIRELESS_BT_WIFI */
++
++
++void apf27dev_extension_resume(void)
++{
++#ifdef CONFIG_PM
++# ifdef CONFIG_MACH_APF27_DEV_EXT_WIRELESS_WIFI
++	gpio_set_value(WIFI_PWRDNn, 1);
++# endif
++# ifdef CONFIG_MACH_APF27_DEV_EXT_WIRELESS_GPS
++	gpio_set_value(GPS_WAKEUP, 1);
++# endif
++#endif
++}
++
++void apf27dev_extension_suspend(void)
++{
++#ifdef CONFIG_PM
++# ifdef CONFIG_MACH_APF27_DEV_EXT_WIRELESS_WIFI
++	gpio_set_value(WIFI_PWRDNn, 0);
++# endif
++# ifdef CONFIG_MACH_APF27_DEV_EXT_WIRELESS_GPS
++	gpio_set_value(GPS_WAKEUP, 0);
++# endif
++#endif
++}
++
++
++void __init apf27dev_extension_init(void)
++{
++	printk("    Registering APW ressources:");
++
++#ifdef CONFIG_MACH_APF27_DEV_EXT_WIRELESS_GSM
++	apw_gsm_init();
++#endif
++#ifdef CONFIG_MACH_APF27_DEV_EXT_WIRELESS_GPS
++	apw_gps_init();
++#endif
++#ifdef CONFIG_MACH_APF27_DEV_EXT_WIRELESS_BT_WIFI
++	apw_bt_wifi_init();
++#endif
++
++	printk("done\n");
++}
++
+Index: linux-3.7.6/arch/arm/mach-imx/mach-apf27.c
+===================================================================
+--- linux-3.7.6.orig/arch/arm/mach-imx/mach-apf27.c
++++ linux-3.7.6/arch/arm/mach-imx/mach-apf27.c
+@@ -43,6 +43,7 @@
+ 
+ #include "devices-imx27.h"
+ 
++extern void apf27_baseboard_init(void);
+ 
+ static const int apf27_pins[] __initconst = {
+ 	/* UART1 */
+@@ -270,6 +271,10 @@ static void __init apf27_init(void)
+ 	i2c_register_board_info(1, apf27_i2c_devices_bus1,
+ 				ARRAY_SIZE(apf27_i2c_devices_bus1));
+ 	imx27_add_imx_i2c(1, &apf27_i2c_1_data);
++
++#ifdef CONFIG_MACH_APF27_HAS_BASEBOARD
++	apf27_baseboard_init();
++#endif
+ }
+ 
+ static void __init apf27_timer_init(void)
+Index: linux-3.7.6/arch/arm/mach-imx/Kconfig
+===================================================================
+--- linux-3.7.6.orig/arch/arm/mach-imx/Kconfig
++++ linux-3.7.6/arch/arm/mach-imx/Kconfig
+@@ -430,6 +430,103 @@ config MACH_APF27
+ 	  Include support for APF27 platform. This includes specific
+ 	  configurations for the module and its peripherals.
+ 
++config MACH_APF27_HAS_BASEBOARD
++        bool
++
++choice
++	prompt "Baseboard"
++	depends on MACH_APF27
++	default MACH_APF27_DEV
++
++config MACH_APF27_DEV
++	prompt "Armadeus Systems APF27Dev development board"
++	bool
++	depends on MACH_APF27
++	select SERIAL_IMX_UART3
++	select MACH_APF27_HAS_BASEBOARD
++	select IMX_HAVE_PLATFORM_IMX_FB
++	select IMX_HAVE_PLATFORM_MXC_MMC
++	select IMX_HAVE_PLATFORM_IMX_SSI
++	select IMX_HAVE_PLATFORM_SPI_IMX
++	select IMX_HAVE_PLATFORM_MXC_PWM
++	help
++	  This selects the APF27Dev as baseboard. You have to manually
++	  activates the devices you want to use if you have the "Full"
++	  version.
++
++endchoice
++
++config MACH_APF27_DEV_EXT
++	bool
++
++choice
++	prompt "Extension board"
++	depends on MACH_APF27_DEV
++	default MACH_APF27_DEV_EXT_NONE
++
++config MACH_APF27_DEV_EXT_NONE
++	prompt "No extension"
++	bool
++	help
++	  No extension board connected to APF27Dev baseboard.
++
++config MACH_APF27_DEV_EXT_WIRELESS
++	prompt "Wireless (APW)"
++	bool
++	select MACH_APF27_DEV_EXT
++	help
++	  Wireless extension board connected to APF27Dev baseboard.
++
++endchoice
++
++config MACH_APF27_DEV_EXT_WIRELESS_GSM
++	bool "GSM/GPRS Modem"
++	depends on MACH_APF27_DEV_EXT_WIRELESS
++	select SERIAL_IMX_UART2
++	select SERIAL_IMX_UART2_USE_RTSCTS
++	default y
++	help
++	  Activates support for the GSM modem on the APW extension board.
++
++config MACH_APF27_DEV_EXT_WIRELESS_BT_WIFI
++	bool "Bluetooth & WiFi module"
++	depends on MACH_APF27_DEV_EXT_WIRELESS
++	help
++	  Activates support for the Bluetooth+WiFi module on the APW extension
++	  board.
++
++config MACH_APF27_DEV_EXT_WIRELESS_WIFI
++	bool "WiFi"
++	depends on MACH_APF27_DEV_EXT_WIRELESS_BT_WIFI && (!SPI_MXC_SELECT3)
++	default y
++	help
++	  Only activates WiFi part of the module.
++
++config MACH_APF27_DEV_EXT_WIRELESS_BT
++	bool "Bluetooth"
++	depends on MACH_APF27_DEV_EXT_WIRELESS_BT_WIFI
++	select SERIAL_IMX_UART6
++	select SERIAL_IMX_UART6_USE_RTSCTS
++	help
++	  Only activates Bluetooth part of the module
++
++config MACH_APF27_DEV_EXT_WIRELESS_CAMERA
++	bool "CSI (Camera) pass-through"
++	depends on (MACH_APF27_DEV_EXT_WIRELESS) && (!MACH_APF27_DEV_EXT_WIRELESS_GPS) && (!MACH_APF27_DEV_EXT_WIRELESS_BT)
++
++comment "Please check that J3 is unplugged"
++	depends on MACH_APF27_DEV_EXT_WIRELESS_CAMERA
++
++config MACH_APF27_DEV_EXT_WIRELESS_GPS
++	bool "GPS module"
++	depends on MACH_APF27_DEV_EXT_WIRELESS
++	select SERIAL_IMX_UART5
++	help
++	  Activates support for the GPS module on the APW extension board.
++
++comment "Please check that J3 is plugged in"
++	depends on MACH_APF27_DEV_EXT_WIRELESS_GPS
++
+ endif
+ 
+ if ARCH_IMX_V6_V7
+Index: linux-3.7.6/arch/arm/mach-imx/Makefile
+===================================================================
+--- linux-3.7.6.orig/arch/arm/mach-imx/Makefile
++++ linux-3.7.6/arch/arm/mach-imx/Makefile
+@@ -46,6 +46,9 @@ obj-$(CONFIG_MACH_MXT_TD60) += mach-mxt_
+ obj-$(CONFIG_MACH_IMX27IPCAM) += mach-imx27ipcam.o
+ obj-$(CONFIG_MACH_IMX27_DT) += imx27-dt.o
+ obj-$(CONFIG_MACH_APF27) += mach-apf27.o
++obj-$(CONFIG_MACH_APF27_DEV) += apf27-dev.o
++obj-$(CONFIG_MACH_APF27_DEV) += apf27-lcd.o
++obj-$(CONFIG_MACH_APF27_DEV_EXT_WIRELESS) += apf27-dev-ext-apw.o
+ 
+ # i.MX31 based machines
+ obj-$(CONFIG_MACH_MX31ADS) += mach-mx31ads.o

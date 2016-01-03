@@ -1,0 +1,47 @@
+From 36d1da1d15743e8d25e2699a2edb19d7c492bec8 Mon Sep 17 00:00:00 2001
+From: Shawn Guo <shawn.guo@linaro.org>
+Date: Thu, 28 Mar 2013 23:13:14 +0800
+Subject: rtc: stmp3xxx: use stmp_reset_block() instead
+
+The function stmp_reset_block() provides the exactly same functionality
+as mxs_reset_block().  So use stmp_reset_block() instead, so that
+<mach/common.h> inclusion can be removed.
+
+Signed-off-by: Shawn Guo <shawn.guo@linaro.org>
+Cc: Andrew Morton <akpm@linux-foundation.org>
+Cc: rtc-linux@googlegroups.com
+
+diff --git a/drivers/rtc/rtc-stmp3xxx.c b/drivers/rtc/rtc-stmp3xxx.c
+index 98f0d3c..67d2612 100644
+--- a/drivers/rtc/rtc-stmp3xxx.c
++++ b/drivers/rtc/rtc-stmp3xxx.c
+@@ -30,8 +30,6 @@
+ #include <linux/stmp_device.h>
+ #include <linux/stmp3xxx_rtc_wdt.h>
+ 
+-#include <mach/common.h>
+-
+ #define STMP3XXX_RTC_CTRL			0x0
+ #define STMP3XXX_RTC_CTRL_SET			0x4
+ #define STMP3XXX_RTC_CTRL_CLR			0x8
+@@ -271,7 +269,7 @@ static int stmp3xxx_rtc_probe(struct platform_device *pdev)
+ 
+ 	platform_set_drvdata(pdev, rtc_data);
+ 
+-	mxs_reset_block(rtc_data->io);
++	stmp_reset_block(rtc_data->io);
+ 	writel(STMP3XXX_RTC_PERSISTENT0_ALARM_EN |
+ 			STMP3XXX_RTC_PERSISTENT0_ALARM_WAKE_EN |
+ 			STMP3XXX_RTC_PERSISTENT0_ALARM_WAKE,
+@@ -319,7 +317,7 @@ static int stmp3xxx_rtc_resume(struct platform_device *dev)
+ {
+ 	struct stmp3xxx_rtc_data *rtc_data = platform_get_drvdata(dev);
+ 
+-	mxs_reset_block(rtc_data->io);
++	stmp_reset_block(rtc_data->io);
+ 	writel(STMP3XXX_RTC_PERSISTENT0_ALARM_EN |
+ 			STMP3XXX_RTC_PERSISTENT0_ALARM_WAKE_EN |
+ 			STMP3XXX_RTC_PERSISTENT0_ALARM_WAKE,
+-- 
+cgit v0.10.1
+

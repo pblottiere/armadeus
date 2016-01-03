@@ -1,0 +1,17 @@
+Add registration functions for UDC.
+
+Signed-off-by: Gwenhael Goavec-Merou <gwen@trabucayre.com>
+---
+
+Index: linux-3.8-rc1/arch/arm/mach-imx/devices-imx1.h
+===================================================================
+--- linux-3.8-rc1.orig/arch/arm/mach-imx/devices-imx1.h	2012-12-22 02:19:00.000000000 +0100
++++ linux-3.8-rc1/arch/arm/mach-imx/devices-imx1.h	2013-01-01 21:19:56.000000000 +0100
+@@ -28,3 +28,7 @@
+ 
+ #define imx1_add_spi_imx0(pdata) imx1_add_cspi(0, pdata)
+ #define imx1_add_spi_imx1(pdata) imx1_add_cspi(1, pdata)
++
++extern const struct imx_imx_udc_data imx1_imx_udc_data;
++#define imx1_add_udc(pdata)	\
++	imx_add_imx_udc(&imx1_imx_udc_data, pdata)

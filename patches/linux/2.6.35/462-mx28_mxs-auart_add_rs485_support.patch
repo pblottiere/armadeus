@@ -1,0 +1,200 @@
+MX28 add RS485 support to mxs-auart driver.
+
+The driver now handle automatically the transmit enable signal
+for RS485 communication lines. The _active low_ TXEN output is
+present on the RTS pin. From user-level the RS485 configuration
+can be set by using ioctls.
+
+Signed-off-by: Janos Angeli <angelo@angelo.hu>
+---
+Index: linux-2.6.35.3/include/linux/serial.h
+===================================================================
+--- linux-2.6.35.3.orig/include/linux/serial.h
++++ linux-2.6.35.3/include/linux/serial.h
+@@ -210,9 +210,11 @@ struct serial_rs485 {
+ #define SER_RS485_ENABLED		(1 << 0)
+ #define SER_RS485_RTS_ON_SEND		(1 << 1)
+ #define SER_RS485_RTS_AFTER_SEND	(1 << 2)
+-	__u32	delay_rts_before_send;	/* Milliseconds */
+-	__u32	padding[6];		/* Memory is cheap, new structs
+-					   are a royal PITA .. */
++	__u32	delay_rts_before_send;	/* Delay before send (microseconds) */
++	__u32	delay_rts_after_send;	/* Delay after send (microseconds) */
++	__u32	delay_rts_last_char_tx;	/* Delay for last char Tx from FIFO (microseconds)
++					   This delay is automatically calculated from baudrate */
++	__u32	padding[4];		/* Memory is cheap, new structs are a royal PITA .. */
+ };
+ 
+ #ifdef __KERNEL__
+Index: linux-2.6.35.3/drivers/serial/mxs-auart.c
+===================================================================
+--- linux-2.6.35.3.orig/drivers/serial/mxs-auart.c
++++ linux-2.6.35.3/drivers/serial/mxs-auart.c
+@@ -5,6 +5,8 @@
+  *
+  * Copyright 2008-2011 Freescale Semiconductor, Inc.
+  * Copyright 2008 Embedded Alley Solutions, Inc All Rights Reserved.
++ *
++ * RS485 support added by Janos Angeli <angelo@angelo.hu>
+  */
+ 
+ /*
+@@ -38,6 +40,7 @@
+ #include <linux/uaccess.h>
+ 
+ #include <asm/cacheflush.h>
++#include <asm/ioctls.h>
+ 
+ #include <mach/hardware.h>
+ #include <mach/device.h>
+@@ -69,6 +72,7 @@ struct mxs_auart_port {
+ 	struct list_head free;
+ 	struct mxs_dma_desc *tx;
+ 	struct tasklet_struct rx_task;
++	struct serial_rs485 rs485;
+ };
+ 
+ static void mxs_auart_stop_tx(struct uart_port *u);
+@@ -111,6 +115,11 @@ static inline void mxs_auart_tx_chars(st
+ 		if (i)
+ 			mxs_auart_submit_tx(s, i);
+ 		else {
++			if (s->rs485.flags & SER_RS485_ENABLED) {
++				if (s->rs485.delay_rts_after_send)
++					udelay(s->rs485.delay_rts_after_send);
++				__raw_writel(BM_UARTAPP_CTRL2_RTS, s->port.membase + HW_UARTAPP_CTRL2_CLR);
++			}
+ 			if (uart_tx_stopped(&s->port))
+ 				mxs_auart_stop_tx(&s->port);
+ 		}
+@@ -141,6 +150,19 @@ static inline void mxs_auart_tx_chars(st
+ 		__raw_writel(BM_UARTAPP_INTR_TXIEN,
+ 			     s->port.membase + HW_UARTAPP_INTR_SET);
+ 
++	if (s->rs485.flags & SER_RS485_ENABLED) {
++		while(!(__raw_readl(s->port.membase + HW_UARTAPP_STAT) & BM_UARTAPP_STAT_TXFE)) {
++			/* Just wait for TX FIFO empty state */
++		}
++		if (s->rs485.delay_rts_last_char_tx)
++			/* If FIFO is empty, we still need to wait the transmit of last char */
++			udelay(s->rs485.delay_rts_last_char_tx);
++		if (s->rs485.delay_rts_after_send)
++			/* User configured extra rts delay after the transmitted packet */
++			udelay(s->rs485.delay_rts_after_send);
++		__raw_writel(BM_UARTAPP_CTRL2_RTS, s->port.membase + HW_UARTAPP_CTRL2_CLR);
++	}
++
+ 	if (uart_tx_stopped(&s->port))
+ 		mxs_auart_stop_tx(&s->port);
+ }
+@@ -486,13 +508,16 @@ static void mxs_auart_set_mctrl(struct u
+ {
+ 	struct mxs_auart_port *s = to_auart_port(u);
+ 
+-	u32 ctrl = __raw_readl(u->membase + HW_UARTAPP_CTRL2);
++	if ((s->rs485.flags & SER_RS485_ENABLED) == 0) {
++		u32 ctrl = __raw_readl(u->membase + HW_UARTAPP_CTRL2);
++
++		ctrl &= ~BM_UARTAPP_CTRL2_RTS;
++		if (mctrl & TIOCM_RTS)
++			ctrl |= BM_UARTAPP_CTRL2_RTS;
++		s->ctrl = mctrl;
+ 
+-	ctrl &= ~BM_UARTAPP_CTRL2_RTS;
+-	if (mctrl & TIOCM_RTS)
+-		ctrl |= BM_UARTAPP_CTRL2_RTS;
+-	s->ctrl = mctrl;
+-	__raw_writel(ctrl, u->membase + HW_UARTAPP_CTRL2);
++		__raw_writel(ctrl, u->membase + HW_UARTAPP_CTRL2);
++	}
+ }
+ 
+ static u32 mxs_auart_get_mctrl(struct uart_port *u)
+@@ -516,6 +541,7 @@ static void mxs_auart_settermios(struct
+ 				 struct ktermios *termios,
+ 				 struct ktermios *old)
+ {
++	struct mxs_auart_port *s = to_auart_port(u);
+ 	u32 bm, ctrl, ctrl2, div;
+ 	unsigned int cflag, baud;
+ 
+@@ -561,16 +587,25 @@ static void mxs_auart_settermios(struct
+ 		ctrl |= BM_UARTAPP_LINECTRL_STP2;
+ 
+ 	/* figure out the hardware flow control settings */
+-	if (cflag & CRTSCTS)
++	if ((cflag & CRTSCTS) && ((s->rs485.flags & SER_RS485_ENABLED) == 0))
+ 		ctrl2 |= BM_UARTAPP_CTRL2_CTSEN | BM_UARTAPP_CTRL2_RTSEN;
+ 	else
+ 		ctrl2 &= ~BM_UARTAPP_CTRL2_CTSEN;
+ 
++	/* initialize RS485 RTS (TXEN) line */
++	if (s->rs485.flags & SER_RS485_ENABLED) {
++		ctrl2 &= ~BM_UARTAPP_CTRL2_RTSEN;
++		ctrl2 &= ~BM_UARTAPP_CTRL2_RTS;
++	}
++
+ 	/* set baud rate */
+ 	baud = uart_get_baud_rate(u, termios, old, 0, u->uartclk);
+ 	div = u->uartclk * 32 / baud;
+ 	ctrl |= BF_UARTAPP_LINECTRL_BAUD_DIVFRAC(div & 0x3F);
+ 	ctrl |= BF_UARTAPP_LINECTRL_BAUD_DIVINT(div >> 6);
++	/* set RS485 last char Tx delay in usec - worst case 12 bits */
++	div = 12000000 / baud;
++	s->rs485.delay_rts_last_char_tx = div;
+ 
+ 	if ((cflag & CREAD) != 0)
+ 		ctrl2 |= BM_UARTAPP_CTRL2_RXE;
+@@ -773,6 +808,12 @@ static void mxs_auart_start_tx(struct ua
+ {
+ 	struct mxs_auart_port *s = to_auart_port(u);
+ 
++	if (s->rs485.flags & SER_RS485_ENABLED) {
++		__raw_writel(BM_UARTAPP_CTRL2_RTS, u->membase + HW_UARTAPP_CTRL2_SET);
++		if (s->rs485.delay_rts_before_send)
++			udelay(s->rs485.delay_rts_before_send);
++	}
++
+ 	/* enable transmitter */
+ 	__raw_writel(BM_UARTAPP_CTRL2_TXE, u->membase + HW_UARTAPP_CTRL2_SET);
+ 
+@@ -804,6 +845,31 @@ static void mxs_auart_enable_ms(struct u
+ 	/* just empty */
+ }
+ 
++static int mxs_auart_ioctl(struct uart_port *u, unsigned int cmd, unsigned long arg)
++{
++	struct mxs_auart_port *s = to_auart_port(u);
++	struct serial_rs485 rs485conf;
++
++	switch (cmd) {
++		case TIOCSRS485:
++			if (copy_from_user(&rs485conf, (struct serial_rs485 *) arg, sizeof(rs485conf)))
++				return -EFAULT;
++
++			s->rs485 = *&rs485conf;
++			break;
++
++		case TIOCGRS485:
++			if (copy_to_user((struct serial_rs485 *) arg, &(s->rs485), sizeof(rs485conf)))
++				return -EFAULT;
++			break;
++
++		default:
++			return -ENOIOCTLCMD;
++	}
++
++	return 0;
++}
++
+ static struct uart_ops mxs_auart_ops = {
+ 	.tx_empty       = mxs_auart_tx_empty,
+ 	.start_tx       = mxs_auart_start_tx,
+@@ -821,6 +887,7 @@ static struct uart_ops mxs_auart_ops = {
+ 	.request_port   = mxs_auart_request_port,
+ 	.config_port    = mxs_auart_config_port,
+ 	.verify_port    = mxs_auart_verify_port,
++	.ioctl		= mxs_auart_ioctl,
+ };
+ #ifdef CONFIG_SERIAL_MXS_AUART_CONSOLE
+ static struct mxs_auart_port auart_port[CONFIG_MXS_AUART_PORTS] = {};

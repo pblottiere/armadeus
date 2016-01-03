@@ -1,0 +1,4 @@
+* Compile parse_edid as standalone (PC):
+	$ make clean; make parse_edid CC=gcc CFLAGS=-DSTANDALONE
+* Cross-compile (ARM):
+	$ make

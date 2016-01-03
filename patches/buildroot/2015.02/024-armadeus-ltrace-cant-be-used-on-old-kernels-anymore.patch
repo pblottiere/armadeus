@@ -1,0 +1,25 @@
+Old 2.6.29/.35/.38 kernels miss PTRACE_GETVFPREGS syscall to have recent
+ltrace compiling properly.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/ltrace/Config.in
+===================================================================
+--- buildroot.orig/package/ltrace/Config.in	2015-03-01 22:26:12.000000000 +0100
++++ buildroot/package/ltrace/Config.in	2015-03-13 10:51:06.195623410 +0100
+@@ -10,6 +10,7 @@
+ 	depends on BR2_LARGEFILE # elfutils
+ 	depends on BR2_USE_WCHAR # elfutils
+ 	depends on !BR2_STATIC_LIBS # elfutils
++	depends on BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_0 # PTRACE_GETVFPREGS syscall
+ 	help
+ 	  Debugging program which runs a specified command until it exits.
+ 	  While the command is executing, ltrace intercepts and records
+@@ -18,5 +19,5 @@
+ 
+ 	  http://ltrace.org
+ 
+-comment "ltrace needs toolchain w/ largefile, wchar, dynamic library"
+-	depends on !BR2_LARGEFILE || !BR2_USE_WCHAR || BR2_STATIC_LIBS
++comment "ltrace needs toolchain w/ largefile, wchar, dynamic library, kernel >= 3.0"
++	depends on !BR2_LARGEFILE || !BR2_USE_WCHAR || BR2_STATIC_LIBS || !BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_0

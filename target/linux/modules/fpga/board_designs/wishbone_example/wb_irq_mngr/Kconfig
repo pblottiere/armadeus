@@ -1,0 +1,14 @@
+
+#
+# Armadeus custom drivers configuration
+#
+#
+
+#
+config ARMADEUS_FPGA_BOARD_DESIGNS_WISHBONE_EXAMPLE_IRQ_MNGR_DRIVER
+	tristate "board irq"
+	default n
+	depends on ARMADEUS_FPGA_BOARD_DESIGNS_WISHBONE_EXAMPLE
+	select ARMADEUS_FPGA_VIRTUAL_COMPONENTS_IRQ_MNGR
+	---help---
+

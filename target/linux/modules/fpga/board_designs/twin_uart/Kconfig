@@ -1,0 +1,12 @@
+
+config ARMADEUS_FPGA_BOARD_DESIGNS_TWIN_UARTS
+	boolean "board drivers for twin uarts design"
+	default n
+	depends on ARMADEUS_FPGA_BOARD_DESIGNS && MACH_APF51
+	select ARMADEUS_FPGA_VIRTUAL_COMPONENTS
+	---help---
+	  Board support for fpga designs twin uarts used
+	  for gsm/gps on apf51Dev board.
+
+source "drivers/armadeus/fpga/board_designs/twin_uart/uarts/Kconfig"
+source "drivers/armadeus/fpga/board_designs/twin_uart/irq_mngr/Kconfig"

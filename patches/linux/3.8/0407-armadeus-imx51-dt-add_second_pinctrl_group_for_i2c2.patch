@@ -1,0 +1,23 @@
+Add a second group of pinctrl for i2c2.
+
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+---
+
+Index: linux-3.8/arch/arm/boot/dts/imx51.dtsi
+===================================================================
+--- linux-3.8.orig/arch/arm/boot/dts/imx51.dtsi
++++ linux-3.8/arch/arm/boot/dts/imx51.dtsi
+@@ -351,6 +351,13 @@
+ 							454 0x400001ed	/* MX51_PAD_KEY_COL5__I2C2_SDA */
+ 						>;
+ 					};
++
++					pinctrl_i2c2_2: i2c2grp-2 {
++						fsl,pins = <
++							64 0x400001ed	/* MX51_PAD_EIM_D27__I2C2_SCL */
++							48 0x400001ed	/* MX51_PAD_EIM_D24__I2C2_SDA */
++						>;
++					};
+ 				};
+ 
+ 				ipu_disp1 {

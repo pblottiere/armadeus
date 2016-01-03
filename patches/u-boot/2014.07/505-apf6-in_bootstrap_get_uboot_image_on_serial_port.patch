@@ -1,0 +1,16 @@
+Index: uboot-2014.07/arch/arm/imx-common/spl.c
+===================================================================
+--- uboot-2014.07.orig/arch/arm/imx-common/spl.c
++++ uboot-2014.07/arch/arm/imx-common/spl.c
+@@ -19,6 +19,11 @@ u32 spl_boot_device(void)
+ {
+	struct src *psrc = (struct src *)SRC_BASE_ADDR;
+	unsigned reg = readl(&psrc->sbmr1);
++	unsigned reg2 = readl(&psrc->sbmr2);
++
++	/* In bootstrap get U-Boot on the serial port */
++	if (((reg2 & 0x3000000) >> 24) == 0x1)
++		return BOOT_DEVICE_UART;
+
+	/* BOOT_CFG1[7:4] - see IMX6DQRM Table 8-8 */
+	switch ((reg & 0x000000FF) >> 4) {

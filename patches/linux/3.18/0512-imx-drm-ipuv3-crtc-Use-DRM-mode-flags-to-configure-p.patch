@@ -1,0 +1,32 @@
+From a921b974de6b9ae585787a7b46354e32a630145f Mon Sep 17 00:00:00 2001
+From: Steve Longerbeam <steve_longerbeam@mentor.com>
+Date: Fri, 17 Oct 2014 18:23:18 -0700
+Subject: [PATCH 2/2] imx-drm: ipuv3-crtc: Use DRM mode flags to configure
+ pixel clock polarity
+
+Previously, pixel clock polarity was hardcoded and wasn't configurable.
+This patch adds support to configure the pixel clock polarity from the
+DRM mode flags.
+
+Signed-off-by: Mohsin Kazmi <mohsin_kazmi@mentor.com>
+Signed-off-by: Steve Longerbeam <steve_longerbeam@mentor.com>
+---
+ drivers/staging/imx-drm/ipuv3-crtc.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+Index: linux-3.18-rc5/drivers/staging/imx-drm/ipuv3-crtc.c
+===================================================================
+--- linux-3.18-rc5.orig/drivers/staging/imx-drm/ipuv3-crtc.c
++++ linux-3.18-rc5/drivers/staging/imx-drm/ipuv3-crtc.c
+@@ -164,9 +164,10 @@ static int ipu_crtc_mode_set(struct drm_
+		sig_cfg.Hsync_pol = 1;
+	if (mode->flags & DRM_MODE_FLAG_PVSYNC)
+		sig_cfg.Vsync_pol = 1;
++	if (mode->flags & DRM_MODE_FLAG_PCLK)
++		sig_cfg.clk_pol = 1;
+
+	sig_cfg.enable_pol = 1;
+-	sig_cfg.clk_pol = 0;
+	sig_cfg.width = mode->hdisplay;
+	sig_cfg.height = mode->vdisplay;
+	sig_cfg.pixel_fmt = out_pixel_fmt;

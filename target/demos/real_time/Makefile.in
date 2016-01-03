@@ -1,0 +1,83 @@
+###### CONFIGURATION ######
+DEST_DIR=/tftpboot/local/bin
+include $(ARMADEUS_BASE_DIR)/Makefile.in
+
+CC:=$(ARMADEUS_TOOLCHAIN_PATH)/$(ARMADEUS_TOOLCHAIN_PREFIX)gcc
+LD:=$(ARMADEUS_TOOLCHAIN_PATH)/$(ARMADEUS_TOOLCHAIN_PREFIX)ld
+CXX:=$(ARMADEUS_TOOLCHAIN_PATH)/$(ARMADEUS_TOOLCHAIN_PREFIX)g++
+AS:=$(ARMADEUS_TOOLCHAIN_PATH)/$(ARMADEUS_TOOLCHAIN_PREFIX)as
+NM:=$(ARMADEUS_TOOLCHAIN_PATH)/$(ARMADEUS_TOOLCHAIN_PREFIX)nm
+AR:=$(ARMADEUS_TOOLCHAIN_PATH)/$(ARMADEUS_TOOLCHAIN_PREFIX)ar
+SIZE:=$(ARMADEUS_TOOLCHAIN_PATH)/$(ARMADEUS_TOOLCHAIN_PREFIX)size
+OBJCOPY:=$(ARMADEUS_TOOLCHAIN_PATH)/$(ARMADEUS_TOOLCHAIN_PREFIX)objcopy
+
+EXEC=$(APPLICATIONS)
+
+ifneq ($(APPLICATIONS),)
+SRC= $(wildcard *.c)
+OBJ= $(SRC:.c=.o)
+EXEC= $(APPLICATIONS)
+CFLAGS=-g -W -Wall -D_GNU_SOURCE -D_REENTRANT
+LDFLAGS=-lpthread
+ifeq ($(XENOMAI),y)
+XENO=$(ARMADEUS_ROOTFS_DIR)/usr/xenomai
+CFLAGS+=-I$(XENO)/include -I$(XENO)/include/native -I$(XENO)/include/rtdm -D__XENO__
+LDFLAGS+=-lnative -L$(XENO)/lib -lxenomai
+LDFLAGS+=-Xlinker -rpath -Xlinker $(XENO)/lib
+LDFLAGS+=-Xlinker $(XENO)/lib/libnative.a
+LDFLAGS+=-Xlinker $(XENO)/lib/libxenomai.a
+LDFLAGS+=-Xlinker $(XENO)/lib/librtdm.a -lrtdm
+
+endif
+
+$(EXEC) : $(OBJ)
+	$(CC) -o $@ $^ $(LDFLAGS)
+
+$(OBJ): $(SRC)
+	$(CC) $(CFLAGS) -o $@ -c $<
+
+ifeq ($(XENOMAI),y)
+install: $(EXEC)
+	mkdir -p $(DEST_DIR)/$(EXEC)
+	cp $(EXEC) $(DEST_DIR)/$(EXEC)
+	echo "$(EXEC):native:!./$(EXEC);popall:control_c" > /$(DEST_DIR)/$(EXEC)/.runinfo
+else
+install: $(EXEC)
+	cp $(EXEC) $(DEST_DIR)/$(EXEC)
+endif
+endif
+
+ifneq ($(MODULES),)
+EXEC=$(MODULES).ko
+
+KSRC=$(ARMADEUS_LINUX_DIR)
+KDIR=$(KSRC)
+OBJ     := ${patsubst %, %.o, $(MODULES)}
+CLEANMOD := ${patsubst %, .%*, $(MODULES)}
+PWD      := $(shell if [ "$$PWD" != "" ]; then echo $$PWD; else pwd; fi)
+obj-m        := $(OBJ)
+
+CLEAN_MOD= modules.order *.ko *.mod.c *.mod.o *.symvers $(CLEANMOD)
+CLEAN_MOD+= .tmp_versions Module.markers
+export DEV_TOOLS =/home/toolchains/armadeus/armadeus_xeno/buildroot/output/build/staging_dir/usr/bin
+export PATH:=$(PATH):$(DEV_TOOLS)
+
+$(EXEC): $(MODULES).c
+	$(MAKE) -C $(KSRC) SUBDIRS=$(PWD) modules ARCH=arm CROSS_COMPILE=arm-unknown-linux-uclibcgnueabi-
+
+install: $(EXEC)
+	cp $(EXEC) $(DEST_DIR)/$(EXEC)
+endif
+
+all: $(EXEC)
+
+clean:
+	rm -rf $(OBJ) $(CLEAN_MOD)
+	rm -f $(EXEC)
+	rm -f *.c~ *.h~ Makefile~
+
+mrproper: clean
+	rm -rf $(DEST_DIR)/$(EXEC)
+
+.PHONY: all install clean mrproper
+

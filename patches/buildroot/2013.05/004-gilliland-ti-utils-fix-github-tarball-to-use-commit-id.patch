@@ -1,0 +1,25 @@
+From 7869f83bda815279f8245913d33062e525d4efe1 Mon Sep 17 00:00:00 2001
+From: Spenser Gilliland <spenser@gillilanding.com>
+Date: Thu, 06 Jun 2013 06:47:28 +0000
+Subject: ti-utils: fix github tarball to use commit id
+
+Signed-off-by: Spenser Gilliland <spenser@gillilanding.com>
+Signed-off-by: Peter Korsgaard <jacmet@sunsite.dk>
+---
+(limited to 'package/ti-utils/ti-utils.mk')
+
+diff --git a/package/ti-utils/ti-utils.mk b/package/ti-utils/ti-utils.mk
+index d739f3c..a76fde1 100644
+--- a/package/ti-utils/ti-utils.mk
++++ b/package/ti-utils/ti-utils.mk
+@@ -5,7 +5,7 @@
+ ################################################################################
+ 
+ TI_UTILS_VERSION = 06dbdb2
+-TI_UTILS_SITE = http://github.com/gxk/ti-utils/tarball/master
++TI_UTILS_SITE = http://github.com/gxk/ti-utils/tarball/$(TI_UTILS_VERSION)
+ TI_UTILS_DEPENDENCIES = libnl
+ 
+ define TI_UTILS_BUILD_CMDS
+--
+cgit v0.9.1

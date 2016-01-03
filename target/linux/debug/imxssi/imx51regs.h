@@ -1,0 +1,1 @@
+../imxregs/imx5regs.h

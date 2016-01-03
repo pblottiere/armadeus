@@ -1,0 +1,18 @@
+Allows to have 3 spi slave devices instead of one
+
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+---
+
+Index: linux-2.6.35.3/drivers/spi/spi_mxs.c
+===================================================================
+--- linux-2.6.35.3.orig/drivers/spi/spi_mxs.c
++++ linux-2.6.35.3/drivers/spi/spi_mxs.c
+@@ -598,7 +598,7 @@ static int __init mxs_spi_probe(struct p
+ 	}
+ 
+ 	master->bus_num = dev->id + 1;
+-	master->num_chipselect = 1;
++	master->num_chipselect = 3;
+ 
+ 	/* SPI controller initializations */
+ 	err = mxs_spi_init_hw(ss);

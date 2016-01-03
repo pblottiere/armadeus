@@ -1,0 +1,28 @@
+Otherwise CLKOUT config (3 LSB of CANCTRL) can not be changed elsewhere.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: linux-3.0.10/drivers/net/can/mcp251x.c
+===================================================================
+--- linux-3.0.10.orig/drivers/net/can/mcp251x.c	2011-11-21 23:37:44.000000000 +0100
++++ linux-3.0.10/drivers/net/can/mcp251x.c	2011-11-30 18:52:52.000000000 +0100
+@@ -547,13 +547,16 @@
+ 
+ 	if (priv->can.ctrlmode & CAN_CTRLMODE_LOOPBACK) {
+ 		/* Put device into loopback mode */
+-		mcp251x_write_reg(spi, CANCTRL, CANCTRL_REQOP_LOOPBACK);
++		mcp251x_write_bits(spi, CANCTRL, CANCTRL_REQOP_MASK,
++					CANCTRL_REQOP_LOOPBACK);
+ 	} else if (priv->can.ctrlmode & CAN_CTRLMODE_LISTENONLY) {
+ 		/* Put device into listen-only mode */
+-		mcp251x_write_reg(spi, CANCTRL, CANCTRL_REQOP_LISTEN_ONLY);
++		mcp251x_write_bits(spi, CANCTRL, CANCTRL_REQOP_MASK,
++					CANCTRL_REQOP_LISTEN_ONLY);
+ 	} else {
+ 		/* Put device into normal mode */
+-		mcp251x_write_reg(spi, CANCTRL, CANCTRL_REQOP_NORMAL);
++		mcp251x_write_bits(spi, CANCTRL, CANCTRL_REQOP_MASK,
++					CANCTRL_REQOP_NORMAL);
+ 
+ 		/* Wait for the device to enter normal mode */
+ 		timeout = jiffies + HZ;

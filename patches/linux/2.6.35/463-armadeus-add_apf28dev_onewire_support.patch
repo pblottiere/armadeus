@@ -1,0 +1,56 @@
+Add OneWire GPIO Bus Master Device to APF28_DEV Board.
+(Fixed version, works with driver compiled as module)
+OneWire data pin is PINID_LCD_D18 (GPIO 1_18)
+
+Signed-off-by: Janos Angeli <angelo@angelo.hu>
+---
+Index: linux-2.6.35.3/arch/arm/mach-mx28/apf28dev.c
+===================================================================
+--- linux-2.6.35.3.orig/arch/arm/mach-mx28/apf28dev.c
++++ linux-2.6.35.3/arch/arm/mach-mx28/apf28dev.c
+@@ -33,6 +33,7 @@
+ #include <linux/mmc/host.h>
+ #include <linux/platform_device.h>
+ #include <linux/i2c.h>
++#include <linux/w1-gpio.h>
+ 
+ #include <asm/setup.h>
+ #include <asm/mach-types.h>
+@@ -924,6 +925,21 @@ static struct platform_device apf28dev_l
+ #endif /* defined(CONFIG_ARMADEUS_SENSOR_MXS_LRADC) ||
+ 	defined(CONFIG_ARMADEUS_SENSOR_MXS_LRADC_MODULE) */
+ 
++#if defined(CONFIG_W1_MASTER_GPIO) || defined(CONFIG_W1_MASTER_GPIO_MODULE)
++static struct w1_gpio_platform_data apf28dev_w1_gpio_data = {
++	.pin		= MXS_PIN_TO_GPIO(PINID_LCD_D18),
++	.is_open_drain	= 0,
++};
++
++static struct platform_device apf28dev_w1_gpio_dev = {
++	.name		= "w1-gpio",
++	.id		= -1,
++	.dev		= {
++		.platform_data	= &apf28dev_w1_gpio_data,
++	},
++};
++#endif /* defined(CONFIG_W1_MASTER_GPIO) || defined(CONFIG_W1_MASTER_GPIO_MODULE) */
++
+ static struct platform_device *apf28dev_platform_devices[] __initdata = {
+ #if defined(CONFIG_KEYBOARD_GPIO) || defined(CONFIG_KEYBOARD_GPIO_MODULE)
+ 	&apf28dev_gpio_keys_device,
+@@ -934,12 +950,13 @@ static struct platform_device *apf28dev_
+ #if defined(CONFIG_ARMADEUS_MXS_PWM_DRIVER) || \
+ 	defined(CONFIG_ARMADEUS_MXS_PWM_DRIVER_MODULE)
+ 	&apf28dev_pwm_dev,
+-
+ #endif
+ #if defined(CONFIG_ARMADEUS_SENSOR_MXS_LRADC) || \
+ 	defined(CONFIG_ARMADEUS_SENSOR_MXS_LRADC_MODULE)
+ 	&apf28dev_lradc_dev,
+-
++#endif
++#if defined(CONFIG_W1_MASTER_GPIO) || defined(CONFIG_W1_MASTER_GPIO_MODULE)
++	&apf28dev_w1_gpio_dev,
+ #endif
+ };
+ 

@@ -1,0 +1,49 @@
+On Armadeus platforms, we use a custom rootfs AND we need to be able to choose
+generic serial tty device.
+
+Specific to Armadeus ??
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/system/Config.in
+===================================================================
+--- buildroot.orig/system/Config.in
++++ buildroot/system/Config.in
+@@ -190,8 +190,6 @@ config BR2_ROOTFS_SKELETON_CUSTOM_PATH
+	  Path to custom target skeleton.
+ endif
+
+-if BR2_ROOTFS_SKELETON_DEFAULT
+-
+ config BR2_TARGET_GENERIC_ROOT_PASSWD
+	string "Root password"
+	default ""
+@@ -324,9 +322,6 @@ config BR2_TARGET_GENERIC_REMOUNT_ROOTFS
+	  read-only.
+	  If unsure, say Y.
+
+-endif # BR2_ROOTFS_SKELETON_DEFAULT
+-
+-
+ config BR2_SYSTEM_DHCP
+	string "Network interface to configure through DHCP"
+	default ""
+Index: buildroot/system/system.mk
+===================================================================
+--- buildroot.orig/system/system.mk
++++ buildroot/system/system.mk
+@@ -67,8 +67,6 @@ endef
+
+ TARGET_FINALIZE_HOOKS += SET_NETWORK
+
+-ifeq ($(BR2_ROOTFS_SKELETON_DEFAULT),y)
+-
+ define SYSTEM_ROOT_PASSWD
+	[ -n "$(TARGET_GENERIC_ROOT_PASSWD)" ] && \
+		TARGET_GENERIC_ROOT_PASSWD_HASH=$$($(MKPASSWD) -m "$(TARGET_GENERIC_PASSWD_METHOD)" "$(TARGET_GENERIC_ROOT_PASSWD)"); \
+@@ -117,5 +115,3 @@ define SYSTEM_REMOUNT_RW
+ endef
+ endif
+ TARGET_FINALIZE_HOOKS += SYSTEM_REMOUNT_RW
+-
+-endif # BR2_ROOTFS_SKELETON_DEFAULT

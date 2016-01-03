@@ -1,0 +1,133 @@
+USB (i.MX28) fixes to Freescale's 2.6.35 BSP USB OTG option
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+
+Index: linux-2.6.35.3/arch/arm/mach-mx28/usb_dr.c
+===================================================================
+--- linux-2.6.35.3/arch/arm/mach-mx28/usb_dr.c
++++ linux-2.6.35.3/arch/arm/mach-mx28/usb_dr.c
+@@ -60,17 +60,17 @@ void fsl_phy_usb_utmi_uninit(struct fsl_
+ void fsl_phy_set_power(struct fsl_xcvr_ops *this,
+ 			struct fsl_usb2_platform_data *pdata, int on)
+ {
+-	/* USB_POWER_ENABLE_PIN have request at pin init*/
+-	if (pdata->phy_regs != USBPHY1_PHYS_ADDR) {
++	/* pdata->vbus_gpio have request at pin init*/
++	if (pdata->vbus_gpio) {
+ 		pr_debug("%s: on is %d\n", __func__, on);
+-		gpio_direction_output(USB_POWER_ENABLE, on);
+-		gpio_set_value(USB_POWER_ENABLE, on);
++		gpio_direction_output(pdata->vbus_gpio, on);
++		gpio_set_value(pdata->vbus_gpio, on);
+ 	}
+ }
+ 
+ static void usb_host_phy_resume(struct fsl_usb2_platform_data *plat)
+ {
+-	fsl_platform_set_usb_phy_dis(plat, 0);
++	/* fsl_platform_set_usb_phy_dis(plat, 0); -- Removed to fix USB connect hang after resume */
+ }
+ 
+ static int internal_phy_clk_already_on;
+@@ -408,6 +408,7 @@ static struct fsl_usb2_platform_data __m
+ 	.platform_resume = usb_host_phy_resume,
+ 	.transceiver       = "utmi",
+ 	.phy_regs          = USBPHY0_PHYS_ADDR,
++	.vbus_gpio         = USB_POWER_ENABLE,
+ };
+ 
+ /*
+@@ -503,6 +504,11 @@ static struct fsl_usb2_wakeup_platform_d
+ 	.usb_wakeup_exhandle = usbotg_wakeup_event_clear,
+ };
+ 
++struct fsl_usb2_platform_data * __init usb_dr_get_plateform_data(void)
++{
++	return &dr_utmi_config;
++}
++
+ static int __init usb_dr_init(void)
+ {
+ 	struct platform_device *pdev;
+Index: linux-2.6.35.3/arch/arm/mach-mx28/usb.h
+===================================================================
+--- linux-2.6.35.3/arch/arm/mach-mx28/usb.h
++++ linux-2.6.35.3/arch/arm/mach-mx28/usb.h
+@@ -31,6 +31,8 @@ extern void fsl_usb_host_uninit(struct f
+ extern int gpio_usbh2_active(void);
+ extern void gpio_usbh2_inactive(void);
+ 
++extern struct fsl_usb2_platform_data * __init usb_dr_get_plateform_data(void);
++
+ /*
+  * Determine which platform_data struct to use for the DR controller,
+  * based on which transceiver is configured.
+Index: linux-2.6.35.3/arch/arm/mach-mx28/usb_h1.c
+===================================================================
+--- linux-2.6.35.3/arch/arm/mach-mx28/usb_h1.c
++++ linux-2.6.35.3/arch/arm/mach-mx28/usb_h1.c
+@@ -37,7 +37,7 @@ static struct platform_device *h1_pdev;
+ 
+ static void usb_host_phy_resume(struct fsl_usb2_platform_data *plat)
+ {
+-	fsl_platform_set_usb_phy_dis(plat, 0);
++	/*fsl_platform_set_usb_phy_dis(plat, 0); -- Removed to fix USB connect hang after resume */
+ }
+ 
+ static int internal_phy_clk_already_on;
+Index: linux-2.6.35.3/include/linux/fsl_devices.h
+===================================================================
+--- linux-2.6.35.3/include/linux/fsl_devices.h
++++ linux-2.6.35.3/include/linux/fsl_devices.h
+@@ -109,6 +109,7 @@ struct fsl_usb2_platform_data {
+ 	struct fsl_usb2_wakeup_platform_data *wakeup_pdata;
+ 
+ 	u32				id_gpio;
++	u32				vbus_gpio;
+ 	/* register save area for suspend/resume */
+ 	u32				pm_command;
+ 	u32				pm_status;
+--- linux-2.6.35.3/arch/arm/mach-mx28/power.c
++++ linux-2.6.35.3/arch/arm/mach-mx28/power.c
+@@ -32,6 +32,7 @@
+ #include <mach/regs-power.h>
+ 
+ #define USB_POWER_ENABLE MXS_PIN_TO_GPIO(PINID_AUART2_TX)
++unsigned int vbus5v_gpio = USB_POWER_ENABLE;
+ #define MX28EVK_VBUS5v 5
+ 
+ static int get_voltage(struct mxs_regulator *sreg)
+@@ -315,19 +316,19 @@ static struct regulator_init_data vddio_
+ 
+ static int vbus5v_enable(struct mxs_regulator *sreg)
+ {
+-	gpio_set_value(USB_POWER_ENABLE, 1);
++	gpio_set_value(vbus5v_gpio, 1);
+ 	return 0;
+ }
+ 
+ static int vbus5v_disable(struct mxs_regulator *sreg)
+ {
+-	gpio_set_value(USB_POWER_ENABLE, 0);
++	gpio_set_value(vbus5v_gpio, 0);
+ 	return 0;
+ }
+ 
+ static int vbus5v_is_enabled(struct mxs_regulator *sreg)
+ {
+-	return gpio_get_value(USB_POWER_ENABLE);
++	return gpio_get_value(vbus5v_gpio);
+ }
+ 
+ 
+@@ -576,7 +577,7 @@ static int __init regulators_init(void)
+ 	mxs_platform_add_regulator("charger", 1);
+ 	mxs_platform_add_regulator("power-test", 1);
+ 	mxs_platform_add_regulator("cpufreq", 1);
+-	gpio_direction_output(USB_POWER_ENABLE, 0);
++	gpio_direction_output(vbus5v_gpio, 0);
+ 	return 0;
+ }
+ postcore_initcall(regulators_init);
+

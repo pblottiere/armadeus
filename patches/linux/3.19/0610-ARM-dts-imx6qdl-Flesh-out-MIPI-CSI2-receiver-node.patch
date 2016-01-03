@@ -1,0 +1,33 @@
+From 58062c356b1963652949542a9b6ab295d747cf2d Mon Sep 17 00:00:00 2001
+From: Steve Longerbeam <steve_longerbeam@mentor.com>
+Date: Fri, 22 Aug 2014 10:58:47 -0700
+Subject: [PATCH 610/625] ARM: dts: imx6qdl: Flesh out MIPI CSI2 receiver node
+
+Add mode device info to the MIPI CSI2 receiver node: compatible string,
+interrupt sources, clocks.
+
+Signed-off-by: Steve Longerbeam <steve_longerbeam@mentor.com>
+---
+ arch/arm/boot/dts/imx6qdl.dtsi | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/arch/arm/boot/dts/imx6qdl.dtsi b/arch/arm/boot/dts/imx6qdl.dtsi
+index c9b8613..56ea63a 100644
+--- a/arch/arm/boot/dts/imx6qdl.dtsi
++++ b/arch/arm/boot/dts/imx6qdl.dtsi
+@@ -1001,7 +1001,13 @@
+			};
+
+			mipi_csi: mipi@021dc000 {
++				compatible = "fsl,imx6-mipi-csi2";
+				reg = <0x021dc000 0x4000>;
++				interrupts = <0 100 0x04>, <0 101 0x04>;
++				clocks = <&clks IMX6QDL_CLK_HSI_TX>,
++					 <&clks IMX6QDL_CLK_VIDEO_27M>;
++				clock-names = "dphy_clk", "cfg_clk";
++				status = "disabled";
+			};
+
+			mipi_dsi: mipi@021e0000 {
+--
+1.8.5.5

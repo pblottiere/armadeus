@@ -1,0 +1,116 @@
+
+Add tsc210x device tree support for apf27dev
+
+Signed-off-by: Yvan Roch <yvan.roch@gmail.com>
+---
+ drivers/spi/tsc2102.c | 66 +++++++++++++++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 64 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/spi/tsc2102.c b/drivers/spi/tsc2102.c
+index 47e67a3..d19cba2 100644
+--- a/drivers/spi/tsc2102.c
++++ b/drivers/spi/tsc2102.c
+@@ -41,6 +41,10 @@
+ #include <asm/irq.h>
+ #include <asm/io.h>
+ 
++#ifdef CONFIG_OF
++#include <linux/of_device.h>
++#endif
++
+ #ifdef CONFIG_APM
+ #include <asm/apm.h>
+ #endif
+@@ -83,6 +87,16 @@
+ #define SM_TEMP1   1
+ #define SM_SUSPENDED 2
+ 
++#ifdef CONFIG_OF
++static struct of_device_id tsc210x_spi_of_match[] = {
++	{
++		.compatible = "tsc210x",
++	},
++	{ },
++};
++MODULE_DEVICE_TABLE(of, tsc210x_spi_of_match);
++#endif
++
+ struct tsc210x_spi_req {
+ 	struct spi_device *dev;
+ 	uint16_t command;
+@@ -380,7 +394,6 @@ static irqreturn_t tsc2102_handler(int irq, void *dev_id)
+ 
+ 		schedule_work(&dev->work);
+ 	}
+-
+ 	return IRQ_HANDLED;
+ }
+ 
+@@ -1075,7 +1088,54 @@ static int tsc210x_probe(struct spi_device *spi)
+ 	struct spi_transfer *spi_buffer;
+ 	int err = -EINVAL;
+ 	u16 rev_id = 0;
++#ifdef CONFIG_OF
++	const struct of_device_id *match;
++	int	status;
+ 
++	pdata = kzalloc(sizeof(struct tsc210x_config), GFP_KERNEL);
++	if (!pdata) {
++		dev_err(&spi->dev, "No memory for tsc210x_config\n");
++		return -ENOMEM;
++	}
++	spi->dev.platform_data = pdata;
++	match = of_match_device(of_match_ptr(tsc210x_spi_of_match), &spi->dev);
++	if (match) {
++		status = of_property_read_u32(spi->dev.of_node,
++					    "tsc210x-mclk", &pdata->mclk);
++		if (status) {
++			dev_err(&spi->dev, "DT has no tsc210x-mclk\n");
++			return -ENODEV;
++		}
++		dev_dbg(&spi->dev,"mclk %d\n",pdata->mclk);
++
++		status = of_property_read_u32(spi->dev.of_node,
++					    "tsc210x-use_internal", &pdata->use_internal);
++		if (status) {
++			dev_err(&spi->dev, "DT has no tsc210x-use_internal\n");
++			return -ENODEV;
++		}
++		dev_dbg(&spi->dev,"use_internal %d\n",pdata->use_internal);
++
++		status = of_property_read_u32(spi->dev.of_node,
++							    "tsc210x-monitor", &pdata->monitor);
++		if (status) {
++			dev_err(&spi->dev, "DT has no tsc210x-monitor\n");
++			return -ENODEV;
++		}
++		dev_dbg(&spi->dev,"monitor %d\n",pdata->monitor);
++
++		status = of_property_read_u32(spi->dev.of_node,
++							    "tsc210x-irq", &spi->irq);
++		if (status) {
++			dev_err(&spi->dev, "DT has no tsc210x-irq\n");
++			return -ENODEV;
++		}
++		dev_dbg(&spi->dev,"irq %d\n",spi->irq);
++	} else {
++		dev_err(&spi->dev,"DT has no tsc210x node\n");
++		return -ENODEV;
++	}
++#endif
+ 	if (!pdata) {
+ 		printk(KERN_ERR "TSC210x: Platform data not supplied\n");
+ 		return -ENOENT;
+@@ -1263,7 +1323,9 @@ static int tsc210x_remove(struct spi_device *spi)
+ 	apm_get_power_status = 0;
+ #endif
+ 	free_irq(spi->irq, &tsc);
+-
++#ifdef CONFIG_OF
++	kfree(dev->pdata);
++#endif
+ 	mutex_unlock(&dev->lock_sync);
+ 
+ 	return 0;
+--
+1.8.4.2

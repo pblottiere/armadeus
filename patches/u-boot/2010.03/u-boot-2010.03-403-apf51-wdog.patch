@@ -1,0 +1,54 @@
+Index: u-boot-2010.03/include/asm-arm/arch-mx51/imx-regs.h
+===================================================================
+--- u-boot-2010.03.orig/include/asm-arm/arch-mx51/imx-regs.h	2011-01-05 18:10:42.000000000 +0100
++++ u-boot-2010.03/include/asm-arm/arch-mx51/imx-regs.h	2011-01-05 18:11:20.000000000 +0100
+@@ -264,6 +264,15 @@
+ 	u32	cswcr2;
+ };
+ 
++/* WDOG registers */
++struct wdog {
++	u16	wcr;
++	u16	wsr;
++	u16	wrsr;
++	u16	wicr;
++	u16	wmcr;
++};
++
+ #endif /* __ASSEMBLER__*/
+ 
+ #endif				/*  __ASM_ARCH_MXC_MX51_H__ */
+Index: u-boot-2010.03/drivers/serial/serial_mxc.c
+===================================================================
+--- u-boot-2010.03.orig/drivers/serial/serial_mxc.c	2011-01-05 18:05:11.000000000 +0100
++++ u-boot-2010.03/drivers/serial/serial_mxc.c	2011-01-05 18:11:20.000000000 +0100
+@@ -24,6 +24,7 @@
+ #include <asm/arch/imx-regs.h>
+ #include <asm/arch/clock.h>
+ #endif
++#include <watchdog.h>
+ 
+ #define __REG(x)     (*((volatile u32 *)(x)))
+ 
+@@ -189,7 +190,9 @@
+ 
+ int serial_getc (void)
+ {
+-	while (__REG(UART_PHYS + UTS) & UTS_RXEMPTY);
++	while (__REG(UART_PHYS + UTS) & UTS_RXEMPTY) {
++		WATCHDOG_RESET();		/* Trigger watchdog, if needed */
++	}
+ 	return (__REG(UART_PHYS + URXD) & URXD_RX_DATA); /* mask out status from upper word */
+ }
+ 
+@@ -198,7 +201,9 @@
+ 	__REG(UART_PHYS + UTXD) = c;
+ 
+ 	/* wait for transmitter to be ready */
+-	while(!(__REG(UART_PHYS + UTS) & UTS_TXEMPTY));
++	while(!(__REG(UART_PHYS + UTS) & UTS_TXEMPTY)) {
++		WATCHDOG_RESET();		/* Trigger watchdog, if needed */
++	}
+ 
+ 	/* If \n, also do \r */
+ 	if (c == '\n')

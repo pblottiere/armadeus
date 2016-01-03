@@ -1,0 +1,108 @@
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in
++++ buildroot/package/Config.in
+@@ -397,6 +397,7 @@ endif
+	source "package/usbutils/Config.in"
+	source "package/w_scan/Config.in"
+	source "package/wipe/Config.in"
++	source "package/xc3sprog/Config.in"
+	source "package/xorriso/Config.in"
+ endmenu
+
+Index: buildroot/package/xc3sprog/Config.in
+===================================================================
+--- /dev/null
++++ buildroot/package/xc3sprog/Config.in
+@@ -0,0 +1,13 @@
++config BR2_PACKAGE_XC3SPROG
++	bool "xc3sprog"
++	depends on BR2_INSTALL_LIBSTDCPP
++	depends on BR2_TOOLCHAIN_HAS_THREADS # libftdi
++	select BR2_PACKAGE_LIBFTDI
++	help
++	  xc3sprog is a suite of utilities for programming Xilinx FPGAs, CPLDs,
++	  and EEPROMs with the Xilinx Parallel Cable and other JTAG adapters.
++
++	  http://xc3sprog.sourceforge.net/
++
++comment "xc3sprog needs a toolchain w/ C++, threads"
++	depends on !(BR2_INSTALL_LIBSTDCPP && BR2_TOOLCHAIN_HAS_THREADS)
+Index: buildroot/package/xc3sprog/xc3sprog.mk
+===================================================================
+--- /dev/null
++++ buildroot/package/xc3sprog/xc3sprog.mk
+@@ -0,0 +1,19 @@
++################################################################################
++#
++# xc3sprog
++#
++################################################################################
++
++XC3SPROG_VERSION = 760
++XC3SPROG_SITE = https://svn.code.sf.net/p/xc3sprog/code/trunk
++XC3SPROG_SITE_METHOD = svn
++X3CSPROG_LICENSE = GPLv2+
++X3CSPROG_LICENSE_FILES = COPYING
++X3CSPROG_DEPENDENCIES = libftdi
++
++XC3SPROG_CONF_OPTS += \
++	-DVERSION_STRING=0.0-svn$(XC3SPROG_VERSION) \
++	-DCMAKE_EXE_LINKER_FLAGS=-lpthread
++
++$(eval $(cmake-package))
++$(eval $(host-cmake-package))
+Index: buildroot/package/xc3sprog/xc3sprog-fixes-version-detection.patch
+===================================================================
+--- /dev/null
++++ buildroot/package/xc3sprog/xc3sprog-fixes-version-detection.patch
+@@ -0,0 +1,30 @@
++Do not launch 'svn info' if sources directory is not a svn checkout.
++This prevents cmake to fail at configuration stage when building package in BR.
++
++Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
++
++--- xc3sprog-760.org/CMakeLists.txt	2013-12-09 16:42:37.000000000 +0100
+++++ xc3sprog-760/CMakeLists.txt	2014-04-28 11:45:20.899827274 +0200
++@@ -35,13 +35,15 @@
++ if(EXISTS ${PROJECT_SOURCE_DIR}/.git)
++   set(VERSION_STRING "${xc3sprog_VERSION_MAJOR}.${xc3sprog_VERSION_MINOR}-git")
++ else(EXISTS ${PROJECT_SOURCE_DIR}/.git)
++-  FIND_PACKAGE(Subversion)
++-  IF(Subversion_FOUND)
++-    Subversion_WC_INFO(${PROJECT_SOURCE_DIR} Project)
++-    set(VERSION_STRING "${xc3sprog_VERSION_MAJOR}.${xc3sprog_VERSION_MINOR}-svn${Project_WC_REVISION}")
++-  ELSE(Subversion_FOUND)
++-    set(VERSION_STRING "unknown")
++-  ENDIF(Subversion_FOUND)
+++  IF(EXISTS ${PROJECT_SOURCE_DIR}/.svn)
+++    FIND_PACKAGE(Subversion)
+++    IF(Subversion_FOUND)
+++      Subversion_WC_INFO(${PROJECT_SOURCE_DIR} Project)
+++      set(VERSION_STRING "${xc3sprog_VERSION_MAJOR}.${xc3sprog_VERSION_MINOR}-svn${Project_WC_REVISION}")
+++    ELSE(Subversion_FOUND)
+++      set(VERSION_STRING "unknown")
+++    ENDIF(Subversion_FOUND)
+++  ENDIF(EXISTS ${PROJECT_SOURCE_DIR}/.svn)
++ endif(EXISTS ${PROJECT_SOURCE_DIR}/.git)
++
++ # Create suffix to eventually install inlib64
+Index: buildroot/package/xc3sprog/xc3sprog-fixes-xc2c32a_qf32-jtag-id.patch
+===================================================================
+--- /dev/null
++++ buildroot/package/xc3sprog/xc3sprog-fixes-xc2c32a_qf32-jtag-id.patch
+@@ -0,0 +1,14 @@
++Specific for Armadeus.
++
++Signed-off-by: Fabien Marteau <fabien.marteau@armadeus.com>
++
++--- xc3sprog-760.org/devlist.txt	2013-12-09 16:42:42.000000000 +0100
+++++ xc3sprog-760/devlist.txt	2014-04-28 17:36:03.780173296 +0200
++@@ -167,6 +167,7 @@
++ 06c1d093      8   0x1 XC2C32_PC44/64
++ 06c1b093      8   0x1 XC2C32A_QF32
++ 06d1d093      8   0x1 XC2C32A_PC44
+++06e19093      8   0x1 XC2C32A_QF32
++ 06e1b093      8   0x1 XC2C32A_CP56
++ 06e1c093      8   0x1 XC2C32A_VQ44
++ 06e1d093      8   0x1 XC2C32A_PC44/64

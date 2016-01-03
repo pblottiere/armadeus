@@ -1,0 +1,17 @@
+Internal USB PHY clocks in arch/arm/boot/dts/imx51.dtsi are for i.MX53 !
+
+Signed-off-by: Gwenhael Goavec-Merou <gwen@trabucayre.com>
+
+Index: linux-3.11.1/arch/arm/boot/dts/imx51.dtsi
+===================================================================
+--- linux-3.11.1.orig/arch/arm/boot/dts/imx51.dtsi	2013-10-23 11:06:16.201044459 +0200
++++ linux-3.11.1/arch/arm/boot/dts/imx51.dtsi	2013-10-28 12:19:52.758294405 +0100
+@@ -177,7 +177,7 @@
+ 
+ 			usbphy0: usbphy@0 {
+ 				compatible = "usb-nop-xceiv";
+-				clocks = <&clks 124>;
++				clocks = <&clks 75>;
+ 				clock-names = "main_clk";
+ 				status = "okay";
+ 			};

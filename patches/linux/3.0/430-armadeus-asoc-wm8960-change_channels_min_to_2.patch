@@ -1,0 +1,25 @@
+Otherwise sound is played two times too fast.
+Clean ?
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com<
+
+Index: linux-3.0.10/sound/soc/codecs/wm8960.c
+===================================================================
+--- linux-3.0.10.orig/sound/soc/codecs/wm8960.c	2011-11-30 17:53:29.000000000 +0100
++++ linux-3.0.10/sound/soc/codecs/wm8960.c	2011-11-30 17:53:36.000000000 +0100
+@@ -882,13 +882,13 @@
+ 	.name = "wm8960-hifi",
+ 	.playback = {
+ 		.stream_name = "Playback",
+-		.channels_min = 1,
++		.channels_min = 2,
+ 		.channels_max = 2,
+ 		.rates = WM8960_RATES,
+ 		.formats = WM8960_FORMATS,},
+ 	.capture = {
+ 		.stream_name = "Capture",
+-		.channels_min = 1,
++		.channels_min = 2,
+ 		.channels_max = 2,
+ 		.rates = WM8960_RATES,
+ 		.formats = WM8960_FORMATS,},

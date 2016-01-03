@@ -1,0 +1,49 @@
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/firmware-imx/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/firmware-imx/Config.in	2012-03-29 12:09:47.000000000 +0200
+@@ -0,0 +1,4 @@
++config BR2_PACKAGE_FIRMWARE_IMX
++	bool "firmware-imx"
++	help
++	  Freescale's specific firmwares for i.MX processors family.
+Index: buildroot/package/firmware-imx/firmware-imx.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/firmware-imx/firmware-imx.mk	2012-03-29 15:21:35.000000000 +0200
+@@ -0,0 +1,20 @@
++#############################################################
++#
++# firmware-imx (i.MX firmwares from Freescale BSP)
++#
++#############################################################
++FIRMWARE_IMX_VERSION = 10.11.01
++FIRMWARE_IMX_SITE = ftp://ftp2.armadeus.com/armadeusw/download/
++
++FIRMWARE_IMX_VPU_TARGET_DIR = $(TARGET_DIR)/lib/firmware/vpu/
++
++define FIRMWARE_IMX_INSTALL_TARGET_CMDS
++	mkdir -p $(FIRMWARE_IMX_VPU_TARGET_DIR)
++	install -D -m 755 $(@D)/firmware/vpu/vpu_fw_$(BR2_CPU_NAME).bin $(FIRMWARE_IMX_VPU_TARGET_DIR)
++endef
++
++define FIRMWARE_IMX_UNINSTALL_TARGET_CMDS
++	rm -rf $(FIRMWARE_IMX_VPU_TARGET_DIR)
++endef
++
++$(eval $(call GENTARGETS))
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2012-03-29 15:09:34.000000000 +0200
++++ buildroot/package/Config.in	2012-03-29 15:10:35.000000000 +0200
+@@ -191,6 +191,7 @@
+ source "package/e2fsprogs/Config.in"
+ source "package/eeprog/Config.in"
+ source "package/fconfig/Config.in"
++source "package/firmware-imx/Config.in"
+ source "package/fis/Config.in"
+ source "package/gadgetfs-test/Config.in"
+ source "package/gdisk/Config.in"

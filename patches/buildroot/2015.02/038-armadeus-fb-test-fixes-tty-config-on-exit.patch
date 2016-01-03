@@ -1,0 +1,114 @@
+Makes fb-test restore virtual framebuffer console correctly after test.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/fb-test-app/001-fixes-tty-vc-config-on-fb-test-exit.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/fb-test-app/001-fixes-tty-vc-config-on-fb-test-exit.patch	2015-04-29 09:39:38.613881722 +0200
+@@ -0,0 +1,105 @@
++Makes fb-test restore virtual framebuffer console correctly after test.
++
++Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
++
++diff -urN -X linux-2.6.29.6/Documentation/dontdiff fb-test-app-rosetta-1.1.0/common.c fb-test-app-rosetta-1.1.0.mod/common.c
++--- fb-test-app-rosetta-1.1.0/common.c	2014-09-25 18:52:11.000000000 +0200
+++++ fb-test-app-rosetta-1.1.0.mod/common.c	2015-04-29 09:29:03.617876194 +0200
++@@ -35,12 +35,28 @@
++ 
++ #include "common.h"
++ 
+++void fb_close(struct fb_info *fb_info)
+++{
+++	munmap(fb_info->ptr, fb_info->var.yres_virtual *
+++				fb_info->fix.line_length);
+++	close(fb_info->fd);
+++	if(ioctl(fb_info->tty, KDSETMODE, fb_info->oldmode) == -1)
+++		perror("Failed to set back previous mode on tty1");
+++
+++	close(fb_info->tty);
+++}
+++
++ void fb_open(int fb_num, struct fb_info *fb_info)
++ {
++ 	char str[64];
++ 	int fd,tty;
++ 
++ 	tty = open("/dev/tty1", O_RDWR);
+++	ASSERT(tty >= 0);
+++	fb_info->tty = tty;
+++
+++	if(ioctl(tty, KDGETMODE, &fb_info->oldmode) == -1)
+++		printf("Failed to get current mode on tty1\n");
++ 
++ 	if(ioctl(tty, KDSETMODE, KD_GRAPHICS) == -1)
++ 		printf("Failed to set graphics mode on tty1\n");
++diff -urN -X linux-2.6.29.6/Documentation/dontdiff fb-test-app-rosetta-1.1.0/common.h fb-test-app-rosetta-1.1.0.mod/common.h
++--- fb-test-app-rosetta-1.1.0/common.h	2014-09-25 18:52:11.000000000 +0200
+++++ fb-test-app-rosetta-1.1.0.mod/common.h	2015-04-28 17:15:39.073367734 +0200
++@@ -41,6 +41,8 @@
++ struct fb_info
++ {
++ 	int fd;
+++	int tty;
+++	int oldmode;
++ 
++ 	void *ptr;
++ 
++@@ -52,6 +54,7 @@
++ extern char fontdata_8x8[];
++ 
++ void fb_open(int fb_num, struct fb_info *fb_info);
+++void fb_close(struct fb_info *fb_info);
++ void fb_update_window(int fd, short x, short y, short w, short h);
++ void fb_sync_gfx(int fd);
++ int fb_put_string(struct fb_info *fb_info, int x, int y, char *s, int maxlen,
++diff -urN -X linux-2.6.29.6/Documentation/dontdiff fb-test-app-rosetta-1.1.0/fb-test.c fb-test-app-rosetta-1.1.0.mod/fb-test.c
++--- fb-test-app-rosetta-1.1.0/fb-test.c	2014-09-25 18:52:11.000000000 +0200
+++++ fb-test-app-rosetta-1.1.0.mod/fb-test.c	2015-04-29 09:23:24.977873245 +0200
++@@ -25,6 +25,7 @@
++ #include <unistd.h>
++ #include <getopt.h>
++ #include <time.h>
+++#include <signal.h>
++ 
++ #include <sys/ioctl.h>
++ #include <sys/stat.h>
++@@ -196,6 +197,19 @@
++ 	printf("      -p pattern = fill framebuffer with pattern number\n");
++ }
++ 
+++static int cont = 1;
+++
+++void signal_handler(int sig)
+++{
+++	printf("%s: caught signal %d\n", __func__, sig);
+++	cont = 0;
+++}
+++
+++void cleanup(void)
+++{
+++	fb_close(&fb_info);
+++}
+++
++ int main(int argc, char **argv)
++ {
++ 	int opt;
++@@ -233,9 +247,17 @@
++ 		}
++ 	}
++ 
+++	signal(SIGTERM, signal_handler);
+++	signal(SIGINT, signal_handler);
+++	signal(SIGQUIT, signal_handler);
+++	signal(SIGSEGV, signal_handler);
+++
++ 	fb_open(req_fb, &fb_info);
+++	atexit(cleanup);
++ 
++ 	do_fill_screen(&fb_info, req_pattern);
+++	while (cont)
+++		sleep(1);
++ 
++ 	return 0;
++ }

@@ -1,0 +1,8 @@
+
+config ARMADEUS_FPGA_BOARD_DESIGNS_TWIN_UARTS_IRQ_MNGR
+	tristate "board irq manager"
+	default n
+	depends on ARMADEUS_FPGA_BOARD_DESIGNS_TWIN_UARTS
+	select ARMADEUS_FPGA_VIRTUAL_COMPONENTS_IRQ_MNGR
+	---help---
+	  irq manager board 

@@ -1,0 +1,45 @@
+From b5ad5d840669c1586c67809f2e5aa538ed4c029b Mon Sep 17 00:00:00 2001
+From: Steve Longerbeam <steve_longerbeam@mentor.com>
+Date: Sun, 31 Aug 2014 16:21:37 -0700
+Subject: [PATCH 601/625] gpu: ipu-cpmem: Add ipu_cpmem_set_uv_offset()
+
+Adds ipu_cpmem_set_uv_offset(), to set planar U/V offsets.
+
+Signed-off-by: Steve Longerbeam <steve_longerbeam@mentor.com>
+---
+ drivers/gpu/ipu-v3/ipu-cpmem.c | 7 +++++++
+ include/video/imx-ipu-v3.h     | 1 +
+ 2 files changed, 8 insertions(+)
+
+diff --git a/drivers/gpu/ipu-v3/ipu-cpmem.c b/drivers/gpu/ipu-v3/ipu-cpmem.c
+index 3bf05bc..2c93e9c 100644
+--- a/drivers/gpu/ipu-v3/ipu-cpmem.c
++++ b/drivers/gpu/ipu-v3/ipu-cpmem.c
+@@ -253,6 +253,13 @@ void ipu_cpmem_set_buffer(struct ipuv3_channel *ch, int bufnum, dma_addr_t buf)
+ }
+ EXPORT_SYMBOL_GPL(ipu_cpmem_set_buffer);
+
++void ipu_cpmem_set_uv_offset(struct ipuv3_channel *ch, u32 u_off, u32 v_off)
++{
++	ipu_ch_param_write_field(ch, IPU_FIELD_UBO, u_off / 8);
++	ipu_ch_param_write_field(ch, IPU_FIELD_VBO, v_off / 8);
++}
++EXPORT_SYMBOL_GPL(ipu_cpmem_set_uv_offset);
++
+ void ipu_cpmem_interlaced_scan(struct ipuv3_channel *ch, int stride)
+ {
+	ipu_ch_param_write_field(ch, IPU_FIELD_SO, 1);
+diff --git a/include/video/imx-ipu-v3.h b/include/video/imx-ipu-v3.h
+index b3f09726..c7517d3 100644
+--- a/include/video/imx-ipu-v3.h
++++ b/include/video/imx-ipu-v3.h
+@@ -205,6 +205,7 @@ void ipu_cpmem_set_resolution(struct ipuv3_channel *ch, int xres, int yres);
+ void ipu_cpmem_set_stride(struct ipuv3_channel *ch, int stride);
+ void ipu_cpmem_set_high_priority(struct ipuv3_channel *ch);
+ void ipu_cpmem_set_buffer(struct ipuv3_channel *ch, int bufnum, dma_addr_t buf);
++void ipu_cpmem_set_uv_offset(struct ipuv3_channel *ch, u32 u_off, u32 v_off);
+ void ipu_cpmem_interlaced_scan(struct ipuv3_channel *ch, int stride);
+ void ipu_cpmem_set_axi_id(struct ipuv3_channel *ch, u32 id);
+ void ipu_cpmem_set_burstsize(struct ipuv3_channel *ch, int burstsize);
+--
+1.8.5.5

@@ -1,0 +1,4 @@
+
+obj-$(CONFIG_ARMADEUS_FPGA_BOARD_DESIGNS_TWIN_UARTS_UARTS) += twin_uarts_16750.o
+twin_uarts_16750-objs := 16750.o
+

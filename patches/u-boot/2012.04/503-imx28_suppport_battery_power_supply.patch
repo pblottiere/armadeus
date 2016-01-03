@@ -1,0 +1,1359 @@
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+--- uboot-custom/arch/arm/cpu/arm926ejs/mx28/spl_mem_init.c
++++ uboot-custom/arch/arm/cpu/arm926ejs/mx28/spl_mem_init.c
+@@ -159,10 +159,13 @@ void mx28_mem_setup_vdda(void)
+ 	struct mx28_power_regs *power_regs =
+ 		(struct mx28_power_regs *)MXS_POWER_BASE;
+ 
+-	writel((0xc << POWER_VDDACTRL_TRG_OFFSET) |
+-		(0x7 << POWER_VDDACTRL_BO_OFFSET_OFFSET) |
+-		POWER_VDDACTRL_LINREG_OFFSET_1STEPS_BELOW,
+-		&power_regs->hw_power_vddactrl);
++	clrsetbits_le32(&power_regs->hw_power_vddactrl,
++		POWER_VDDACTRL_LINREG_OFFSET_MASK |
++		POWER_VDDACTRL_BO_OFFSET_MASK |
++		POWER_VDDACTRL_TRG_MASK,
++		(0xc << POWER_VDDACTRL_TRG_OFFSET) |
++		(0x6 << POWER_VDDACTRL_BO_OFFSET_OFFSET) |
++		POWER_VDDACTRL_LINREG_OFFSET_1STEPS_BELOW);
+ }
+ 
+ void mx28_mem_setup_vddd(void)
+@@ -170,10 +173,13 @@ void mx28_mem_setup_vddd(void)
+ 	struct mx28_power_regs *power_regs =
+ 		(struct mx28_power_regs *)MXS_POWER_BASE;
+ 
+-	writel((0x1c << POWER_VDDDCTRL_TRG_OFFSET) |
++	clrsetbits_le32(&power_regs->hw_power_vdddctrl,
++		POWER_VDDDCTRL_LINREG_OFFSET_MASK |
++		POWER_VDDDCTRL_BO_OFFSET_MASK |
++		POWER_VDDDCTRL_TRG_MASK,
++		(0x1c << POWER_VDDDCTRL_TRG_OFFSET) |
+ 		(0x7 << POWER_VDDDCTRL_BO_OFFSET_OFFSET) |
+-		POWER_VDDDCTRL_LINREG_OFFSET_1STEPS_BELOW,
+-		&power_regs->hw_power_vdddctrl);
++		POWER_VDDDCTRL_LINREG_OFFSET_1STEPS_BELOW);
+ }
+ 
+ void mx28_mem_get_size(void)
+--- uboot-custom/arch/arm/cpu/arm926ejs/mx28/spl_power_init.c
++++ uboot-custom/arch/arm/cpu/arm926ejs/mx28/spl_power_init.c
+@@ -30,6 +30,12 @@
+ 
+ #include "mx28_init.h"
+ 
++/* if you accidentally define both, don't allow a successful compile. */
++#if defined(CONFIG_SYS_NO_DCDC_BATT_SOURCE) \
++	&& defined(CONFIG_SYS_NO_VDD5V_SOURCE)
++#error Invalid power source configuration.
++#endif
++
+ void mx28_power_clock2xtal(void)
+ {
+ 	struct mx28_clkctrl_regs *clkctrl_regs =
+@@ -64,25 +70,6 @@ void mx28_power_clear_auto_restart(void)
+ 	writel(RTC_CTRL_CLKGATE, &rtc_regs->hw_rtc_ctrl_clr);
+ 	while (readl(&rtc_regs->hw_rtc_ctrl) & RTC_CTRL_CLKGATE)
+ 		;
+-
+-	/*
+-	 * Due to the hardware design bug of mx28 EVK-A
+-	 * we need to set the AUTO_RESTART bit.
+-	 */
+-	if (readl(&rtc_regs->hw_rtc_persistent0) & RTC_PERSISTENT0_AUTO_RESTART)
+-		return;
+-
+-	while (readl(&rtc_regs->hw_rtc_stat) & RTC_STAT_NEW_REGS_MASK)
+-		;
+-
+-	setbits_le32(&rtc_regs->hw_rtc_persistent0,
+-			RTC_PERSISTENT0_AUTO_RESTART);
+-	writel(RTC_CTRL_FORCE_UPDATE, &rtc_regs->hw_rtc_ctrl_set);
+-	writel(RTC_CTRL_FORCE_UPDATE, &rtc_regs->hw_rtc_ctrl_clr);
+-	while (readl(&rtc_regs->hw_rtc_stat) & RTC_STAT_NEW_REGS_MASK)
+-		;
+-	while (readl(&rtc_regs->hw_rtc_stat) & RTC_STAT_STALE_REGS_MASK)
+-		;
+ }
+ 
+ void mx28_power_set_linreg(void)
+@@ -147,6 +134,15 @@ void mx28_src_power_init(void)
+ 	clrbits_le32(&power_regs->hw_power_5vctrl, POWER_5VCTRL_DCDC_XFER);
+ }
+ 
++void mx28_powerdown(void)
++{
++	struct mx28_power_regs *power_regs =
++		(struct mx28_power_regs *)MXS_POWER_BASE;
++	writel(POWER_RESET_UNLOCK_KEY, &power_regs->hw_power_reset);
++	writel(POWER_RESET_UNLOCK_KEY | POWER_RESET_PWD_OFF,
++		&power_regs->hw_power_reset);
++}
++
+ void mx28_power_init_4p2_params(void)
+ {
+ 	struct mx28_power_regs *power_regs =
+@@ -161,10 +157,17 @@ void mx28_power_init_4p2_params(void)
+ 		POWER_5VCTRL_HEADROOM_ADJ_MASK,
+ 		0x4 << POWER_5VCTRL_HEADROOM_ADJ_OFFSET);
+ 
++#if defined(CONFIG_SYS_NO_DCDC_BATT_SOURCE)
++/* don't use the DCDC_BATT source if configured not to */
++	clrsetbits_le32(&power_regs->hw_power_dcdc4p2,
++		POWER_DCDC4P2_DROPOUT_CTRL_MASK,
++		POWER_DCDC4P2_DROPOUT_CTRL_100MV);
++#else
+ 	clrsetbits_le32(&power_regs->hw_power_dcdc4p2,
+ 		POWER_DCDC4P2_DROPOUT_CTRL_MASK,
+ 		POWER_DCDC4P2_DROPOUT_CTRL_100MV |
+ 		POWER_DCDC4P2_DROPOUT_CTRL_SRC_SEL);
++#endif
+ 
+ 	clrsetbits_le32(&power_regs->hw_power_5vctrl,
+ 		POWER_5VCTRL_CHARGE_4P2_ILIMIT_MASK,
+@@ -175,20 +178,9 @@ void mx28_enable_4p2_dcdc_input(int xfer
+ {
+ 	struct mx28_power_regs *power_regs =
+ 		(struct mx28_power_regs *)MXS_POWER_BASE;
+-	uint32_t tmp, vbus_thresh, vbus_5vdetect, pwd_bo;
++	uint32_t tmp, vbus_thresh;
+ 	uint32_t prev_5v_brnout, prev_5v_droop;
+ 
+-	prev_5v_brnout = readl(&power_regs->hw_power_5vctrl) &
+-				POWER_5VCTRL_PWDN_5VBRNOUT;
+-	prev_5v_droop = readl(&power_regs->hw_power_ctrl) &
+-				POWER_CTRL_ENIRQ_VDD5V_DROOP;
+-
+-	clrbits_le32(&power_regs->hw_power_5vctrl, POWER_5VCTRL_PWDN_5VBRNOUT);
+-	writel(POWER_RESET_UNLOCK_KEY | POWER_RESET_PWD_OFF,
+-		&power_regs->hw_power_reset);
+-
+-	clrbits_le32(&power_regs->hw_power_ctrl, POWER_CTRL_ENIRQ_VDD5V_DROOP);
+-
+ 	if (xfer && (readl(&power_regs->hw_power_5vctrl) &
+ 			POWER_5VCTRL_ENABLE_DCDC)) {
+ 		return;
+@@ -200,19 +192,24 @@ void mx28_enable_4p2_dcdc_input(int xfer
+ 	 */
+ 	tmp = readl(&power_regs->hw_power_5vctrl);
+ 	vbus_thresh = tmp & POWER_5VCTRL_VBUSVALID_TRSH_MASK;
+-	vbus_5vdetect = tmp & POWER_5VCTRL_VBUSVALID_5VDETECT;
+-
+-	pwd_bo = readl(&power_regs->hw_power_minpwr) & POWER_MINPWR_PWD_BO;
+ 
+ 	/*
+ 	 * Disable mechanisms that get erroneously tripped by when setting
+ 	 * the DCDC4P2 EN_DCDC
+ 	 */
+ 	clrbits_le32(&power_regs->hw_power_5vctrl,
+-		POWER_5VCTRL_VBUSVALID_5VDETECT |
+ 		POWER_5VCTRL_VBUSVALID_TRSH_MASK);
+ 
+-	writel(POWER_MINPWR_PWD_BO, &power_regs->hw_power_minpwr_set);
++	prev_5v_brnout = readl(&power_regs->hw_power_5vctrl) &
++				POWER_5VCTRL_PWDN_5VBRNOUT;
++	prev_5v_droop = readl(&power_regs->hw_power_ctrl) &
++				POWER_CTRL_ENIRQ_VDD5V_DROOP;
++
++	clrbits_le32(&power_regs->hw_power_5vctrl, POWER_5VCTRL_PWDN_5VBRNOUT);
++	writel(POWER_RESET_UNLOCK_KEY | POWER_RESET_PWD_OFF,
++		&power_regs->hw_power_reset);
++
++	clrbits_le32(&power_regs->hw_power_ctrl, POWER_CTRL_ENIRQ_VDD5V_DROOP);
+ 
+ 	if (xfer) {
+ 		setbits_le32(&power_regs->hw_power_5vctrl,
+@@ -230,19 +227,24 @@ void mx28_enable_4p2_dcdc_input(int xfer
+ 
+ 	early_delay(25);
+ 
+-	clrsetbits_le32(&power_regs->hw_power_5vctrl,
+-			POWER_5VCTRL_VBUSVALID_TRSH_MASK, vbus_thresh);
+-
+-	if (vbus_5vdetect)
+-		writel(vbus_5vdetect, &power_regs->hw_power_5vctrl_set);
+-
+-	if (!pwd_bo)
+-		clrbits_le32(&power_regs->hw_power_minpwr, POWER_MINPWR_PWD_BO);
++	if (readl(&power_regs->hw_power_ctrl) & POWER_CTRL_VBUS_VALID_IRQ) {
++		writel(POWER_5VCTRL_PWD_CHARGE_4P2_MASK,
++			&power_regs->hw_power_5vctrl_set);
++		writel(POWER_5VCTRL_PWD_CHARGE_4P2_MASK,
++			&power_regs->hw_power_5vctrl_clr);
++	}
+ 
+ 	while (readl(&power_regs->hw_power_ctrl) & POWER_CTRL_VBUS_VALID_IRQ)
+ 		writel(POWER_CTRL_VBUS_VALID_IRQ,
+ 			&power_regs->hw_power_ctrl_clr);
+ 
++	while (readl(&power_regs->hw_power_ctrl) & POWER_CTRL_VDD5V_DROOP_IRQ)
++		writel(POWER_CTRL_VDD5V_DROOP_IRQ,
++			&power_regs->hw_power_ctrl_clr);
++
++	clrsetbits_le32(&power_regs->hw_power_5vctrl,
++			POWER_5VCTRL_VBUSVALID_TRSH_MASK, vbus_thresh);
++
+ 	if (prev_5v_brnout) {
+ 		writel(POWER_5VCTRL_PWDN_5VBRNOUT,
+ 			&power_regs->hw_power_5vctrl_set);
+@@ -255,10 +257,6 @@ void mx28_enable_4p2_dcdc_input(int xfer
+ 			&power_regs->hw_power_reset);
+ 	}
+ 
+-	while (readl(&power_regs->hw_power_ctrl) & POWER_CTRL_VDD5V_DROOP_IRQ)
+-		writel(POWER_CTRL_VDD5V_DROOP_IRQ,
+-			&power_regs->hw_power_ctrl_clr);
+-
+ 	if (prev_5v_droop)
+ 		clrbits_le32(&power_regs->hw_power_ctrl,
+ 				POWER_CTRL_ENIRQ_VDD5V_DROOP);
+@@ -299,55 +297,38 @@ void mx28_power_init_4p2_regulator(void)
+ 		 * not present. Exiting to not enable DCDC power during 5V
+ 		 * connected state.
+ 		 */
+-		clrbits_le32(&power_regs->hw_power_dcdc4p2,
+-			POWER_DCDC4P2_ENABLE_DCDC);
+-		writel(POWER_5VCTRL_PWD_CHARGE_4P2_MASK,
+-			&power_regs->hw_power_5vctrl_set);
+-		hang();
++		early_delay(100);
++		mx28_powerdown();
+ 	}
+ 
+ 	/*
+-	 * Here we set the 4p2 brownout level to something very close to 4.2V.
+-	 * We then check the brownout status. If the brownout status is false,
+-	 * the voltage is already close to the target voltage of 4.2V so we
+-	 * can go ahead and set the 4P2 current limit to our max target limit.
+-	 * If the brownout status is true, we need to ramp us the current limit
+-	 * so that we don't cause large inrush current issues. We step up the
+-	 * current limit until the brownout status is false or until we've
+-	 * reached our maximum defined 4p2 current limit.
++	 * Ramp up the current limit to avoid large inrush current.
+ 	 */
+-	clrsetbits_le32(&power_regs->hw_power_dcdc4p2,
+-			POWER_DCDC4P2_BO_MASK,
+-			22 << POWER_DCDC4P2_BO_OFFSET);	/* 4.15V */
+-
+-	if (!(readl(&power_regs->hw_power_sts) & POWER_STS_DCDC_4P2_BO)) {
+-		setbits_le32(&power_regs->hw_power_5vctrl,
+-			0x3f << POWER_5VCTRL_CHARGE_4P2_ILIMIT_OFFSET);
+-	} else {
+-		tmp = (readl(&power_regs->hw_power_5vctrl) &
+-			POWER_5VCTRL_CHARGE_4P2_ILIMIT_MASK) >>
+-			POWER_5VCTRL_CHARGE_4P2_ILIMIT_OFFSET;
+-		while (tmp < 0x3f) {
+-			if (!(readl(&power_regs->hw_power_sts) &
+-					POWER_STS_DCDC_4P2_BO)) {
+-				tmp = readl(&power_regs->hw_power_5vctrl);
+-				tmp |= POWER_5VCTRL_CHARGE_4P2_ILIMIT_MASK;
+-				early_delay(100);
+-				writel(tmp, &power_regs->hw_power_5vctrl);
+-				break;
+-			} else {
+-				tmp++;
+-				tmp2 = readl(&power_regs->hw_power_5vctrl);
+-				tmp2 &= ~POWER_5VCTRL_CHARGE_4P2_ILIMIT_MASK;
+-				tmp2 |= tmp <<
+-					POWER_5VCTRL_CHARGE_4P2_ILIMIT_OFFSET;
+-				writel(tmp2, &power_regs->hw_power_5vctrl);
+-				early_delay(100);
+-			}
+-		}
++	tmp = (readl(&power_regs->hw_power_5vctrl) &
++		POWER_5VCTRL_CHARGE_4P2_ILIMIT_MASK) >>
++		POWER_5VCTRL_CHARGE_4P2_ILIMIT_OFFSET;
++	while (tmp < 0x3f) {
++		tmp++;
++		tmp2 = readl(&power_regs->hw_power_5vctrl) &
++			~POWER_5VCTRL_CHARGE_4P2_ILIMIT_MASK;
++		tmp2 |= tmp << POWER_5VCTRL_CHARGE_4P2_ILIMIT_OFFSET;
++		writel(tmp2, &power_regs->hw_power_5vctrl);
++		early_delay(100);
+ 	}
+ 
++#ifdef CONFIG_SYS_VBUS_CURRENT_DRAW
++		/* VDD5V is sourced from VBUS,limit the current to 100mA */
++		tmp2 = readl(&power_regs->hw_power_5vctrl) &
++			~POWER_5VCTRL_CHARGE_4P2_ILIMIT_MASK;
++		tmp2 |= 0x08 << POWER_5VCTRL_CHARGE_4P2_ILIMIT_OFFSET;
++		writel(tmp2, &power_regs->hw_power_5vctrl);
++
++		early_delay(10000);
++#endif
++
+ 	clrbits_le32(&power_regs->hw_power_dcdc4p2, POWER_DCDC4P2_BO_MASK);
++	early_delay(100000);
++
+ 	writel(POWER_CTRL_DCDC4P2_BO_IRQ, &power_regs->hw_power_ctrl_clr);
+ }
+ 
+@@ -356,20 +337,14 @@ void mx28_power_init_dcdc_4p2_source(voi
+ 	struct mx28_power_regs *power_regs =
+ 		(struct mx28_power_regs *)MXS_POWER_BASE;
+ 
+-	if (!(readl(&power_regs->hw_power_dcdc4p2) &
+-		POWER_DCDC4P2_ENABLE_DCDC)) {
+-		hang();
+-	}
+-
+ 	mx28_enable_4p2_dcdc_input(1);
+ 
+ 	if (readl(&power_regs->hw_power_ctrl) & POWER_CTRL_VBUS_VALID_IRQ) {
+-		clrbits_le32(&power_regs->hw_power_dcdc4p2,
+-			POWER_DCDC4P2_ENABLE_DCDC);
+-		writel(POWER_5VCTRL_ENABLE_DCDC,
+-			&power_regs->hw_power_5vctrl_clr);
+-		writel(POWER_5VCTRL_PWD_CHARGE_4P2_MASK,
+-			&power_regs->hw_power_5vctrl_set);
++		/* Enabling of DCDC failed at setting of 5VCTRL ENABLE_DCDC.
++		 * We need power down device.
++		 */
++		early_delay(100);
++		mx28_powerdown();
+ 	}
+ }
+ 
+@@ -450,15 +425,6 @@ void mx28_boot_valid_5v(void)
+ 	mx28_power_enable_4p2();
+ }
+ 
+-void mx28_powerdown(void)
+-{
+-	struct mx28_power_regs *power_regs =
+-		(struct mx28_power_regs *)MXS_POWER_BASE;
+-	writel(POWER_RESET_UNLOCK_KEY, &power_regs->hw_power_reset);
+-	writel(POWER_RESET_UNLOCK_KEY | POWER_RESET_PWD_OFF,
+-		&power_regs->hw_power_reset);
+-}
+-
+ void mx28_handle_5v_conflict(void)
+ {
+ 	struct mx28_power_regs *power_regs =
+@@ -530,10 +496,10 @@ void mx28_init_batt_bo(void)
+ 	struct mx28_power_regs *power_regs =
+ 		(struct mx28_power_regs *)MXS_POWER_BASE;
+ 
+-	/* Brownout at 3V */
++	/* Brownout at 3.2V */
+ 	clrsetbits_le32(&power_regs->hw_power_battmonitor,
+ 		POWER_BATTMONITOR_BRWNOUT_LVL_MASK,
+-		15 << POWER_BATTMONITOR_BRWNOUT_LVL_OFFSET);
++		20 << POWER_BATTMONITOR_BRWNOUT_LVL_OFFSET);
+ 
+ 	writel(POWER_CTRL_BATT_BO_IRQ, &power_regs->hw_power_ctrl_clr);
+ 	writel(POWER_CTRL_ENIRQ_BATT_BO, &power_regs->hw_power_ctrl_clr);
+@@ -601,15 +567,416 @@ int mx28_is_batt_good(void)
+ 	return 0;
+ }
+ 
+-void mx28_power_configure_power_source(void)
++void mx28_lradc_init(int bEnableOnChipGroundRef, int eFreq)
+ {
++	static int lradcInitialized;
++	struct mx28_lradc_regs *lradc_regs =
++		(struct mx28_lradc_regs *)MXS_LRADC_BASE;
++
++	if (lradcInitialized)
++		return;
++
++	/* Clear the Soft Reset for normal operation */
++	clrbits_le32(&lradc_regs->hw_lradc_ctrl0, LRADC_CTRL0_SFTRST);
++
++	/* Clear the Clock Gate for normal operation */
++	clrbits_le32(&lradc_regs->hw_lradc_ctrl0, LRADC_CTRL0_CLKGATE);
++
++	/* Set on-chip ground ref */
++	if (bEnableOnChipGroundRef) {
++		/* Enable the onchip ground ref of LRADC conversions */
++		setbits_le32(&lradc_regs->hw_lradc_ctrl0,
++			LRADC_CTRL0_ONCHIP_GROUNDREF);
++	} else {
++		/* Disable the onchip ground ref of LRADC conversions */
++		clrbits_le32(&lradc_regs->hw_lradc_ctrl0,
++			LRADC_CTRL0_ONCHIP_GROUNDREF);
++	}
++
++	/* Set LRADC conversion clock frequency */
++	clrsetbits_le32(&lradc_regs->hw_lradc_ctrl3,
++			LRADC_CTRL3_CYCLE_TIME_MASK,
++			LRADC_CTRL3_CYCLE_TIME(eFreq));
++
++	/* Make sure the LRADC channel-6 selected for VDDIO */
++	clrsetbits_le32(&lradc_regs->hw_lradc_ctrl4,
++			LRADC_CTRL4_LRADC6SELECT_MASK,
++			LRADC_CTRL4_LRADC6SELECT(
++				LRADC_CTRL4_LRADC6SELECT__CHANNEL6)
++			);
++
++	/* Make sure the LRADC channel-7 selected for Battery */
++	clrsetbits_le32(&lradc_regs->hw_lradc_ctrl4,
++			LRADC_CTRL4_LRADC7SELECT_MASK,
++			LRADC_CTRL4_LRADC7SELECT(
++				LRADC_CTRL4_LRADC7SELECT__CHANNEL7)
++			);
++
++	lradcInitialized = 1;
++}
++
++void mx28_lradc_configure_channel(int eChannel,
++				int bEnableDivideByTwo,
++				int bEnableAccum,
++				uint8_t u8NumSamples)
++{
++	struct mx28_lradc_regs *lradc_regs =
++		(struct mx28_lradc_regs *)MXS_LRADC_BASE;
++
++	/* Set the analog divide-by two function */
++	if (bEnableDivideByTwo) {
++		/* Enable the divide-by-two of a LRADC channel */
++		setbits_le32(&lradc_regs->hw_lradc_ctrl2,
++			LRADC_CTRL2_DIVIDE_BY_TWO(1 << eChannel));
++	} else {
++		/* Disable the divide-by-two of a LRADC channel */
++		clrbits_le32(&lradc_regs->hw_lradc_ctrl2,
++			LRADC_CTRL2_DIVIDE_BY_TWO(1 << eChannel));
++	}
++
++	/* Clear the accumulator & NUM_SAMPLES */
++	clrbits_le32(&lradc_regs->hw_lradc_ch0 + (eChannel * 4),
++			0xFFFFFFFF);
++
++	/* Sets NUM_SAMPLES bitfield of HW_LRADC_CHn register. */
++	clrsetbits_le32(&lradc_regs->hw_lradc_ch0 + (eChannel * 4),
++			LRADC_CHn_NUM_SAMPLES_MASK,
++			LRADC_CHn_NUM_SAMPLES(u8NumSamples));
++
++	/* Set ACCUMULATE bit of HW_LRADC_CHn register */
++	if (bEnableAccum) {
++		/* Enable the accumulation of a LRADC channel */
++		setbits_le32(&lradc_regs->hw_lradc_ch0 + (eChannel * 4),
++			LRADC_CHn_ACCUMULATE);
++	} else {
++		/* Disable the accumulation of a LRADC channel */
++		clrbits_le32(&lradc_regs->hw_lradc_ch0 + (eChannel * 4),
++			LRADC_CHn_ACCUMULATE);
++	}
++}
++
++void mx28_lradc_set_delay_trigger(int eDelayTrigger,
++				uint32_t u32TriggerLradcs,
++				uint32_t u32DelayTriggers,
++				uint32_t u32LoopCount,
++				uint32_t u32DelayCount)
++{
++	struct mx28_lradc_regs *lradc_regs =
++		(struct mx28_lradc_regs *)MXS_LRADC_BASE;
++
++	/* Set the TRIGGER_LRADCS bitfield of HW_LRADC_DELAYn register */
++	setbits_le32(&lradc_regs->hw_lradc_delay0 + (eDelayTrigger * 4),
++			LRADC_DELAYn_TRIGGER_LRADCS(u32TriggerLradcs));
++
++	/* Set the TRIGGER_DELAYS bitfield of HW_LRADC_DELAYn register */
++	setbits_le32(&lradc_regs->hw_lradc_delay0 + (eDelayTrigger * 4),
++			LRADC_DELAYn_TRIGGER_DELAYS(u32DelayTriggers));
++
++	/* Write the LOOP_COUNT bitfield of HW_LRADC_DELAYn register */
++	clrsetbits_le32(&lradc_regs->hw_lradc_delay0 + (eDelayTrigger * 4),
++			LRADC_DELAYn_LOOP_COUNT_MASK,
++			LRADC_DELAYn_LOOP_COUNT(u32LoopCount));
++
++	/* Write the DEALY bitfield of HW_LRADC_DELAYn register */
++	clrsetbits_le32(&lradc_regs->hw_lradc_delay0 + (eDelayTrigger * 4),
++			LRADC_DELAYn_DELAY_MASK,
++			LRADC_DELAYn_DELAY(u32DelayCount));
++}
++
++int mx28_lradc_enable_battery_measurement(int eTrigger,
++					uint16_t u16SamplingInterval)
++{
++	struct mx28_lradc_regs *lradc_regs =
++		(struct mx28_lradc_regs *)MXS_LRADC_BASE;
++
++	/*
++	 * Check if the lradc battery voltage channel
++	 * is present in this product
++	 */
++	if ((readl(&lradc_regs->hw_lradc_status)
++		& LRADC_STATUS_CHANNEL7_PRESENT) == 0)
++		return 0;
++
++	/* Disable the channel interrupt */
++	clrbits_le32(&lradc_regs->hw_lradc_ctrl1, LRADC_CTRL1_LRADC7_IRQ_EN);
++	clrbits_le32(&lradc_regs->hw_lradc_ctrl1, LRADC_CTRL1_LRADC7_IRQ);
++
++	/* Configure the battery conversion register */
++	clrsetbits_le32(&lradc_regs->hw_lradc_conversion,
++			LRADC_CONVERSION_SCALE_FACTOR_MASK,
++			LRADC_CONVERSION_SCALE_FACTOR(2)
++			);
++
++
++	/*
++	 * Enable the automatic update mode of BATT_VALUE field
++	 * in HW_POWER_MONITOR
++	 */
++	setbits_le32(&lradc_regs->hw_lradc_conversion,
++		LRADC_CONVERSION_AUTOMATIC);
++
++	mx28_lradc_configure_channel(7, /* Lradc battery voltage channel */
++				0, /* DIVIDE_BY_TWO */
++				0, /* ACCUMULATE */
++				0); /* NUM_SAMPLES */
++
++	/* schedule a conversion before the setting up of the delay channel */
++	/* so the user can have a good value right after the function returns */
++	setbits_le32(&lradc_regs->hw_lradc_ctrl0, LRADC_CTRL0_SCHEDULE(1<<7));
++
++	/* Setup the trigger loop forever, */
++	mx28_lradc_set_delay_trigger(eTrigger, /* Trigger Index */
++				(1 << 7), /* Lradc channels */
++				(1 << eTrigger), /* Restart the triggers */
++				0, /* No loop count */
++				u16SamplingInterval); /* 0.5*N msec on 2khz */
++
++	/* Clear the accumulator & NUM_SAMPLES */
++	clrbits_le32(&lradc_regs->hw_lradc_ch7, 0xFFFFFFFF);
++
++	/* Kick off the LRADC battery measurement */
++	setbits_le32(&lradc_regs->hw_lradc_delay0 + (eTrigger * 4),
++			LRADC_DELAYn_KICK);
++
++
++	/* Wait for first measurement of battery.  Should occur in 13 LRADC
++	 * clock cycles from the time of channel kickoff.  Also add some wait
++	 * time for copy to the power supply BATT_VAL field to occur.
++	 */
++	early_delay(10);
++
++	return 1;
++}
++
++void mx28_power_setup_batt_detect(void)
++{
++#define BATTERY_MONITOR_LRADC_TRIGGER	3
++
++	/* Initialize LRADC for battery monitoring. */
++	mx28_lradc_init(0, LRADC_CTRL3_CYCLE_TIME__6MHZ);
++
++	mx28_lradc_enable_battery_measurement(
++		BATTERY_MONITOR_LRADC_TRIGGER,
++		100);
++}
++
++void mx28_power_setup_batt_boot(void)
++{
++	struct mx28_power_regs *power_regs =
++		(struct mx28_power_regs *)MXS_POWER_BASE;
++
++	/* disable automatic hardware powerdown as the system is configured */
++	/* for 5v removal */
++	writel(POWER_5VCTRL_PWDN_5VBRNOUT,
++		&power_regs->hw_power_5vctrl_clr);
++	/* now that protection is enabled, we can startup the DCDC converter */
++	/*HW_POWER_5VCTRL_SET(BM_POWER_5VCTRL_ENABLE_DCDC);*/
++	/* For maximum stability on the Vddd rail, we will leave the
++	* Vddd linreg forced on (even under battery power).  The linreg
++	* will only regulate if the target voltage get 25mV below the
++	* DCDC target
++	*/
++	/*Disable DCDC*/
++	writel(POWER_5VCTRL_ENABLE_DCDC,
++		&power_regs->hw_power_5vctrl_clr);
++
++	clrbits_le32(&power_regs->hw_power_dcdc4p2, POWER_DCDC4P2_ENABLE_DCDC);
++	clrbits_le32(&power_regs->hw_power_dcdc4p2, POWER_DCDC4P2_ENABLE_4P2);
++	writel(POWER_CHARGE_ENABLE_LOAD,
++		&power_regs->hw_power_charge_clr);
++
++	/* Set DCDC_XFER to init DCDC for 100us*/
++	writel(POWER_5VCTRL_DCDC_XFER,
++		&power_regs->hw_power_5vctrl_set);
++	early_delay(1000);
++	writel(POWER_5VCTRL_DCDC_XFER,
++		&power_regs->hw_power_5vctrl_clr);
++
++	writel(POWER_CTRL_ENIRQ_DCDC4P2_BO,
++		&power_regs->hw_power_ctrl_clr);
++
++	/*Enable double FETs to make DCDC more powerful*/
++	writel(POWER_MINPWR_HALFFETS,
++		&power_regs->hw_power_minpwr_clr);
++	writel(POWER_MINPWR_DOUBLE_FETS,
++		&power_regs->hw_power_minpwr_set);
++
++	/* This should have already been done, but just in case */
++	clrsetbits_le32(&power_regs->hw_power_vdddctrl,
++			POWER_VDDDCTRL_LINREG_OFFSET_MASK,
++			POWER_VDDDCTRL_LINREG_OFFSET_1STEPS_BELOW);
++
++	clrsetbits_le32(&power_regs->hw_power_vddactrl,
++			POWER_VDDACTRL_LINREG_OFFSET_MASK,
++			POWER_VDDACTRL_LINREG_OFFSET_1STEPS_BELOW);
++
++	clrsetbits_le32(&power_regs->hw_power_vddioctrl,
++			POWER_VDDIOCTRL_LINREG_OFFSET_MASK,
++			POWER_VDDIOCTRL_LINREG_OFFSET_1STEPS_BELOW);
++
++	/* Enabe DCDC output to Vddd rail */
++	clrbits_le32(&power_regs->hw_power_vdddctrl,
++			POWER_VDDDCTRL_DISABLE_FET);
++	clrbits_le32(&power_regs->hw_power_vddioctrl,
++			POWER_VDDIOCTRL_DISABLE_FET);
++	clrbits_le32(&power_regs->hw_power_vddactrl,
++			POWER_VDDACTRL_DISABLE_FET);
++
++	clrbits_le32(&power_regs->hw_power_vdddctrl,
++			POWER_VDDDCTRL_ENABLE_LINREG);
++	clrbits_le32(&power_regs->hw_power_vddactrl,
++			POWER_VDDACTRL_ENABLE_LINREG);
++
++	writel(POWER_5VCTRL_PWD_CHARGE_4P2_MASK,
++		&power_regs->hw_power_5vctrl_set);
++	/* Enable DCDC*/
++	writel(POWER_5VCTRL_ENABLE_DCDC,
++		&power_regs->hw_power_5vctrl_set);
++
++	clrsetbits_le32(&power_regs->hw_power_5vctrl_set,
++			POWER_5VCTRL_CHARGE_4P2_ILIMIT_MASK,
++			0x8 << POWER_5VCTRL_CHARGE_4P2_ILIMIT_OFFSET);
++	/* Set current limit of Linear regulator to 0mA.*/
++/*	HW_POWER_5VCTRL_SET(BM_POWER_5VCTRL_ILIMIT_EQ_ZERO); */
++}
++
++int mx28_power_configure_power_source(void)
++{
++	struct mx28_power_regs *power_regs =
++		(struct mx28_power_regs *)MXS_POWER_BASE;
++#if defined(CONFIG_SYS_NO_DCDC_BATT_SOURCE) \
++	|| defined(CONFIG_SYS_NO_VDD5V_SOURCE)
++	struct mx28_rtc_regs *rtc_regs =
++		(struct mx28_rtc_regs *)MXS_RTC_BASE;
++#endif
++
++	int battery_ready = 0;
++
+ 	mx28_src_power_init();
+ 
++#if defined(CONFIG_SYS_NO_DCDC_BATT_SOURCE)
++
++	/* Device configured for no source to DCDC_BATT input (5V only power
++	 * source). This boot option doesn't waste time looking for a good
++	 * battery.  Battery powered operation and automatic voltage
++	 * measurements are disabled.
++	 */
++
++	/* bit 11 of PERSISTENT1 */
++	writel(0x800, &rtc_regs->hw_rtc_persistent1_set);
++
++	battery_ready = 0;
++
++	/* Disable automatic battery voltage measurements which seem unnecessary
++	 * for this configuration.
++	 */
++	setbits_le32(&power_regs->hw_power_battmonitor,
++		POWER_BATTMONITOR_EN_BATADJ);
++	writel(LRADC_CONVERSION_AUTOMATIC,
++		&lradc_regs->hw_lradc_conversion_clr);
++	clrsetbits_le32(&power_regs->hw_power_battmonitor,
++		POWER_BATTMONITOR_BATT_VAL_MASK,
++		525 << POWER_BATTMONITOR_BATT_VAL_OFFSE);
++	/* Brownout at 3.2V */
++	clrsetbits_le32(&power_regs->hw_power_battmonitor,
++		POWER_BATTMONITOR_BRWNOUT_LVL_MASK,
++		20 << POWER_BATTMONITOR_BRWNOUT_LVL_OFFSET);
++
+ 	mx28_5v_boot();
++
++#if !defined(CONFIG_SYS_VBUS_CURRENT_DRAW)
++	mx28_power_clock2pll();
++#endif
++
++#elif defined(CONFIG_SYS_NO_VDD5V_SOURCE)
++	/* Device Configured for DCDC_BATT only power source.
++	 * We only care about the DCDC_BATT source in this configuration.
++	 */
++	setbits_le32(&power_regs->hw_power_battmonitor,
++		POWER_BATTMONITOR_PWDN_BATTBRNOUT_5VDETECT_EN);
++
++	writel(0x800, &rtc_regs->hw_rtc_persistent1_set);
++
++	/* since the DCDC_BATT input is our only source, we'll assume
++	 * it is good and attempt to boot.  If your device has uses
++	 * this configuration but has a external DCDC_BATT source
++	 * that takes time to ramp, you could add a voltage check
++	 * and wait here until voltage reaches near the final level to
++	 * avoid trigger a battery brownout when the voltage is too
++	 * low.
++	 */
++	battery_ready = 1;
++
++	/*Boot from DCDC_BATT source*/
++	mx28_power_setup_batt_boot();
+ 	mx28_power_clock2pll();
+ 
++	/* raise battery brownout level to programmed value. */
+ 	mx28_init_batt_bo();
++
++	/* Configured to not use a VDD5V source */
++	writel(POWER_5VCTRL_ILIMIT_EQ_ZERO, &power_regs->hw_power_5vctrl_set);
++
++#else
++
++	/* check if Battery Voltage is high enough for full
++	 * power operation.
++	 */
++	battery_ready = mx28_is_batt_ready();
++
++	if (!(readl(&power_regs->hw_power_sts) & POWER_STS_VDD5V_GT_VDDIO)) {
++		/* this option allows for fast booting without
++		 * the unecessary delay required for proper
++		 * battery detection when booting from 5v.
++		 */
++
++		/* battery voltage is present and 5v is not connected,
++		 * assume valid battery voltage source is present.  Battery
++		 * brownout protection will take care of supply protection
++		 * if battery becomes invalid in the future
++		 */
++		/*Boot from battery*/
++		mx28_power_setup_batt_boot();
++		mx28_power_clock2pll();
++	} else {
++		/* 5v input detected.  Now we need to determine if a
++		 * valid battery source is present to decide which
++		 * power source to use during bootup.
++		 */
++		int battery_good = mx28_is_batt_good();
++		if (!battery_ready) {
++			if (!battery_good) {
++				struct mx28_lradc_regs *lradc_regs =
++				(struct mx28_lradc_regs *)MXS_LRADC_BASE;
++
++				/* No battery or bad battery detected!!!
++				 * Disabling battery voltage measurements.
++				 */
++				writel(LRADC_CONVERSION_AUTOMATIC,
++					&lradc_regs->hw_lradc_conversion_clr);
++				clrbits_le32(&power_regs->hw_power_battmonitor,
++					POWER_BATTMONITOR_BATT_VAL_MASK);
++			}
++			mx28_5v_boot();
++#if !defined(CONFIG_SYS_VBUS_CURRENT_DRAW)
++			mx28_power_clock2pll();
++#endif
++		} else {
++			/* 5v source detected. Valid battery voltage detected.
++			 * Booting from battery.
++			 */
++			mx28_power_setup_batt_boot();
++			mx28_power_clock2pll();
++		}
++	}
++
++	mx28_init_batt_bo();
++
++#endif /* CONFIG_SYS_NO_DCDC_BATT_SOURCE */
++
+ 	mx28_switch_vddd_to_dcdc_source();
++
++	return battery_ready;
+ }
+ 
+ void mx28_enable_output_rail_protection(void)
+@@ -640,7 +1007,7 @@ int mx28_get_vddio_power_source_off(void
+ 		tmp = readl(&power_regs->hw_power_vddioctrl);
+ 		if (tmp & POWER_VDDIOCTRL_DISABLE_FET) {
+ 			if ((tmp & POWER_VDDIOCTRL_LINREG_OFFSET_MASK) ==
+-				POWER_VDDDCTRL_LINREG_OFFSET_0STEPS) {
++				POWER_VDDIOCTRL_LINREG_OFFSET_0STEPS) {
+ 				return 1;
+ 			}
+ 		}
+@@ -648,7 +1015,7 @@ int mx28_get_vddio_power_source_off(void
+ 		if (!(readl(&power_regs->hw_power_5vctrl) &
+ 			POWER_5VCTRL_ENABLE_DCDC)) {
+ 			if ((tmp & POWER_VDDIOCTRL_LINREG_OFFSET_MASK) ==
+-				POWER_VDDDCTRL_LINREG_OFFSET_0STEPS) {
++				POWER_VDDIOCTRL_LINREG_OFFSET_0STEPS) {
+ 				return 1;
+ 			}
+ 		}
+@@ -887,12 +1254,14 @@ void mx28_power_init(void)
+ {
+ 	struct mx28_power_regs *power_regs =
+ 		(struct mx28_power_regs *)MXS_POWER_BASE;
++	int is_battery_ready;
+ 
+ 	mx28_power_clock2xtal();
+ 	mx28_power_clear_auto_restart();
+ 	mx28_power_set_linreg();
+ 	mx28_power_setup_5v_detect();
+-	mx28_power_configure_power_source();
++	mx28_power_setup_batt_detect();
++	is_battery_ready = mx28_power_configure_power_source();
+ 	mx28_enable_output_rail_protection();
+ 
+ 	mx28_power_set_vddio(3300, 3150);
+@@ -904,8 +1273,23 @@ void mx28_power_init(void)
+ 		POWER_CTRL_VBUS_VALID_IRQ | POWER_CTRL_BATT_BO_IRQ |
+ 		POWER_CTRL_DCDC4P2_BO_IRQ, &power_regs->hw_power_ctrl_clr);
+ 
+-	writel(POWER_5VCTRL_PWDN_5VBRNOUT, &power_regs->hw_power_5vctrl_set);
++	if (!is_battery_ready) {
++		writel(POWER_5VCTRL_PWDN_5VBRNOUT,
++			&power_regs->hw_power_5vctrl_set);
++
++#if defined(CONFIG_SYS_NO_DCDC_BATT_SOURCE)
++	/* On i.MX28, a new bit has been added to allow automatic hardware
++	 * shutdown if VDD4P2 browns out.  If we permanently only have a VDD5V
++	 * source, we want to enable this bit.  For devices with dead batteries,
++	 * we could also temporarily set this bit until the kernel battery
++	 * charger sufficiently charges the battery but we won't do this for
++	 * now as the latest release kernel versions aren't aware of  it
++	 * and thus don't handle the proper setting/clearing of this bit.
++	 */
++		writel(1<<7, &power_regs->hw_power_refctrl_set);
++#endif /* CONFIG_SYS_NO_DCDC_BATT_SOURCE */
+ 
++	}
+ 	early_delay(1000);
+ }
+ 
+--- uboot-custom/arch/arm/include/asm/arch-mx28/imx-regs.h
++++ uboot-custom/arch/arm/include/asm/arch-mx28/imx-regs.h
+@@ -30,6 +30,7 @@
+ #include <asm/arch/regs-digctl.h>
+ #include <asm/arch/regs-gpmi.h>
+ #include <asm/arch/regs-i2c.h>
++#include <asm/arch/regs-lradc.h>
+ #include <asm/arch/regs-ocotp.h>
+ #include <asm/arch/regs-pinctrl.h>
+ #include <asm/arch/regs-power.h>
+--- uboot-custom/arch/arm/include/asm/arch-mx28/regs-lradc.h
++++ uboot-custom/arch/arm/include/asm/arch-mx28/regs-lradc.h
+@@ -0,0 +1,523 @@
++/*
++ * Freescale i.MX28 LRADC Register Definitions
++ *
++ * Copyright (C) 2012 Armadeus Project / ej <eric.jarrige@armadeus.org>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
++ *
++ */
++
++#ifndef __MX28_REGS_LRADC_H__
++#define __MX28_REGS_LRADC_H__
++
++#include <asm/arch/regs-common.h>
++
++#ifndef	__ASSEMBLY__
++struct mx28_lradc_regs {
++	mx28_reg_32(hw_lradc_ctrl0)
++	mx28_reg_32(hw_lradc_ctrl1)
++	mx28_reg_32(hw_lradc_ctrl2)
++	mx28_reg_32(hw_lradc_ctrl3)
++	mx28_reg_32(hw_lradc_status)
++	mx28_reg_32(hw_lradc_ch0)
++	mx28_reg_32(hw_lradc_ch1)
++	mx28_reg_32(hw_lradc_ch2)
++	mx28_reg_32(hw_lradc_ch3)
++	mx28_reg_32(hw_lradc_ch4)
++	mx28_reg_32(hw_lradc_ch5)
++	mx28_reg_32(hw_lradc_ch6)
++	mx28_reg_32(hw_lradc_ch7)
++	mx28_reg_32(hw_lradc_delay0)
++	mx28_reg_32(hw_lradc_delay1)
++	mx28_reg_32(hw_lradc_delay2)
++	mx28_reg_32(hw_lradc_delay3)
++	mx28_reg_32(hw_lradc_debug0)
++	mx28_reg_32(hw_lradc_debug1)
++	mx28_reg_32(hw_lradc_conversion)
++	mx28_reg_32(hw_lradc_ctrl4)
++	mx28_reg_32(hw_lradc_threshold0)
++	mx28_reg_32(hw_lradc_threshold1)
++	mx28_reg_32(hw_lradc_version)
++};
++#endif
++
++#define	LRADC_CTRL0_SFTRST			0x80000000
++#define	LRADC_CTRL0_CLKGATE			0x40000000
++#define	LRADC_CTRL0_ONCHIP_GROUNDREF		0x00200000
++#define	LRADC_CTRL0_TOUCH_DETECT_ENABLE		0x00100000
++#define	LRADC_CTRL0_YMINUS_ENABLE		0x00080000
++#define	LRADC_CTRL0_XMINUS_ENABLE		0x00040000
++#define	LRADC_CTRL0_YPLUS_ENABLE		0x00020000
++#define	LRADC_CTRL0_XPLUS_ENABLE		0x00010000
++#define	LRADC_CTRL0_SCHEDULE_OFFSET		0
++#define	LRADC_CTRL0_SCHEDULE_MASK		0x000000FF
++#define	LRADC_CTRL0_SCHEDULE(v) \
++	(((v) << 0) &	LRADC_CTRL0_SCHEDULE_MASK)
++
++#define	LRADC_CTRL1_TOUCH_DETECT_IRQ_EN_MASK	0x01000000
++#define	LRADC_CTRL1_TOUCH_DETECT_IRQ_EN__DISABLE 0x0
++#define	LRADC_CTRL1_TOUCH_DETECT_IRQ_EN__ENABLE	0x1
++#define	LRADC_CTRL1_LRADC7_IRQ_EN		0x00800000
++#define	LRADC_CTRL1_LRADC7_IRQ_EN__DISABLE	0x0
++#define	LRADC_CTRL1_LRADC7_IRQ_EN__ENABLE	0x1
++#define	LRADC_CTRL1_LRADC6_IRQ_EN		0x00400000
++#define	LRADC_CTRL1_LRADC6_IRQ_EN__DISABLE	0x0
++#define	LRADC_CTRL1_LRADC6_IRQ_EN__ENABLE	0x1
++#define	LRADC_CTRL1_LRADC5_IRQ_EN		0x00200000
++#define	LRADC_CTRL1_LRADC5_IRQ_EN__DISABLE	0x0
++#define	LRADC_CTRL1_LRADC5_IRQ_EN__ENABLE	0x1
++#define	LRADC_CTRL1_LRADC4_IRQ_EN		0x00100000
++#define	LRADC_CTRL1_LRADC4_IRQ_EN__DISABLE	0x0
++#define	LRADC_CTRL1_LRADC4_IRQ_EN__ENABLE	0x1
++#define	LRADC_CTRL1_LRADC3_IRQ_EN		0x00080000
++#define	LRADC_CTRL1_LRADC3_IRQ_EN__DISABLE	0x0
++#define	LRADC_CTRL1_LRADC3_IRQ_EN__ENABLE	0x1
++#define	LRADC_CTRL1_LRADC2_IRQ_EN		0x00040000
++#define	LRADC_CTRL1_LRADC2_IRQ_EN__DISABLE	0x0
++#define	LRADC_CTRL1_LRADC2_IRQ_EN__ENABLE	0x1
++#define	LRADC_CTRL1_LRADC1_IRQ_EN		0x00020000
++#define	LRADC_CTRL1_LRADC1_IRQ_EN__DISABLE	0x0
++#define	LRADC_CTRL1_LRADC1_IRQ_EN__ENABLE	0x1
++#define	LRADC_CTRL1_LRADC0_IRQ_EN		0x00010000
++#define	LRADC_CTRL1_LRADC0_IRQ_EN__DISABLE	0x0
++#define	LRADC_CTRL1_LRADC0_IRQ_EN__ENABLE	0x1
++#define	LRADC_CTRL1_TOUCH_DETECT_IRQ		0x00000100
++#define	LRADC_CTRL1_TOUCH_DETECT_IRQ__CLEAR	0x0
++#define	LRADC_CTRL1_TOUCH_DETECT_IRQ__PENDING	0x1
++#define	LRADC_CTRL1_LRADC7_IRQ			0x00000080
++#define	LRADC_CTRL1_LRADC7_IRQ__CLEAR		0x0
++#define	LRADC_CTRL1_LRADC7_IRQ__PENDING		0x1
++#define	LRADC_CTRL1_LRADC6_IRQ			0x00000040
++#define	LRADC_CTRL1_LRADC6_IRQ__CLEAR		0x0
++#define	LRADC_CTRL1_LRADC6_IRQ__PENDING		0x1
++#define	LRADC_CTRL1_LRADC5_IRQ			0x00000020
++#define	LRADC_CTRL1_LRADC5_IRQ__CLEAR		0x0
++#define	LRADC_CTRL1_LRADC5_IRQ__PENDING		0x1
++#define	LRADC_CTRL1_LRADC4_IRQ			0x00000010
++#define	LRADC_CTRL1_LRADC4_IRQ__CLEAR		0x0
++#define	LRADC_CTRL1_LRADC4_IRQ__PENDING		0x1
++#define	LRADC_CTRL1_LRADC3_IRQ			0x00000008
++#define	LRADC_CTRL1_LRADC3_IRQ__CLEAR		0x0
++#define	LRADC_CTRL1_LRADC3_IRQ__PENDING		0x1
++#define	LRADC_CTRL1_LRADC2_IRQ			0x00000004
++#define	LRADC_CTRL1_LRADC2_IRQ__CLEAR		0x0
++#define	LRADC_CTRL1_LRADC2_IRQ__PENDING		0x1
++#define	LRADC_CTRL1_LRADC1_IRQ			0x00000002
++#define	LRADC_CTRL1_LRADC1_IRQ__CLEAR		0x0
++#define	LRADC_CTRL1_LRADC1_IRQ__PENDING		0x1
++#define	LRADC_CTRL1_LRADC0_IRQ			0x00000001
++#define	LRADC_CTRL1_LRADC0_IRQ__CLEAR		0x0
++#define	LRADC_CTRL1_LRADC0_IRQ__PENDING		0x1
++
++#define	LRADC_CTRL2_DIVIDE_BY_TWO_OFFSET	24
++#define	LRADC_CTRL2_DIVIDE_BY_TWO_MASK		0xFF000000
++#define	LRADC_CTRL2_DIVIDE_BY_TWO(v) \
++	(((v) << 24) &	LRADC_CTRL2_DIVIDE_BY_TWO_MASK)
++#define	LRADC_CTRL2_BL_AMP_BYPASS		0x00800000
++#define	LRADC_CTRL2_BL_AMP_BYPASS__DISABLE	0x0
++#define	LRADC_CTRL2_BL_AMP_BYPASS__ENABLE	0x1
++#define	LRADC_CTRL2_BL_ENABLE			0x00400000
++#define	LRADC_CTRL2_BL_MUX_SELECT		0x00200000
++#define	LRADC_CTRL2_BL_BRIGHTNESS_OFFSET	16
++#define	LRADC_CTRL2_BL_BRIGHTNESS_MASK		0x001F0000
++#define	LRADC_CTRL2_BL_BRIGHTNESS(v) \
++	(((v) << 16) &	LRADC_CTRL2_BL_BRIGHTNESS_MASK)
++#define	LRADC_CTRL2_TEMPSENSE_PWD		0x00008000
++#define	LRADC_CTRL2_TEMPSENSE_PWD__ENABLE	0x0
++#define	LRADC_CTRL2_TEMPSENSE_PWD__DISABLE	0x1
++#define	LRADC_CTRL2_EXT_EN1			0x00002000
++#define	LRADC_CTRL2_EXT_EN1__DISABLE		0x0
++#define	LRADC_CTRL2_EXT_EN1__ENABLE		0x1
++#define	LRADC_CTRL2_EXT_EN0			0x00001000
++#define	LRADC_CTRL2_TEMP_SENSOR_IENABLE1	0x00000200
++#define	LRADC_CTRL2_TEMP_SENSOR_IENABLE1__DISABLE 0x0
++#define	LRADC_CTRL2_TEMP_SENSOR_IENABLE1__ENABLE 0x1
++#define	LRADC_CTRL2_TEMP_SENSOR_IENABLE0	0x00000100
++#define	LRADC_CTRL2_TEMP_SENSOR_IENABLE0__DISABLE 0x0
++#define	LRADC_CTRL2_TEMP_SENSOR_IENABLE0__ENABLE 0x1
++#define	LRADC_CTRL2_TEMP_ISRC1_OFFSET		4
++#define	LRADC_CTRL2_TEMP_ISRC1_MASK		0x000000F0
++#define	LRADC_CTRL2_TEMP_ISRC1(v) \
++	(((v) << 4) &	LRADC_CTRL2_TEMP_ISRC1_MASK)
++#define	LRADC_CTRL2_TEMP_ISRC1__300		0xF
++#define	LRADC_CTRL2_TEMP_ISRC1__280		0xE
++#define	LRADC_CTRL2_TEMP_ISRC1__260		0xD
++#define	LRADC_CTRL2_TEMP_ISRC1__240		0xC
++#define	LRADC_CTRL2_TEMP_ISRC1__220		0xB
++#define	LRADC_CTRL2_TEMP_ISRC1__200		0xA
++#define	LRADC_CTRL2_TEMP_ISRC1__180		0x9
++#define	LRADC_CTRL2_TEMP_ISRC1__160		0x8
++#define	LRADC_CTRL2_TEMP_ISRC1__140		0x7
++#define	LRADC_CTRL2_TEMP_ISRC1__120		0x6
++#define	LRADC_CTRL2_TEMP_ISRC1__100		0x5
++#define	LRADC_CTRL2_TEMP_ISRC1__80		0x4
++#define	LRADC_CTRL2_TEMP_ISRC1__60		0x3
++#define	LRADC_CTRL2_TEMP_ISRC1__40		0x2
++#define	LRADC_CTRL2_TEMP_ISRC1__20		0x1
++#define	LRADC_CTRL2_TEMP_ISRC1__ZERO		0x0
++#define	LRADC_CTRL2_TEMP_ISRC0_OFFSET		0
++#define	LRADC_CTRL2_TEMP_ISRC0_MASK		0x0000000F
++#define	LRADC_CTRL2_TEMP_ISRC0(v) \
++	(((v) << 0) &	LRADC_CTRL2_TEMP_ISRC0_MASK)
++#define	LRADC_CTRL2_TEMP_ISRC0__300		0xF
++#define	LRADC_CTRL2_TEMP_ISRC0__280		0xE
++#define	LRADC_CTRL2_TEMP_ISRC0__260		0xD
++#define	LRADC_CTRL2_TEMP_ISRC0__240		0xC
++#define	LRADC_CTRL2_TEMP_ISRC0__220		0xB
++#define	LRADC_CTRL2_TEMP_ISRC0__200		0xA
++#define	LRADC_CTRL2_TEMP_ISRC0__180		0x9
++#define	LRADC_CTRL2_TEMP_ISRC0__160		0x8
++#define	LRADC_CTRL2_TEMP_ISRC0__140		0x7
++#define	LRADC_CTRL2_TEMP_ISRC0__120		0x6
++#define	LRADC_CTRL2_TEMP_ISRC0__100		0x5
++#define	LRADC_CTRL2_TEMP_ISRC0__80		0x4
++#define	LRADC_CTRL2_TEMP_ISRC0__60		0x3
++#define	LRADC_CTRL2_TEMP_ISRC0__40		0x2
++#define	LRADC_CTRL2_TEMP_ISRC0__20		0x1
++#define	LRADC_CTRL2_TEMP_ISRC0__ZERO		0x0
++
++#define	LRADC_CTRL3_DISCARD_OFFSET		24
++#define	LRADC_CTRL3_DISCARD_MASK		0x03000000
++#define	LRADC_CTRL3_DISCARD(v) \
++	(((v) << 24) &	LRADC_CTRL3_DISCARD_MASK)
++#define	LRADC_CTRL3_DISCARD__1_SAMPLE		0x1
++#define	LRADC_CTRL3_DISCARD__2_SAMPLES		0x2
++#define	LRADC_CTRL3_DISCARD__3_SAMPLES		0x3
++#define	LRADC_CTRL3_FORCE_ANALOG_PWUP		0x00800000
++#define	LRADC_CTRL3_FORCE_ANALOG_PWUP__OFF	0x0
++#define	LRADC_CTRL3_FORCE_ANALOG_PWUP__ON	0x1
++#define	LRADC_CTRL3_FORCE_ANALOG_PWDN		0x00400000
++#define	LRADC_CTRL3_FORCE_ANALOG_PWDN__ON	0x0
++#define	LRADC_CTRL3_FORCE_ANALOG_PWDN__OFF	0x1
++#define	LRADC_CTRL3_CYCLE_TIME_OFFSET		8
++#define	LRADC_CTRL3_CYCLE_TIME_MASK		0x00000300
++#define	LRADC_CTRL3_CYCLE_TIME(v) \
++	(((v) << 8) &	LRADC_CTRL3_CYCLE_TIME_MASK)
++#define	LRADC_CTRL3_CYCLE_TIME__6MHZ		0x0
++#define	LRADC_CTRL3_CYCLE_TIME__4MHZ		0x1
++#define	LRADC_CTRL3_CYCLE_TIME__3MHZ		0x2
++#define	LRADC_CTRL3_CYCLE_TIME__2MHZ		0x3
++#define	LRADC_CTRL3_HIGH_TIME_OFFSET		4
++#define	LRADC_CTRL3_HIGH_TIME_MASK		0x00000030
++#define	LRADC_CTRL3_HIGH_TIME(v) \
++	(((v) << 4) &	LRADC_CTRL3_HIGH_TIME_MASK)
++#define	LRADC_CTRL3_HIGH_TIME__42NS		0x0
++#define	LRADC_CTRL3_HIGH_TIME__83NS		0x1
++#define	LRADC_CTRL3_HIGH_TIME__125NS		0x2
++#define	LRADC_CTRL3_HIGH_TIME__250NS		0x3
++#define	LRADC_CTRL3_DELAY_CLOCK			0x00000002
++#define	LRADC_CTRL3_DELAY_CLOCK__NORMAL		0x0
++#define	LRADC_CTRL3_DELAY_CLOCK__DELAYED	0x1
++#define	LRADC_CTRL3_INVERT_CLOCK		0x00000001
++#define	LRADC_CTRL3_INVERT_CLOCK__NORMAL	0x0
++#define	LRADC_CTRL3_INVERT_CLOCK__INVERT	0x1
++
++#define	LRADC_STATUS_TEMP1_PRESENT		0x04000000
++#define	LRADC_STATUS_TEMP0_PRESENT		0x02000000
++#define	LRADC_STATUS_TOUCH_PANEL_PRESENT	0x01000000
++#define	LRADC_STATUS_CHANNEL7_PRESENT		0x00800000
++#define	LRADC_STATUS_CHANNEL6_PRESENT		0x00400000
++#define	LRADC_STATUS_CHANNEL5_PRESENT		0x00200000
++#define	LRADC_STATUS_CHANNEL4_PRESENT		0x00100000
++#define	LRADC_STATUS_CHANNEL3_PRESENT		0x00080000
++#define	LRADC_STATUS_CHANNEL2_PRESENT		0x00040000
++#define	LRADC_STATUS_CHANNEL1_PRESENT		0x00020000
++#define	LRADC_STATUS_CHANNEL0_PRESENT		0x00010000
++#define	LRADC_STATUS_TOUCH_DETECT_RAW		0x00000001
++#define	LRADC_STATUS_TOUCH_DETECT_RAW__OPEN	0x0
++#define	LRADC_STATUS_TOUCH_DETECT_RAW__HIT	0x1
++
++/*
++ * multi-register-define name HW_LRADC_CHn
++ * base 0x00000050
++ * count 6
++ * offset 0x10
++ */
++#define	LRADC_CHn_TOGGLE			0x80000000
++#define	LRADC_CHn_ACCUMULATE			0x20000000
++#define	LRADC_CHn_NUM_SAMPLES_OFFSET		24
++#define	LRADC_CHn_NUM_SAMPLES_MASK		0x1F000000
++#define	LRADC_CHn_NUM_SAMPLES(v) \
++	(((v) << 24) &	LRADC_CHn_NUM_SAMPLES_MASK)
++#define	LRADC_CHn_VALUE_OFFSET			0
++#define	LRADC_CHn_VALUE_MASK			0x0003FFFF
++#define	LRADC_CHn_VALUE(v) \
++	(((v) << 0) &	LRADC_CHn_VALUE_MASK)
++
++#define	LRADC_CH6_TOGGLE			0x80000000
++#define	LRADC_CH6_ACCUMULATE			0x20000000
++#define	LRADC_CH6_NUM_SAMPLES_OFFSET		24
++#define	LRADC_CH6_NUM_SAMPLES_MASK		0x1F000000
++#define	LRADC_CH6_NUM_SAMPLES(v) \
++	(((v) << 24) &	LRADC_CH6_NUM_SAMPLES_MASK)
++#define	LRADC_CH6_VALUE_OFFSET			0
++#define	LRADC_CH6_VALUE_MASK			0x0003FFFF
++#define	LRADC_CH6_VALUE(v) \
++	(((v) << 0) &	LRADC_CH6_VALUE_MASK)
++
++#define	LRADC_CH7_TOGGLE			0x80000000
++#define	LRADC_CH7_TESTMODE_TOGGLE		0x40000000
++#define	LRADC_CH7_ACCUMULATE			0x20000000
++#define	LRADC_CH7_NUM_SAMPLES_OFFSET		24
++#define	LRADC_CH7_NUM_SAMPLES_MASK		0x1F000000
++#define	LRADC_CH7_NUM_SAMPLES(v) \
++	(((v) << 24) &	LRADC_CH7_NUM_SAMPLES_MASK)
++#define	LRADC_CH7_VALUE_OFFSET			0
++#define	LRADC_CH7_VALUE_MASK			0x0003FFFF
++#define	LRADC_CH7_VALUE(v) \
++	(((v) << 0) &	LRADC_CH7_VALUE_MASK)
++
++/*
++ * multi-register-define name HW_LRADC_DELAYn
++ * base 0x000000D0
++ * count 4
++ * offset 0x10
++ */
++#define	LRADC_DELAYn_TRIGGER_LRADCS_OFFSET	24
++#define	LRADC_DELAYn_TRIGGER_LRADCS_MASK	0xFF000000
++#define	LRADC_DELAYn_TRIGGER_LRADCS(v) \
++	(((v) << 24) &	LRADC_DELAYn_TRIGGER_LRADCS_MASK)
++#define	LRADC_DELAYn_KICK			0x00100000
++#define	LRADC_DELAYn_TRIGGER_DELAYS_OFFSET	16
++#define	LRADC_DELAYn_TRIGGER_DELAYS_MASK	0x000F0000
++#define	LRADC_DELAYn_TRIGGER_DELAYS(v) \
++	(((v) << 16) &	LRADC_DELAYn_TRIGGER_DELAYS_MASK)
++#define	LRADC_DELAYn_LOOP_COUNT_OFFSET		11
++#define	LRADC_DELAYn_LOOP_COUNT_MASK		0x0000F800
++#define	LRADC_DELAYn_LOOP_COUNT(v) \
++	(((v) << 11) &	LRADC_DELAYn_LOOP_COUNT_MASK)
++#define	LRADC_DELAYn_DELAY_OFFSET		0
++#define	LRADC_DELAYn_DELAY_MASK			0x000007FF
++#define	LRADC_DELAYn_DELAY(v) \
++	(((v) << 0) &	LRADC_DELAYn_DELAY_MASK)
++
++#define	LRADC_DEBUG0_READONLY_OFFSET		16
++#define	LRADC_DEBUG0_READONLY_MASK		0xFFFF0000
++#define	LRADC_DEBUG0_READONLY(v) \
++	(((v) << 16) &	LRADC_DEBUG0_READONLY_MASK)
++#define	LRADC_DEBUG0_STATE_OFFSET		0
++#define	LRADC_DEBUG0_STATE_MASK			0x00000FFF
++#define	LRADC_DEBUG0_STATE(v) \
++	(((v) << 0) &	LRADC_DEBUG0_STATE_MASK)
++
++#define	LRADC_DEBUG1_REQUEST_OFFSET		16
++#define	LRADC_DEBUG1_REQUEST_MASK		0x00FF0000
++#define	LRADC_DEBUG1_REQUEST(v) \
++	(((v) << 16) &	LRADC_DEBUG1_REQUEST_MASK)
++#define	LRADC_DEBUG1_TESTMODE_COUNT_OFFSET	8
++#define	LRADC_DEBUG1_TESTMODE_COUNT_MASK	0x00001F00
++#define	LRADC_DEBUG1_TESTMODE_COUNT(v) \
++	(((v) << 8) &	LRADC_DEBUG1_TESTMODE_COUNT_MASK)
++#define	LRADC_DEBUG1_TESTMODE6			0x00000004
++#define	LRADC_DEBUG1_TESTMODE6__NORMAL		0x0
++#define	LRADC_DEBUG1_TESTMODE6__TEST		0x1
++#define	LRADC_DEBUG1_TESTMODE5			0x00000002
++#define	LRADC_DEBUG1_TESTMODE5__NORMAL		0x0
++#define	LRADC_DEBUG1_TESTMODE5__TEST		0x1
++#define	LRADC_DEBUG1_TESTMODE			0x00000001
++#define	LRADC_DEBUG1_TESTMODE__NORMAL		0x0
++#define	LRADC_DEBUG1_TESTMODE__TEST		0x1
++
++#define	LRADC_CONVERSION_AUTOMATIC		0x00100000
++#define	LRADC_CONVERSION_AUTOMATIC__DISABLE	0x0
++#define	LRADC_CONVERSION_AUTOMATIC__ENABLE	0x1
++#define	LRADC_CONVERSION_SCALE_FACTOR_OFFSET	16
++#define	LRADC_CONVERSION_SCALE_FACTOR_MASK	0x00030000
++#define	LRADC_CONVERSION_SCALE_FACTOR(v) \
++	(((v) << 16) &	LRADC_CONVERSION_SCALE_FACTOR_MASK)
++#define	LRADC_CONVERSION_SCALE_FACTOR__NIMH	0x0
++#define	LRADC_CONVERSION_SCALE_FACTOR__DUAL_NIMH 0x1
++#define	LRADC_CONVERSION_SCALE_FACTOR__LI_ION	0x2
++#define	LRADC_CONVERSION_SCALE_FACTOR__ALT_LI_ION 0x3
++#define	LRADC_CONVERSION_SCALED_BATT_VOLTAGE_OFFSET 0
++#define	LRADC_CONVERSION_SCALED_BATT_VOLTAGE_MASK 0x000003FF
++#define	LRADC_CONVERSION_SCALED_BATT_VOLTAGE(v) \
++	(((v) << 0) &	LRADC_CONVERSION_SCALED_BATT_VOLTAGE_MASK)
++
++#define	LRADC_CTRL4_LRADC7SELECT_OFFSET		28
++#define	LRADC_CTRL4_LRADC7SELECT_MASK		0xF0000000
++#define	LRADC_CTRL4_LRADC7SELECT(v) \
++	(((v) << 28) &	LRADC_CTRL4_LRADC7SELECT_MASK)
++#define	LRADC_CTRL4_LRADC7SELECT__CHANNEL0	0x0
++#define	LRADC_CTRL4_LRADC7SELECT__CHANNEL1	0x1
++#define	LRADC_CTRL4_LRADC7SELECT__CHANNEL2	0x2
++#define	LRADC_CTRL4_LRADC7SELECT__CHANNEL3	0x3
++#define	LRADC_CTRL4_LRADC7SELECT__CHANNEL4	0x4
++#define	LRADC_CTRL4_LRADC7SELECT__CHANNEL5	0x5
++#define	LRADC_CTRL4_LRADC7SELECT__CHANNEL6	0x6
++#define	LRADC_CTRL4_LRADC7SELECT__CHANNEL7	0x7
++#define	LRADC_CTRL4_LRADC7SELECT__CHANNEL8	0x8
++#define	LRADC_CTRL4_LRADC7SELECT__CHANNEL9	0x9
++#define	LRADC_CTRL4_LRADC7SELECT__CHANNEL10	0xA
++#define	LRADC_CTRL4_LRADC7SELECT__CHANNEL11	0xB
++#define	LRADC_CTRL4_LRADC7SELECT__CHANNEL12	0xC
++#define	LRADC_CTRL4_LRADC7SELECT__CHANNEL13	0xD
++#define	LRADC_CTRL4_LRADC7SELECT__CHANNEL14	0xE
++#define	LRADC_CTRL4_LRADC7SELECT__CHANNEL15	0xF
++#define	LRADC_CTRL4_LRADC6SELECT_OFFSET		24
++#define	LRADC_CTRL4_LRADC6SELECT_MASK		0x0F000000
++#define	LRADC_CTRL4_LRADC6SELECT(v) \
++	(((v) << 24) &	LRADC_CTRL4_LRADC6SELECT_MASK)
++#define	LRADC_CTRL4_LRADC6SELECT__CHANNEL0	0x0
++#define	LRADC_CTRL4_LRADC6SELECT__CHANNEL1	0x1
++#define	LRADC_CTRL4_LRADC6SELECT__CHANNEL2	0x2
++#define	LRADC_CTRL4_LRADC6SELECT__CHANNEL3	0x3
++#define	LRADC_CTRL4_LRADC6SELECT__CHANNEL4	0x4
++#define	LRADC_CTRL4_LRADC6SELECT__CHANNEL5	0x5
++#define	LRADC_CTRL4_LRADC6SELECT__CHANNEL6	0x6
++#define	LRADC_CTRL4_LRADC6SELECT__CHANNEL7	0x7
++#define	LRADC_CTRL4_LRADC6SELECT__CHANNEL8	0x8
++#define	LRADC_CTRL4_LRADC6SELECT__CHANNEL9	0x9
++#define	LRADC_CTRL4_LRADC6SELECT__CHANNEL10	0xA
++#define	LRADC_CTRL4_LRADC6SELECT__CHANNEL11	0xB
++#define	LRADC_CTRL4_LRADC6SELECT__CHANNEL12	0xC
++#define	LRADC_CTRL4_LRADC6SELECT__CHANNEL13	0xD
++#define	LRADC_CTRL4_LRADC6SELECT__CHANNEL14	0xE
++#define	LRADC_CTRL4_LRADC6SELECT__CHANNEL15	0xF
++#define	LRADC_CTRL4_LRADC5SELECT_OFFSET		20
++#define	LRADC_CTRL4_LRADC5SELECT_MASK		0x00F00000
++#define	LRADC_CTRL4_LRADC5SELECT(v) \
++	(((v) << 20) &	LRADC_CTRL4_LRADC5SELECT_MASK)
++#define	LRADC_CTRL4_LRADC5SELECT__CHANNEL0	0x0
++#define	LRADC_CTRL4_LRADC5SELECT__CHANNEL1	0x1
++#define	LRADC_CTRL4_LRADC5SELECT__CHANNEL2	0x2
++#define	LRADC_CTRL4_LRADC5SELECT__CHANNEL3	0x3
++#define	LRADC_CTRL4_LRADC5SELECT__CHANNEL4	0x4
++#define	LRADC_CTRL4_LRADC5SELECT__CHANNEL5	0x5
++#define	LRADC_CTRL4_LRADC5SELECT__CHANNEL6	0x6
++#define	LRADC_CTRL4_LRADC5SELECT__CHANNEL7	0x7
++#define	LRADC_CTRL4_LRADC5SELECT__CHANNEL8	0x8
++#define	LRADC_CTRL4_LRADC5SELECT__CHANNEL9	0x9
++#define	LRADC_CTRL4_LRADC5SELECT__CHANNEL10	0xA
++#define	LRADC_CTRL4_LRADC5SELECT__CHANNEL11	0xB
++#define	LRADC_CTRL4_LRADC5SELECT__CHANNEL12	0xC
++#define	LRADC_CTRL4_LRADC5SELECT__CHANNEL13	0xD
++#define	LRADC_CTRL4_LRADC5SELECT__CHANNEL14	0xE
++#define	LRADC_CTRL4_LRADC5SELECT__CHANNEL15	0xF
++#define	LRADC_CTRL4_LRADC4SELECT_OFFSET		16
++#define	LRADC_CTRL4_LRADC4SELECT_MASK		0x000F0000
++#define	LRADC_CTRL4_LRADC4SELECT(v) \
++	(((v) << 16) &	LRADC_CTRL4_LRADC4SELECT_MASK)
++#define	LRADC_CTRL4_LRADC4SELECT__CHANNEL0	0x0
++#define	LRADC_CTRL4_LRADC4SELECT__CHANNEL1	0x1
++#define	LRADC_CTRL4_LRADC4SELECT__CHANNEL2	0x2
++#define	LRADC_CTRL4_LRADC4SELECT__CHANNEL3	0x3
++#define	LRADC_CTRL4_LRADC4SELECT__CHANNEL4	0x4
++#define	LRADC_CTRL4_LRADC4SELECT__CHANNEL5	0x5
++#define	LRADC_CTRL4_LRADC4SELECT__CHANNEL6	0x6
++#define	LRADC_CTRL4_LRADC4SELECT__CHANNEL7	0x7
++#define	LRADC_CTRL4_LRADC4SELECT__CHANNEL8	0x8
++#define	LRADC_CTRL4_LRADC4SELECT__CHANNEL9	0x9
++#define	LRADC_CTRL4_LRADC4SELECT__CHANNEL10	0xA
++#define	LRADC_CTRL4_LRADC4SELECT__CHANNEL11	0xB
++#define	LRADC_CTRL4_LRADC4SELECT__CHANNEL12	0xC
++#define	LRADC_CTRL4_LRADC4SELECT__CHANNEL13	0xD
++#define	LRADC_CTRL4_LRADC4SELECT__CHANNEL14	0xE
++#define	LRADC_CTRL4_LRADC4SELECT__CHANNEL15	0xF
++#define	LRADC_CTRL4_LRADC3SELECT_OFFSET		12
++#define	LRADC_CTRL4_LRADC3SELECT_MASK		0x0000F000
++#define	LRADC_CTRL4_LRADC3SELECT(v) \
++	(((v) << 12) &	LRADC_CTRL4_LRADC3SELECT_MASK)
++#define	LRADC_CTRL4_LRADC3SELECT__CHANNEL0	0x0
++#define	LRADC_CTRL4_LRADC3SELECT__CHANNEL1	0x1
++#define	LRADC_CTRL4_LRADC3SELECT__CHANNEL2	0x2
++#define	LRADC_CTRL4_LRADC3SELECT__CHANNEL3	0x3
++#define	LRADC_CTRL4_LRADC3SELECT__CHANNEL4	0x4
++#define	LRADC_CTRL4_LRADC3SELECT__CHANNEL5	0x5
++#define	LRADC_CTRL4_LRADC3SELECT__CHANNEL6	0x6
++#define	LRADC_CTRL4_LRADC3SELECT__CHANNEL7	0x7
++#define	LRADC_CTRL4_LRADC3SELECT__CHANNEL8	0x8
++#define	LRADC_CTRL4_LRADC3SELECT__CHANNEL9	0x9
++#define	LRADC_CTRL4_LRADC3SELECT__CHANNEL10	0xA
++#define	LRADC_CTRL4_LRADC3SELECT__CHANNEL11	0xB
++#define	LRADC_CTRL4_LRADC3SELECT__CHANNEL12	0xC
++#define	LRADC_CTRL4_LRADC3SELECT__CHANNEL13	0xD
++#define	LRADC_CTRL4_LRADC3SELECT__CHANNEL14	0xE
++#define	LRADC_CTRL4_LRADC3SELECT__CHANNEL15	0xF
++#define	LRADC_CTRL4_LRADC2SELECT_OFFSET		8
++#define	LRADC_CTRL4_LRADC2SELECT_MASK		0x00000F00
++#define	LRADC_CTRL4_LRADC2SELECT(v) \
++	(((v) << 8) &	LRADC_CTRL4_LRADC2SELECT_MASK)
++#define	LRADC_CTRL4_LRADC2SELECT__CHANNEL0	0x0
++#define	LRADC_CTRL4_LRADC2SELECT__CHANNEL1	0x1
++#define	LRADC_CTRL4_LRADC2SELECT__CHANNEL2	0x2
++#define	LRADC_CTRL4_LRADC2SELECT__CHANNEL3	0x3
++#define	LRADC_CTRL4_LRADC2SELECT__CHANNEL4	0x4
++#define	LRADC_CTRL4_LRADC2SELECT__CHANNEL5	0x5
++#define	LRADC_CTRL4_LRADC2SELECT__CHANNEL6	0x6
++#define	LRADC_CTRL4_LRADC2SELECT__CHANNEL7	0x7
++#define	LRADC_CTRL4_LRADC2SELECT__CHANNEL8	0x8
++#define	LRADC_CTRL4_LRADC2SELECT__CHANNEL9	0x9
++#define	LRADC_CTRL4_LRADC2SELECT__CHANNEL10	0xA
++#define	LRADC_CTRL4_LRADC2SELECT__CHANNEL11	0xB
++#define	LRADC_CTRL4_LRADC2SELECT__CHANNEL12	0xC
++#define	LRADC_CTRL4_LRADC2SELECT__CHANNEL13	0xD
++#define	LRADC_CTRL4_LRADC2SELECT__CHANNEL14	0xE
++#define	LRADC_CTRL4_LRADC2SELECT__CHANNEL15	0xF
++#define	LRADC_CTRL4_LRADC1SELECT_OFFSET		4
++#define	LRADC_CTRL4_LRADC1SELECT_MASK		0x000000F0
++#define	LRADC_CTRL4_LRADC1SELECT(v) \
++	(((v) << 4) &	LRADC_CTRL4_LRADC1SELECT_MASK)
++#define	LRADC_CTRL4_LRADC1SELECT__CHANNEL0	0x0
++#define	LRADC_CTRL4_LRADC1SELECT__CHANNEL1	0x1
++#define	LRADC_CTRL4_LRADC1SELECT__CHANNEL2	0x2
++#define	LRADC_CTRL4_LRADC1SELECT__CHANNEL3	0x3
++#define	LRADC_CTRL4_LRADC1SELECT__CHANNEL4	0x4
++#define	LRADC_CTRL4_LRADC1SELECT__CHANNEL5	0x5
++#define	LRADC_CTRL4_LRADC1SELECT__CHANNEL6	0x6
++#define	LRADC_CTRL4_LRADC1SELECT__CHANNEL7	0x7
++#define	LRADC_CTRL4_LRADC1SELECT__CHANNEL8	0x8
++#define	LRADC_CTRL4_LRADC1SELECT__CHANNEL9	0x9
++#define	LRADC_CTRL4_LRADC1SELECT__CHANNEL10	0xA
++#define	LRADC_CTRL4_LRADC1SELECT__CHANNEL11	0xB
++#define	LRADC_CTRL4_LRADC1SELECT__CHANNEL12	0xC
++#define	LRADC_CTRL4_LRADC1SELECT__CHANNEL13	0xD
++#define	LRADC_CTRL4_LRADC1SELECT__CHANNEL14	0xE
++#define	LRADC_CTRL4_LRADC1SELECT__CHANNEL15	0xF
++#define	LRADC_CTRL4_LRADC0SELECT_OFFSET		0
++#define	LRADC_CTRL4_LRADC0SELECT_MASK		0x0000000F
++#define	LRADC_CTRL4_LRADC0SELECT(v) \
++	(((v) << 0) &	LRADC_CTRL4_LRADC0SELECT_MASK)
++#define	LRADC_CTRL4_LRADC0SELECT__CHANNEL0	0x0
++#define	LRADC_CTRL4_LRADC0SELECT__CHANNEL1	0x1
++#define	LRADC_CTRL4_LRADC0SELECT__CHANNEL2	0x2
++#define	LRADC_CTRL4_LRADC0SELECT__CHANNEL3	0x3
++#define	LRADC_CTRL4_LRADC0SELECT__CHANNEL4	0x4
++#define	LRADC_CTRL4_LRADC0SELECT__CHANNEL5	0x5
++#define	LRADC_CTRL4_LRADC0SELECT__CHANNEL6	0x6
++#define	LRADC_CTRL4_LRADC0SELECT__CHANNEL7	0x7
++#define	LRADC_CTRL4_LRADC0SELECT__CHANNEL8	0x8
++#define	LRADC_CTRL4_LRADC0SELECT__CHANNEL9	0x9
++#define	LRADC_CTRL4_LRADC0SELECT__CHANNEL10	0xA
++#define	LRADC_CTRL4_LRADC0SELECT__CHANNEL11	0xB
++#define	LRADC_CTRL4_LRADC0SELECT__CHANNEL12	0xC
++#define	LRADC_CTRL4_LRADC0SELECT__CHANNEL13	0xD
++#define	LRADC_CTRL4_LRADC0SELECT__CHANNEL14	0xE
++#define	LRADC_CTRL4_LRADC0SELECT__CHANNEL15	0xF
++
++#define	LRADC_VERSION_MAJOR_OFFSET		24
++#define	LRADC_VERSION_MAJOR_MASK		0xFF000000
++#define	LRADC_VERSION_MAJOR(v) \
++	(((v) << 24) &	LRADC_VERSION_MAJOR_MASK)
++#define	LRADC_VERSION_MINOR_OFFSET		16
++#define	LRADC_VERSION_MINOR_MASK		0x00FF0000
++#define	LRADC_VERSION_MINOR(v) \
++	(((v) << 16) &	LRADC_VERSION_MINOR_MASK)
++#define	LRADC_VERSION_STEP_OFFSET		0
++#define	LRADC_VERSION_STEP_MASK			0x0000FFFF
++#define	LRADC_VERSION_STEP(v) \
++	(((v) << 0) &	LRADC_VERSION_STEP_MASK)
++
++#endif	/* __MX28_REGS_LRADC_H__ */

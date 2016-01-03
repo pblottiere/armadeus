@@ -1,0 +1,61 @@
+Minicom: Add Minicom terminal program
+
+Signed-off-by: Janos Angeli <angelo@angelo.hu>
+---
+
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in
++++ buildroot/package/Config.in
+@@ -224,6 +224,7 @@
+ source "package/makedevs/Config.in"
+ source "package/mdadm/Config.in"
+ source "package/memtester/Config.in"
++source "package/minicom/Config.in"
+ source "package/mtd/Config.in"
+ source "package/nanocom/Config.in"
+ source "package/ntfs-3g/Config.in"
+Index: buildroot/package/minicom/Config.in
+===================================================================
+--- /dev/null
++++ buildroot/package/minicom/Config.in
+@@ -0,0 +1,14 @@
++config BR2_PACKAGE_MINICOM
++	bool "minicom"
++	depends on BR2_USE_WCHAR
++	select BR2_PACKAGE_LIBICONV if !BR2_ENABLE_LOCALE
++	select BR2_PACKAGE_NCURSES
++	help
++	  Minicom is a menu driven communications program.
++	  It emulates ANSI and VT102 terminals. It has a
++	  dialing directory and auto zmodem download.
++
++	  http://alioth.debian.org/projects/minicom
++
++comment "minicom requires a toolchain with WCHAR support"
++	depends on !BR2_USE_WCHAR
+Index: buildroot/package/minicom/minicom.mk
+===================================================================
+--- /dev/null
++++ buildroot/package/minicom/minicom.mk
+@@ -0,0 +1,20 @@
++#############################################################
++#
++# minicom
++#
++#############################################################
++MINICOM_VERSION = 2.6.1
++MINICOM_SOURCE = minicom-$(MINICOM_VERSION).tar.gz
++MINICOM_SITE = http://alioth.debian.org/frs/download.php/3700/
++MINICOM_LICENSE = GPLv2+
++MINICOM_LICENSE_FILES = COPYING
++
++# pkg-config is only used to check for liblockdev, which we don't have
++# in BR, so instead of adding host-pkg-config as a dependency, simply
++# make sure the host version isn't used so we don't end up with problems
++# if people have liblockdev1-dev installed
++MINICOM_CONF_ENV = PKG_CONFIG=/bin/false
++
++MINICOM_DEPENDENCIES = ncurses $(if $(BR2_ENABLE_LOCALE),,libiconv)
++
++$(eval $(call AUTOTARGETS))

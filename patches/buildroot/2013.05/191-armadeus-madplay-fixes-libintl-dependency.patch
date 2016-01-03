@@ -1,0 +1,24 @@
+Otherwise compilation fails (in intl/relocatable.c):
+./relocatable.c: In function 'libintl_relocate':
+./relocatable.c:402:40: error: 'INSTALLPREFIX' undeclared (first use in this function)
+./relocatable.c:402:40: note: each undeclared identifier is reported only once for each function it appears in
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/multimedia/madplay/madplay.mk
+===================================================================
+--- buildroot.orig/package/multimedia/madplay/madplay.mk	2013-05-31 22:29:04.000000000 +0200
++++ buildroot/package/multimedia/madplay/madplay.mk	2013-09-02 19:18:01.433620945 +0200
+@@ -12,6 +12,12 @@
+ MADPLAY_LIBTOOL_PATCH = NO
+ MADPLAY_DEPENDENCIES = libmad libid3tag
+ 
++ifeq ($(BR2_PACKAGE_GETTEXT),y)
++MADPLAY_DEPENDENCIES += gettext
++else
++MADPLAY_CONF_OPT += --disable-nls
++endif
++
+ # Check if ALSA is built, then we should configure after alsa-lib so
+ # ./configure can find alsa-lib.
+ ifeq ($(BR2_PACKAGE_MADPLAY_ALSA),y)

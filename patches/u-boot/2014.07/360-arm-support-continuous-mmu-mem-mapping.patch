@@ -1,0 +1,94 @@
+ARM: support continuous MMU memory mapping beside the regular identity mapping.
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+diff --git a/arch/arm/lib/cache-cp15.c b/arch/arm/lib/cache-cp15.c
+index 939de10..25f0ff1 100644
+--- a/arch/arm/lib/cache-cp15.c
++++ b/arch/arm/lib/cache-cp15.c
+@@ -32,14 +32,14 @@ static void cp_delay (void)
+ 	asm volatile("" : : : "memory");
+ }
+ 
+-void set_section_dcache(int section, enum dcache_option option)
++void set_section_dcache(int section, int section_index, enum dcache_option option)
+ {
+ 	u32 *page_table = (u32 *)gd->arch.tlb_addr;
+ 	u32 value;
+ 
+ 	value = (section << MMU_SECTION_SHIFT) | (3 << 10);
+ 	value |= option;
+-	page_table[section] = value;
++	page_table[section_index] = value;
+ }
+ 
+ __weak void mmu_page_table_flush(unsigned long start, unsigned long stop)
+@@ -58,11 +58,11 @@ void mmu_set_region_dcache_behaviour(u32
+ 	debug("%s: start=%x, size=%x, option=%d\n", __func__, start, size,
+ 	      option);
+ 	for (upto = start; upto < end; upto++)
+-		set_section_dcache(upto, option);
++		set_section_dcache(upto, upto, option);
+ 	mmu_page_table_flush((u32)&page_table[start], (u32)&page_table[end]);
+ }
+ 
+-__weak void dram_bank_mmu_setup(int bank)
++__weak void dram_bank_mmu_setup(int bank, int page_offset)
+ {
+ 	bd_t *bd = gd->bd;
+ 	int	i;
+@@ -72,9 +72,9 @@ __weak void dram_bank_mmu_setup(int bank
+ 	     i < (bd->bi_dram[bank].start + bd->bi_dram[bank].size) >> 20;
+ 	     i++) {
+ #if defined(CONFIG_SYS_ARM_CACHE_WRITETHROUGH)
+-		set_section_dcache(i, DCACHE_WRITETHROUGH);
++		set_section_dcache(i, page_offset++, DCACHE_WRITETHROUGH);
+ #else
+-		set_section_dcache(i, DCACHE_WRITEBACK);
++		set_section_dcache(i, page_offset++, DCACHE_WRITEBACK);
+ #endif
+ 	}
+ }
+@@ -84,14 +84,22 @@ static inline void mmu_setup(void)
+ {
+ 	int i;
+ 	u32 reg;
++	bd_t *bd = gd->bd;
++	int page_offset, continuity_offset;
+ 
+ 	arm_init_before_mmu();
+ 	/* Set up an identity-mapping for all 4GB, rw for everyone */
+ 	for (i = 0; i < 4096; i++)
+-		set_section_dcache(i, DCACHE_OFF);
++		set_section_dcache(i, i, DCACHE_OFF);
+ 
++	continuity_offset = bd->bi_dram[0].start >> 20;
+ 	for (i = 0; i < CONFIG_NR_DRAM_BANKS; i++) {
+-		dram_bank_mmu_setup(i);
++		page_offset = (bd->bi_dram[i].start) >> 20;
++		/* direct identity mapping */
++		dram_bank_mmu_setup(i, page_offset);
++		/* secondary mapping to build a continous memory space */
++		dram_bank_mmu_setup(i, continuity_offset);
++		continuity_offset = (bd->bi_dram[i].start + bd->bi_dram[i].size) >> 20;
+ 	}
+ 
+ 	/* Copy the page table address to cp15 */
+diff --git a/arch/arm/include/asm/cache.h b/arch/arm/include/asm/cache.h
+--- a/arch/arm/include/asm/cache.h
++++ b/arch/arm/include/asm/cache.h
+@@ -27,12 +27,12 @@ static inline void invalidate_l2_cache(v
+ 
+ void l2_cache_enable(void);
+ void l2_cache_disable(void);
+-void set_section_dcache(int section, enum dcache_option option);
++void set_section_dcache(int section, int section_index, enum dcache_option option);
+ 
+ void arm_init_before_mmu(void);
+ void arm_init_domains(void);
+ void cpu_cache_initialization(void);
+-void dram_bank_mmu_setup(int bank);
++void dram_bank_mmu_setup(int bank, int page_offset);
+ 
+ #endif
+ 

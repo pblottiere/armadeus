@@ -1,0 +1,23 @@
+Prevent linking error with some EABI toolchains.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: u-boot-2010.03/lib_arm/eabi_compat.c
+===================================================================
+--- u-boot-2010.03.orig/lib_arm/eabi_compat.c	2011-10-04 15:38:21.000000000 +0200
++++ u-boot-2010.03/lib_arm/eabi_compat.c	2011-10-04 15:46:12.000000000 +0200
+@@ -16,3 +16,14 @@
+ 	printf("raise: Signal # %d caught\n", signum);
+ 	return 0;
+ }
++
++/* Dummy functions to avoid linker complaints */
++void __aeabi_unwind_cpp_pr0(void)
++{
++
++}
++
++void abort(void)
++{
++	printf( "abort !\n" );
++}

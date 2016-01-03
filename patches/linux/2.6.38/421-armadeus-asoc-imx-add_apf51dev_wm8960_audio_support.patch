@@ -1,0 +1,274 @@
+Index: linux-2.6.38.8/sound/soc/imx/apf51dev-wm8960.c
+===================================================================
+--- /dev/null
++++ linux-2.6.38.8/sound/soc/imx/apf51dev-wm8960.c
+@@ -0,0 +1,233 @@
++/*
++ * ASoC audio for APF51Dev (i.MX51 using Wolfson's WM8960)
++ *
++ * Copyright (C) 2011-13 Armadeus Systems
++ *
++ * Based on code which is:
++ * Copyright 2009 Sascha Hauer, Pengutronix <s.hauer@pengutronix.de>
++ *
++ *  This program is free software; you can redistribute  it and/or modify it
++ *  under  the terms of  the GNU General  Public License as published by the
++ *  Free Software Foundation;  either version 2 of the  License, or (at your
++ *  option) any later version.
++ *
++ */
++
++#include <linux/module.h>
++#include <linux/moduleparam.h>
++#include <linux/device.h>
++#include <linux/i2c.h>
++#include <sound/core.h>
++#include <sound/pcm.h>
++#include <sound/soc.h>
++#include <sound/soc-dapm.h>
++#include <asm/mach-types.h>
++
++#include "../codecs/wm8960.h"
++#include "imx-ssi.h"
++
++static const struct snd_soc_dapm_route audio_map[] = {
++	{"Headphone Jack", NULL, "HP_L" },
++	{"Headphone Jack", NULL, "HP_R" },
++	{"Audio Ext", NULL, "SPK_LP" },
++	{"Audio Ext", NULL, "SPK_LN" },
++	{"Audio Ext", NULL, "SPK_RP" },
++	{"Audio Ext", NULL, "SPK_RN" },
++	{"LINPUT1", NULL, "MICB"},
++	{"LINPUT1", NULL, "Line Input" },
++};
++
++static const struct snd_soc_dapm_widget wm8960_dapm_widgets[] = {
++	SND_SOC_DAPM_HP("Headphone Jack", NULL),
++	SND_SOC_DAPM_OUTPUT("Audio Ext"),
++	SND_SOC_DAPM_MIC("Line Input", NULL),
++};
++
++static int apf51dev_sound_hifi_hw_params(struct snd_pcm_substream *substream,
++	struct snd_pcm_hw_params *params)
++{
++	struct snd_soc_pcm_runtime *rtd = substream->private_data;
++	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
++	struct snd_soc_dai *codec_dai = rtd->codec_dai;
++	unsigned int rate = params_rate(params);
++	unsigned int pll_clk, dac_clkdiv, adc_clkdiv;
++	int ret;
++
++	switch (rate) {
++	case 11025:
++		pll_clk = 11289600;
++		dac_clkdiv = WM8960_DAC_DIV_4;
++		adc_clkdiv = WM8960_ADC_DIV_4;
++		break;
++	case 22050:
++		pll_clk = 11289600;
++		dac_clkdiv = WM8960_DAC_DIV_2;
++		adc_clkdiv = WM8960_ADC_DIV_2;
++		break;
++	case 44100:
++		pll_clk = 11289600;
++		dac_clkdiv = WM8960_DAC_DIV_1;
++		adc_clkdiv = WM8960_ADC_DIV_1;
++		break;
++	case 8000:
++		pll_clk = 12288000;
++		dac_clkdiv = WM8960_DAC_DIV_6;
++		adc_clkdiv = WM8960_ADC_DIV_6;
++		break;
++	case 12000:
++		pll_clk = 12288000;
++		dac_clkdiv = WM8960_DAC_DIV_4;
++		adc_clkdiv = WM8960_ADC_DIV_4;
++		break;
++	case 16000:
++		pll_clk = 12288000;
++		dac_clkdiv = WM8960_DAC_DIV_3;
++		adc_clkdiv = WM8960_ADC_DIV_3;
++		break;
++	case 24000:
++		pll_clk = 12288000;
++		dac_clkdiv = WM8960_DAC_DIV_2;
++		adc_clkdiv = WM8960_ADC_DIV_2;
++		break;
++	case 32000:
++		pll_clk = 12288000;
++		dac_clkdiv = WM8960_DAC_DIV_1_5;
++		adc_clkdiv = WM8960_ADC_DIV_1_5;
++		break;
++	case 48000:
++		pll_clk = 12288000;
++		dac_clkdiv = WM8960_DAC_DIV_1;
++		adc_clkdiv = WM8960_ADC_DIV_1;
++		break;
++	default:
++		pll_clk = 12288000;
++		dac_clkdiv = WM8960_DAC_DIV_1;
++		adc_clkdiv = WM8960_ADC_DIV_1;
++		break;
++
++	}
++	ret = snd_soc_dai_set_pll(codec_dai, 0, 0, 12000000, pll_clk);
++
++	if (ret) {
++		printk(KERN_ERR "APF51: Unable to set WM8960 PLL\n");
++		return ret;
++	}
++
++	/* set cpu DAI configuration */
++	ret = snd_soc_dai_set_fmt(codec_dai, SND_SOC_DAIFMT_I2S | \
++			SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_CBM_CFM);
++	if (ret)
++		return ret;
++	ret = snd_soc_dai_set_fmt(cpu_dai, SND_SOC_DAIFMT_I2S | \
++			SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_CBM_CFM);
++	if (ret)
++		return ret;
++
++	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
++		/* set DAC clock diverder */
++		snd_soc_dai_set_clkdiv(codec_dai, WM8960_DACDIV, dac_clkdiv);
++
++	} else {
++		/* set ADC clock diverder */
++		snd_soc_dai_set_clkdiv(codec_dai, WM8960_ADCDIV, adc_clkdiv);
++		snd_soc_dai_set_clkdiv(codec_dai, WM8960_DACDIV, dac_clkdiv);
++	}
++
++	ret = snd_soc_dai_set_tdm_slot(cpu_dai, 0xfffffffc, 0xfffffffc, 2, 32);
++	if (ret)
++		return ret;
++
++	/* set BCLK devider */
++	snd_soc_dai_set_clkdiv(codec_dai, WM8960_BCLKDIV, WM8960_BCLK_DIV_4); /* 3 MHz */
++
++	return 0;
++}
++
++static struct snd_soc_ops apf51dev_sound_hifi_ops = {
++	.hw_params = apf51dev_sound_hifi_hw_params,
++};
++
++static int apf51dev_wm8960_init(struct snd_soc_pcm_runtime *rtd)
++{
++	struct snd_soc_codec *codec = rtd->codec;
++	struct snd_soc_dapm_context *dapm = &codec->dapm;
++	int err;
++
++	/* These endpoints are not being used. */
++	snd_soc_dapm_nc_pin(dapm, "LINPUT2");
++	snd_soc_dapm_nc_pin(dapm, "RINPUT2");
++	snd_soc_dapm_nc_pin(dapm, "LINPUT3");
++	snd_soc_dapm_nc_pin(dapm, "RINPUT3");
++	snd_soc_dapm_nc_pin(dapm, "OUT3");
++
++	/* Add jive specific widgets */
++	err = snd_soc_dapm_new_controls(dapm, wm8960_dapm_widgets,
++					ARRAY_SIZE(wm8960_dapm_widgets));
++	if (err) {
++		printk(KERN_ERR "%s: failed to add widgets (%d)\n",
++		       __func__, err);
++		return err;
++	}
++
++	snd_soc_dapm_add_routes(dapm, audio_map, ARRAY_SIZE(audio_map));
++	snd_soc_dapm_sync(dapm);
++
++	return 0;
++}
++
++static struct snd_soc_dai_link apf51dev_dai_wm8960[] = {
++	{
++		.name = "HiFi",
++		.stream_name	= "HiFi",
++		.codec_name	= "wm8960.1-001a",
++		.platform_name	= "imx-fiq-pcm-audio.0",
++		.cpu_dai_name	= "imx-ssi.0",
++		.codec_dai_name	= "wm8960-hifi",
++		.ops		= &apf51dev_sound_hifi_ops,
++		.init		= &apf51dev_wm8960_init,
++		.symmetric_rates = 1,
++	},
++};
++
++static struct snd_soc_card apf51dev_soc_card = {
++	.name		= "APF51Dev-WM8960-audio",
++	.dai_link	= apf51dev_dai_wm8960,
++	.num_links	= ARRAY_SIZE(apf51dev_dai_wm8960),
++};
++
++static struct platform_device *apf51dev_snd_device;
++
++static int __init apf51dev_sound_init(void)
++{
++	int ret;
++
++	if (!machine_is_apf51())
++		/* return happy. We might run on a totally different machine */
++		return 0;
++
++	apf51dev_snd_device = platform_device_alloc("soc-audio", -1);
++	if (!apf51dev_snd_device)
++		return -ENOMEM;
++
++	platform_set_drvdata(apf51dev_snd_device, &apf51dev_soc_card);
++	ret = platform_device_add(apf51dev_snd_device);
++
++	if (ret) {
++		printk(KERN_ERR "ASoC: APF51Dev platform device allocation failed\n");
++		platform_device_put(apf51dev_snd_device);
++	}
++
++	return ret;
++}
++
++static void __exit apf51dev_sound_exit(void)
++{
++	platform_device_unregister(apf51dev_snd_device);
++}
++
++late_initcall(apf51dev_sound_init);
++module_exit(apf51dev_sound_exit);
++
++MODULE_AUTHOR("Julien Boibessot <julien.boibessot@armadeus.com>");
++MODULE_DESCRIPTION("APF51Dev ALSA SoC driver");
++MODULE_LICENSE("GPL");
+Index: linux-2.6.38.1/sound/soc/imx/Kconfig
+===================================================================
+--- linux-2.6.38.1.orig/sound/soc/imx/Kconfig	2011-03-23 21:04:47.000000000 +0100
++++ linux-2.6.38.1/sound/soc/imx/Kconfig	2011-04-26 13:49:48.000000000 +0200
+@@ -52,4 +52,14 @@
+ 	  Enable I2S based access to the TLV320AIC23B codec attached
+ 	  to the SSI interface
+ 
++config SND_SOC_APF51_DEV_WM8960
++	tristate "Soc Audio support for Armadeus Systems APF51Dev board"
++	depends on MACH_APF51_DEV
++	select SND_SOC_WM8960
++	select SND_MXC_SOC_SSI
++	select SND_MXC_SOC_FIQ
++	help
++	  Say Y if you want to add support for SoC audio on APF51 + APF51Dev
++	  combo
++
+ endif	# SND_IMX_SOC
+Index: linux-2.6.38.1/sound/soc/imx/Makefile
+===================================================================
+--- linux-2.6.38.1.orig/sound/soc/imx/Makefile	2011-03-23 21:04:47.000000000 +0100
++++ linux-2.6.38.1/sound/soc/imx/Makefile	2011-04-26 13:49:48.000000000 +0200
+@@ -8,10 +8,12 @@
+ obj-$(CONFIG_SND_MXC_SOC_MX2) += snd-soc-imx-mx2.o
+ 
+ # i.MX Machine Support
++snd-soc-apf51dev-wm8960-objs := apf51dev-wm8960.o
+ snd-soc-eukrea-tlv320-objs := eukrea-tlv320.o
+ snd-soc-phycore-ac97-objs := phycore-ac97.o
+ snd-soc-wm1133-ev1-objs := wm1133-ev1.o
+ 
++obj-$(CONFIG_SND_SOC_APF51_DEV_WM8960) += snd-soc-apf51dev-wm8960.o
+ obj-$(CONFIG_SND_SOC_EUKREA_TLV320) += snd-soc-eukrea-tlv320.o
+ obj-$(CONFIG_SND_SOC_PHYCORE_AC97) += snd-soc-phycore-ac97.o
+ obj-$(CONFIG_SND_MXC_SOC_WM1133_EV1) += snd-soc-wm1133-ev1.o

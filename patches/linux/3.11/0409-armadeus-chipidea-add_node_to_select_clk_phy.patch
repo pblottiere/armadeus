@@ -1,0 +1,29 @@
+
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+---
+Index: linux-3.11-rc1/drivers/usb/chipidea/ci_hdrc_imx.c
+===================================================================
+--- linux-3.11-rc1.orig/drivers/usb/chipidea/ci_hdrc_imx.c
++++ linux-3.11-rc1/drivers/usb/chipidea/ci_hdrc_imx.c
+@@ -80,6 +80,9 @@ int usbmisc_get_init_data(struct device
+ 	if (of_find_property(np, "external-vbus-divider", NULL))
+ 		usbdev->evdo = 1;
+ 
++	if (!of_find_property(np, "ext-clk-en", NULL))
++		usbdev->ext_clk_en = 1;
++
+ 	return 0;
+ }
+ EXPORT_SYMBOL_GPL(usbmisc_get_init_data);
+Index: linux-3.11-rc1/drivers/usb/chipidea/ci_hdrc_imx.h
+===================================================================
+--- linux-3.11-rc1.orig/drivers/usb/chipidea/ci_hdrc_imx.h
++++ linux-3.11-rc1/drivers/usb/chipidea/ci_hdrc_imx.h
+@@ -23,6 +23,7 @@ struct usbmisc_usb_device {
+ 
+ 	unsigned int disable_oc:1; /* over current detect disabled */
+ 	unsigned int evdo:1; /* set external vbus divider option */
++	unsigned int ext_clk_en:1; /* select the clock from external PHY*/
+ };
+ 
+ int usbmisc_set_ops(const struct usbmisc_ops *ops);

@@ -1,0 +1,147 @@
+Add APF27 APF27dev USB to device tree
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+--- linux-3.13-rc8/arch/arm/boot/dts/imx27-apf27dev.dts
++++ linux-3.13-rc8/arch/arm/boot/dts/imx27-apf27dev.dts
+@@ -16,6 +16,17 @@
+ 	model = "Armadeus Systems APF27Dev docking/development board";
+ 	compatible = "armadeus,imx27-apf27dev", "armadeus,imx27-apf27", "fsl,imx27";
+ 
++	regulators {
++		compatible = "simple-bus";
++
++		reg_usbh1_vbus: usbh1_vbus {
++			compatible = "regulator-fixed";
++			regulator-name = "usbh1_vbus";
++			regulator-min-microvolt = <5000000>;
++			regulator-max-microvolt = <5000000>;
++		};
++	};
++
+ 	display: display {
+ 		model = "Chimei-LW700AT9003";
+ 		native-mode = <&timing0>;
+@@ -56,6 +67,12 @@
+ 		};
+ 	};
+ 
++	usbphy1: usbphy@1 {
++		compatible = "usb-nop-xceiv";
++		clocks = <&clks 75>;
++		clock-names = "main_clk";
++		status = "okay";
++	};
+ };
+ 
+ &cspi1 {
+@@ -130,6 +147,23 @@
+ 			>;
+ 		};
+ 	};
++
++	usbh1 {
++		pinctrl_usbh1: usbh1 {
++			fsl,pins = <
++				MX27_PAD_USBH1_SUSP__USBH1_SUSP 0
++				MX27_PAD_USB_PWR__USB_PWR 0
++				MX27_PAD_USB_OC_B__USB_OC_B 0
++				MX27_PAD_USBH1_RCV__USBH1_RCV 0
++				MX27_PAD_USBH1_FS__USBH1_FS 0
++				MX27_PAD_USBH1_OE_B__USBH1_OE_B 0
++				MX27_PAD_USBH1_TXDM__USBH1_TXDM 0
++				MX27_PAD_USBH1_TXDP__USBH1_TXDP 0
++				MX27_PAD_USBH1_RXDM__USBH1_RXDM 0
++				MX27_PAD_USBH1_RXDP__USBH1_RXDP 0
++			>;
++		};
++	};
+ };
+ 
+ &sdhci2 {
+@@ -139,3 +173,16 @@
+ 	pinctrl-0 = <&pinctrl_sdhc2_1>;
+ 	status = "okay";
+ };
++
++&usbh1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_usbh1>;
++	fsl,usbphy = <&usbphy1>;
++	fsl,usbmisc = <&usbmisc 1>;
++	phy_type = "serial";
++	dr_mode = "host";
++	vbus-supply = <&reg_usbh1_vbus>;
++	sic = <0>;
++	disable-tll;
++	status = "okay";
++};
+--- linux-3.13-rc8/arch/arm/boot/dts/imx27-apf27.dts
++++ linux-3.13-rc8/arch/arm/boot/dts/imx27-apf27.dts
+@@ -32,6 +32,24 @@
+ 			clock-frequency = <0>;
+ 		};
+ 	};
++
++	regulators {
++		compatible = "simple-bus";
++
++		reg_usbotg_vbus: usbotg_vbus {
++			compatible = "regulator-fixed";
++			regulator-name = "usbotg_vbus";
++			regulator-min-microvolt = <5000000>;
++			regulator-max-microvolt = <5000000>;
++		};
++	};
++
++	usbphy0: usbphy@0 {
++		compatible = "usb-nop-xceiv";
++		clocks = <&clks 75>;
++		clock-names = "main_clk";
++		status = "okay";
++	};
+ };
+ 
+ &uart1 {
+@@ -87,3 +105,40 @@
+ 		reg = <0x800000 0xf800000>;
+ 	};
+ };
++
++&usbmisc {
++	status = "okay";
++};
++
++&usbotg {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_usbotg>;
++	fsl,usbphy = <&usbphy0>;
++	fsl,usbmisc = <&usbmisc 0>;
++	phy_type = "ulpi";
++	dr_mode = "otg";
++	vbus-supply = <&reg_usbotg_vbus>;
++	disable-over-current;
++	status = "okay";
++};
++
++&iomuxc {
++	usbotg {
++		pinctrl_usbotg: usbotg {
++			fsl,pins = <
++				MX27_PAD_USBOTG_NXT__USBOTG_NXT 0
++				MX27_PAD_USBOTG_STP__USBOTG_STP 0
++				MX27_PAD_USBOTG_DIR__USBOTG_DIR 0
++				MX27_PAD_USBOTG_CLK__USBOTG_CLK 0
++				MX27_PAD_USBOTG_DATA7__USBOTG_DATA7 0
++				MX27_PAD_USBOTG_DATA5__USBOTG_DATA5 0
++				MX27_PAD_USBOTG_DATA6__USBOTG_DATA6 0
++				MX27_PAD_USBOTG_DATA0__USBOTG_DATA0 0
++				MX27_PAD_USBOTG_DATA2__USBOTG_DATA2 0
++				MX27_PAD_USBOTG_DATA1__USBOTG_DATA1 0
++				MX27_PAD_USBOTG_DATA4__USBOTG_DATA4 0
++				MX27_PAD_USBOTG_DATA3__USBOTG_DATA3 0
++			>;
++		};
++	};
++};
+--

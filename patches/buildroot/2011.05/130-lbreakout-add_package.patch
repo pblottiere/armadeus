@@ -1,0 +1,82 @@
+Add LBreakout2 games to BR.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2011-08-08 12:16:03.000000000 +0200
++++ buildroot/package/Config.in	2011-08-08 12:16:06.000000000 +0200
+@@ -87,6 +87,7 @@
+ menu "Games"
+ source "package/e-uae/Config.in"
+ source "package/games/gnuchess/Config.in"
++source "package/lbreakout2/Config.in"
+ source "package/opentyrian/Config.in"
+ source "package/games/prboom/Config.in"
+ source "package/games/quake-pak/Config.in"
+Index: buildroot/package/lbreakout2/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/lbreakout2/Config.in	2011-08-08 12:16:06.000000000 +0200
+@@ -0,0 +1,26 @@
++config BR2_PACKAGE_LBREAKOUT2
++	bool "LBreakout2"
++	select BR2_PACKAGE_SDL
++	help
++	  LBreakout2 is the successor to LBreakout, a breakout-style arcade
++	  game in the manner of Arkanoid.
++
++	  http://lgames.sourceforge.net/index.php?project=LBreakout2
++
++if BR2_PACKAGE_LBREAKOUT2
++
++config BR2_PACKAGE_LBREAKOUT2_AUDIO
++	bool "audio support"
++	default y
++	select BR2_PACKAGE_SDL_MIXER
++	help
++	  Activates audio support. Will add SDL_mixer.
++
++config BR2_PACKAGE_LBREAKOUT2_NET
++	bool "network support"
++	default y
++	select BR2_PACKAGE_SDL_NET
++	help
++	  Activates network support. Will add SDL_net.
++
++endif
+Index: buildroot/package/lbreakout2/lbreakout2.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/lbreakout2/lbreakout2.mk	2011-08-08 12:16:06.000000000 +0200
+@@ -0,0 +1,30 @@
++#############################################################
++#
++# LBreakout2
++#
++#############################################################
++
++LBREAKOUT2_SITE:=http://$(BR2_SOURCEFORGE_MIRROR).dl.sourceforge.net/sourceforge/lgames
++LBREAKOUT2_VERSION:=2.6.1
++LBREAKOUT2_SOURCE:=lbreakout2-$(LBREAKOUT2_VERSION).tar.gz
++LBREAKOUT2_CAT=$(ZCAT)
++
++LBREAKOUT2_DEPENDENCIES = sdl
++LBREAKOUT2_CONF_OPT += --disable-nls
++
++ifeq ($(BR2_PACKAGE_LBREAKOUT2_AUDIO),y)
++LBREAKOUT2_DEPENDENCIES += sdl_mixer
++else
++LBREAKOUT2_CONF_OPT += --disable-audio
++endif
++
++ifeq ($(BR2_PACKAGE_LBREAKOUT2_NET),y)
++LBREAKOUT2_DEPENDENCIES += sdl_net
++else
++LBREAKOUT2_CONF_OPT += --disable-network
++endif
++
++LBREAKOUT2_CONF_ENV = \
++	SDL_CONFIG="$(STAGING_DIR)/usr/bin/sdl-config"
++
++$(eval $(call AUTOTARGETS,package,lbreakout2))

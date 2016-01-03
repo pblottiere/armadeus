@@ -1,0 +1,56 @@
+Date: Tue, 27 Jan 2015 14:37:42 +0100
+From: Gaetan Hug <ghug@induct.be>
+To: Armadeus Forum ML <armadeus-forum@lists.sourceforge.net>,
+	<linux-pwm@vger.kernel.org>
+Subject: [Armadeus-forum] Found bug in pwm-mxs.c
+
+Hello folks,
+
+   I found a bug in the pwm-mxs.c driver for the i.MX28 platform.
+
+   The driver computes from the desired period which clock divider it 
+should be using. This computation assumes that the link between the 
+register value and the actual divider value is raising 2 to the power of 
+the registry value.
+
+    div = 1 << regvalue
+
+   This is true only for the first 5 values out of 8. Next values are 
+64, 256 and, 1024.
+   This affects only the user only if he requests a period > 0.04369s.
+   I solved this by replacing the computation of the divider value with 
+a lookup table.
+
+   If I should provide it in a different manner for it to be included in 
+the kernel, please let me know.
+
+Best regards
+
+Gaetan Hug
+
+------
+
+Index: linux-3.18.5/drivers/pwm/pwm-mxs.c
+===================================================================
+--- linux-3.18.5.orig/drivers/pwm/pwm-mxs.c	2015-01-30 02:41:03.000000000 +0100
++++ linux-3.18.5/drivers/pwm/pwm-mxs.c	2015-02-17 17:14:54.082954410 +0100
+@@ -51,16 +51,17 @@
+ 	unsigned int period_cycles, duty_cycles;
+ 	unsigned long rate;
+ 	unsigned long long c;
++	unsigned const int cdiv[PERIOD_CDIV_MAX] = {1, 2, 4, 8, 16, 64, 256, 1024};
+ 
+ 	rate = clk_get_rate(mxs->clk);
+ 	while (1) {
+-		c = rate / (1 << div);
++		c = rate / cdiv[div];
+ 		c = c * period_ns;
+ 		do_div(c, 1000000000);
+ 		if (c < PERIOD_PERIOD_MAX)
+ 			break;
+ 		div++;
+-		if (div > PERIOD_CDIV_MAX)
++		if (div >= PERIOD_CDIV_MAX)
+ 			return -EINVAL;
+ 	}
+ 

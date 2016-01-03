@@ -1,0 +1,15 @@
+config ARMADEUS_FPGA_VIRTUAL_COMPONENTS
+	boolean "virtual components"
+	default y
+	depends on ARMADEUS_FPGA_DRIVERS
+	---help---
+	  Armadeus driver specific for virtual components
+	  under FPGA.
+
+source "drivers/armadeus/fpga/virtual_components/irq_mngr/Kconfig"
+source "drivers/armadeus/fpga/virtual_components/button/Kconfig"
+source "drivers/armadeus/fpga/virtual_components/led/Kconfig"
+source "drivers/armadeus/fpga/virtual_components/pod_gpio/Kconfig"
+source "drivers/armadeus/fpga/virtual_components/pod_pwm/Kconfig"
+source "drivers/armadeus/fpga/virtual_components/pod_servo/Kconfig"
+source "drivers/armadeus/fpga/virtual_components/sploader/Kconfig"

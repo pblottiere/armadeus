@@ -1,0 +1,17 @@
+Otherwise OTG controller accesses freeze at startup on APF51.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: linux-3.0.10/arch/arm/mach-mx5/clock-mx51-mx53.c
+===================================================================
+--- linux-3.0.10.orig/arch/arm/mach-mx5/clock-mx51-mx53.c	2011-11-30 17:18:02.000000000 +0100
++++ linux-3.0.10/arch/arm/mach-mx5/clock-mx51-mx53.c	2011-11-30 18:52:36.000000000 +0100
+@@ -1522,7 +1522,7 @@
+ 	mx51_display_revision();
+ 
+ 	/* move usb_phy_clk to 24MHz */
+-	clk_set_parent(&usb_phy1_clk, &osc_clk);
++/*	clk_set_parent(&usb_phy1_clk, &osc_clk); */
+ 
+ 	/* set the usboh3_clk parent to pll2_sw_clk */
+ 	clk_set_parent(&usboh3_clk, &pll2_sw_clk);

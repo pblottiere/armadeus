@@ -1,0 +1,15 @@
+restore command env param compatitbility with legacy U-Boot versions
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+--- uboot-custom/common/cmd_nvedit.c
++++ uboot-custom/common/cmd_nvedit.c
+@@ -749,7 +749,7 @@ static int do_env_default(cmd_tbl_t *cmd
+ 		}
+ 	}
+ 	debug("Final value for argc=%d\n", argc);
+-	if (all && (argc == 0)) {
++	if ((all || (flag & H_FORCE)) && (argc == 0)) {
+ 		/* Reset the whole environment */
+ 		set_default_env("## Resetting to default environment\n");
+ 		return 0;

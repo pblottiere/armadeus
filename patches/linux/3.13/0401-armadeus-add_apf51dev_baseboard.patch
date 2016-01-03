@@ -1,0 +1,68 @@
+The APF51Dev is a docking board for an APF51 SOM
+
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+Signed-off-by: Laurent Cans <laurent.cans@gmail.com>
+---
+Index: linux-3.13-rc7/arch/arm/boot/dts/imx51-apf51dev.dts
+===================================================================
+--- linux-3.13-rc7.orig/arch/arm/boot/dts/imx51-apf51dev.dts
++++ linux-3.13-rc7/arch/arm/boot/dts/imx51-apf51dev.dts
+@@ -61,6 +61,12 @@
+ 			gpios = <&gpio1 2 0>;
+ 			linux,default-trigger = "heartbeat";
+ 		};
++
++		backlight {
++			label = "Backlight";
++			gpios = <&gpio3 4 0>;
++			default-state = "on";
++		};
+ 	};
+ };
+ 
+@@ -78,6 +84,14 @@
+ 	fsl,spi-num-chipselects = <2>;
+ 	cs-gpios = <&gpio3 28 1>, <&gpio3 27 1>;
+ 	status = "okay";
++
++	spidev: spidev@1 {
++		#address-cells = <1>;
++		#size-cells = <1>;
++		compatible = "spidev";
++		spi-max-frequency = <25000000>;
++		reg = <1>;
++	};
+ };
+ 
+ &esdhc1 {
+@@ -92,7 +106,6 @@
+ 	pinctrl-names = "default";
+ 	pinctrl-0 = <&pinctrl_esdhc2_1>;
+ 	bus-width = <4>;
+-	non-removable;
+ 	status = "okay";
+ };
+ 
+@@ -102,6 +115,13 @@
+ 	status = "okay";
+ };
+ 
++&uart2 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_uart2_1>;
++	fsl,uart-has-rtscts;
++	status = "okay";
++};
++
+ &iomuxc {
+ 	pinctrl-names = "default";
+ 	pinctrl-0 = <&pinctrl_hog>;
+@@ -118,6 +138,8 @@
+ 				MX51_PAD_CSPI1_SS1__GPIO4_25 0x0C5
+ 				MX51_PAD_GPIO1_2__GPIO1_2    0x0C5
+ 				MX51_PAD_GPIO1_3__GPIO1_3    0x0C5
++				MX51_PAD_DI1_D1_CS__GPIO3_4  0x0C5
++				MX51_PAD_EIM_CS3__GPIO2_28   0x0C5
+ 			>;
+ 		};
+ 	};

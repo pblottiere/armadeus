@@ -1,0 +1,36 @@
+From patchwork Thu Dec 12 13:27:57 2013
+Content-Type: text/plain; charset="utf-8"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+Subject: [1/4] ARM: dts: imx6qdl: add aliases for can interfaces
+From: Lothar Wassmann <LW@KARO-electronics.de>
+X-Patchwork-Id: 3332181
+Message-Id: <1386854880-21805-2-git-send-email-LW@KARO-electronics.de>
+To: linux-arm-kernel@lists.infradead.org
+Cc: Mark Rutland <mark.rutland@arm.com>, devicetree@vger.kernel.org,
+	Pawel Moll <pawel.moll@arm.com>,
+	Ian Campbell <ijc+devicetree@hellion.org.uk>, 
+	Rob Herring <robh+dt@kernel.org>, Kumar Gala <galak@codeaurora.org>, 
+	Shawn Guo <shawn.guo@linaro.org>,
+	=?UTF-8?q?Lothar=20Wa=C3=9Fmann?= <LW@KARO-electronics.de>
+Date: Thu, 12 Dec 2013 14:27:57 +0100
+
+Signed-off-by: Lothar Waßmann <LW@KARO-electronics.de>
+
+---
+arch/arm/boot/dts/imx6qdl.dtsi |    2 ++
+ 1 files changed, 2 insertions(+), 0 deletions(-)
+
+Index: linux-3.14-rc3/arch/arm/boot/dts/imx6qdl.dtsi
+===================================================================
+--- linux-3.14-rc3.orig/arch/arm/boot/dts/imx6qdl.dtsi
++++ linux-3.14-rc3/arch/arm/boot/dts/imx6qdl.dtsi
+@@ -14,6 +14,8 @@
+ 
+ / {
+ 	aliases {
++		can0 = &can1;
++		can1 = &can2;
+ 		gpio0 = &gpio1;
+ 		gpio1 = &gpio2;
+ 		gpio2 = &gpio3;

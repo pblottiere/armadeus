@@ -1,0 +1,37 @@
+config BR2_PACKAGE_AS_DEVICES
+	bool "as_devices"
+	depends on BR2_TARGET_ARMADEUS
+	help
+          Library that drives armadeus specific devices.
+
+config BR2_PACKAGE_AS_DEVICES_TESTS
+	bool "as_devices test tool"
+	depends on BR2_PACKAGE_AS_DEVICES
+	help
+	  Executable that can test all as_devices modules.
+
+config BR2_PACKAGE_AS_DEVICES_CPP
+	depends on BR2_PACKAGE_AS_DEVICES
+	depends on BR2_INSTALL_LIBSTDCPP
+	bool "C++ wrapper"
+	help
+	  C++ wrapper for as_devices library.
+
+config BR2_PACKAGE_AS_DEVICES_TESTS_CPP
+	bool "as_devices C++ wrapper test tool"
+	depends on BR2_PACKAGE_AS_DEVICES_CPP
+	help
+	  Executable that can test as_devices C++ wrappers.
+
+config BR2_PACKAGE_AS_DEVICES_PYTHON
+	depends on BR2_PACKAGE_AS_DEVICES
+	depends on BR2_PACKAGE_PYTHON
+	bool "Python wrapper"
+	help
+	  Python wrapper for as_devices library. Needs python.
+
+comment "C++ wrapper requires a toolchain with C++ support"
+	depends on !BR2_TOOLCHAIN_BUILDROOT_CXX
+
+comment "Python wrapper requires python interpreter"
+	depends on BR2_PACKAGE_AS_DEVICES && !BR2_PACKAGE_PYTHON

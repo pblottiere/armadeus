@@ -1,0 +1,29 @@
+Allows more than 4 chip select to be used on mx5 platform
+Chip select management under linux is done through gpios so use
+modulo to stay within the 4 controller chip select
+Signed-off-by: Nicolas Colombain <nicolas.colombain@armadeus.com>
+
+Index: linux-2.6.38.1/drivers/spi/spi_imx.c
+===================================================================
+--- linux-2.6.38.1.orig/drivers/spi/spi_imx.c	2011-11-30 15:54:07.000000000 +0100
++++ linux-2.6.38.1/drivers/spi/spi_imx.c	2011-12-01 11:53:08.000000000 +0100
+@@ -177,14 +177,14 @@ static unsigned int spi_imx_clkdiv_2(uns
+ #define SPI_IMX2_3_CTRL_MODE_MASK	(0xf << 4)
+ #define SPI_IMX2_3_CTRL_POSTDIV_OFFSET	8
+ #define SPI_IMX2_3_CTRL_PREDIV_OFFSET	12
+-#define SPI_IMX2_3_CTRL_CS(cs)		((cs) << 18)
++#define SPI_IMX2_3_CTRL_CS(cs)		((cs & 0x03) << 18)
+ #define SPI_IMX2_3_CTRL_BL_OFFSET	20
+ 
+ #define SPI_IMX2_3_CONFIG	0x0c
+-#define SPI_IMX2_3_CONFIG_SCLKPHA(cs)	(1 << ((cs) +  0))
+-#define SPI_IMX2_3_CONFIG_SCLKPOL(cs)	(1 << ((cs) +  4))
+-#define SPI_IMX2_3_CONFIG_SBBCTRL(cs)	(1 << ((cs) +  8))
+-#define SPI_IMX2_3_CONFIG_SSBPOL(cs)	(1 << ((cs) + 12))
++#define SPI_IMX2_3_CONFIG_SCLKPHA(cs)	(1 << ((cs & 0x03) +  0))
++#define SPI_IMX2_3_CONFIG_SCLKPOL(cs)	(1 << ((cs & 0x03) +  4))
++#define SPI_IMX2_3_CONFIG_SBBCTRL(cs)	(1 << ((cs & 0x03) +  8))
++#define SPI_IMX2_3_CONFIG_SSBPOL(cs)	(1 << ((cs & 0x03) + 12))
+ 
+ #define SPI_IMX2_3_INT		0x10
+ #define SPI_IMX2_3_INT_TEEN		(1 <<  0)

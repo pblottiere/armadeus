@@ -1,0 +1,9 @@
+
+config ARMADEUS_FPGA_VIRTUAL_SPVISION_LOADER
+	tristate "sploader"
+	default n
+	depends on ARMADEUS_FPGA_VIRTUAL_COMPONENTS
+	---help---
+	  With this driver you will be able to (re)load the
+	  configuration of your SP_VISION FPGA directly from
+	  Linux userspace

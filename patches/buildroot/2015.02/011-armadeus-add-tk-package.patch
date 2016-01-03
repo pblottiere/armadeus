@@ -1,0 +1,72 @@
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in
++++ buildroot/package/Config.in
+@@ -538,6 +538,7 @@ if BR2_PACKAGE_TCL
+ menu "tcl libraries/modules"
+	source "package/expect/Config.in"
+	source "package/tcllib/Config.in"
++	source "package/tk/Config.in"
+ endmenu
+ endif
+ endmenu
+Index: buildroot/package/tk/Config.in
+===================================================================
+--- /dev/null
++++ buildroot/package/tk/Config.in
+@@ -0,0 +1,18 @@
++config BR2_PACKAGE_TK
++	bool "tk"
++	depends on BR2_PACKAGE_TCL
++	depends on BR2_PACKAGE_XORG7
++	help
++	  Tk is a GUI toolkit for Tcl
++
++	  http://www.tcl.tk/
++
++config BR2_PACKAGE_TK_NO_DEMOS
++	bool "remove demos"
++	default y
++	depends on BR2_PACKAGE_TK
++	help
++	  Remove Tk demo files from target rootfs
++
++comment "Tk needs X.org, Tcl"
++        depends on !BR2_PACKAGE_TCL || !BR2_PACKAGE_XORG7
+Index: buildroot/package/tk/tk.mk
+===================================================================
+--- /dev/null
++++ buildroot/package/tk/tk.mk
+@@ -0,0 +1,30 @@
++################################################################################
++#
++# tk
++#
++################################################################################
++
++TK_VERSION_MAJOR = 8.4
++TK_VERSION = $(TK_VERSION_MAJOR).20
++TK_SOURCE = tk$(TK_VERSION)-src.tar.gz
++TK_SITE = http://downloads.sourceforge.net/project/tcl/Tcl/$(TK_VERSION)
++TK_LICENSE = tcl license
++TK_LICENSE_FILES = license.terms
++TK_SUBDIR = unix
++TK_INSTALL_STAGING = YES
++TK_DEPENDENCIES = tcl xlib_libX11
++
++# shouldn't be $(STAGING_DIR) ?
++TK_CONF_OPTS = \
++		--with-tcl=$(TARGET_DIR)/usr/lib \
++		--with-x \
++		--x-includes=$(STAGING_DIR)/usr/include/X11
++
++ifeq ($(BR2_PACKAGE_TK_NO_DEMOS),y)
++define TCL_REMOVE_DEMOS
++	rm -rf $(TARGET_DIR)/usr/lib/tk$(TK_VERSION_MAJOR)/demos
++endef
++TK_POST_INSTALL_TARGET_HOOKS += TK_REMOVE_DEMOS
++endif
++
++$(eval $(autotools-package))

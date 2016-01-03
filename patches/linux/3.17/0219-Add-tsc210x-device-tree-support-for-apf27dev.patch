@@ -1,0 +1,33 @@
+
+Add tsc210x device tree support for apf27dev
+
+Signed-off-by: Yvan Roch <yvan.roch@gmail.com>
+---
+ arch/arm/boot/dts/imx27-apf27dev.dts | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/arch/arm/boot/dts/imx27-apf27dev.dts b/arch/arm/boot/dts/imx27-apf27dev.dts
+index 39a8cb4..cfa797f 100644
+--- a/arch/arm/boot/dts/imx27-apf27dev.dts
++++ b/arch/arm/boot/dts/imx27-apf27dev.dts
+@@ -72,6 +72,18 @@
+ 	pinctrl-names = "default";
+ 	pinctrl-0 = <&pinctrl_cspi2_1>;
+ 	status = "okay";
++	tsc210x@0 {
++		compatible = "tsc210x";
++		reg = <0>;
++		spi-max-frequency = <8000000>;
++		/* SPI mode = 0 */
++		spi-cpol = <0>;
++		spi-cpha = <0>;
++		tsc210x-mclk = <12288000>;	/* MCLK value in Master mode */
++		tsc210x-use_internal = <1>;	/* Use internal voltage reference */
++		tsc210x-monitor = <21>;		/* TSC_BAT1 | TSC_AUX | TSC_TEMP */
++		tsc210x-irq = <257>;		/* GPIO port 6 pin 17 (6-1)*32 + 17 + 64 + 16 */
++	};
+ };
+ 
+ &i2c1 {
+--
+1.8.4.2

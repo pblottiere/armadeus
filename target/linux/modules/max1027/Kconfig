@@ -1,0 +1,9 @@
+#
+#
+
+config ARMADEUS_MAX1027
+        tristate "Armadeus Max1027 ADC driver (fast version)"
+        default n
+        depends on ARMADEUS_DRIVERS
+        ---help---
+	  Max1027 fast driver

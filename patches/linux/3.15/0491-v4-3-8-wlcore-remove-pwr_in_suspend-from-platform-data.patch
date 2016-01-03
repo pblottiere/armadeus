@@ -1,0 +1,92 @@
+From patchwork Tue Jul 30 13:04:31 2013
+Content-Type: text/plain; charset="utf-8"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Subject: [v4,3/8] wlcore: remove pwr_in_suspend from platform data
+From: Luciano Coelho <coelho@ti.com>
+X-Patchwork-Id: 2835678
+Message-Id: <1375189476-21557-4-git-send-email-coelho@ti.com>
+To: <linux-wireless@vger.kernel.org>, <tony@atomide.com>,
+	<nsekhar@ti.com>
+Cc: <coelho@ti.com>, <luca@coelho.fi>, <mturquette@linaro.org>,
+	<mark.rutland@arm.com>, <balbi@ti.com>, <grant.likely@linaro.org>,
+	<rob.herring@calxeda.com>, <devicetree-discuss@lists.ozlabs.org>,
+	<linux-doc@vger.kernel.org>, <linux-kernel@vger.kernel.org>,
+	<linux-omap@vger.kernel.org>,
+	<linux-arm-kernel@lists.infradead.org>, <nm@ti.com>,
+	<martinez.javier@gmail.com>
+Date: Tue, 30 Jul 2013 16:04:31 +0300
+
+The pwr_in_suspend flag depends on the MMC settings which can be
+retrieved from the SDIO subsystem, so it doesn't need to be part of
+the platform data structure.  Move it to the platform device data that
+is passed from SDIO to wlcore.
+
+Signed-off-by: Luciano Coelho <coelho@ti.com>
+Reviewed-by: Felipe Balbi <balbi@ti.com>
+
+---
+drivers/net/wireless/ti/wlcore/main.c     | 3 +--
+ drivers/net/wireless/ti/wlcore/sdio.c     | 2 +-
+ drivers/net/wireless/ti/wlcore/wlcore_i.h | 1 +
+ include/linux/wl12xx.h                    | 1 -
+ 4 files changed, 3 insertions(+), 4 deletions(-)
+
+Index: linux-3.13/drivers/net/wireless/ti/wlcore/main.c
+===================================================================
+--- linux-3.13.orig/drivers/net/wireless/ti/wlcore/main.c
++++ linux-3.13/drivers/net/wireless/ti/wlcore/main.c
+@@ -6033,7 +6033,6 @@ static void wlcore_nvs_cb(const struct f
+ 	struct wl1271 *wl = context;
+ 	struct platform_device *pdev = wl->pdev;
+ 	struct wlcore_platdev_data *pdev_data = dev_get_platdata(&pdev->dev);
+-	struct wl12xx_platform_data *pdata = pdev_data->pdata;
+ 
+ 	int ret;
+ 	irq_handler_t hardirq_fn = NULL;
+@@ -6081,7 +6080,7 @@ static void wlcore_nvs_cb(const struct f
+ 	if (!ret) {
+ 		wl->irq_wake_enabled = true;
+ 		device_init_wakeup(wl->dev, 1);
+-		if (pdata->pwr_in_suspend)
++		if (pdev_data->pwr_in_suspend)
+ 			wl->hw->wiphy->wowlan = &wlcore_wowlan_support;
+ 	}
+ #endif
+Index: linux-3.13/drivers/net/wireless/ti/wlcore/sdio.c
+===================================================================
+--- linux-3.13.orig/drivers/net/wireless/ti/wlcore/sdio.c
++++ linux-3.13/drivers/net/wireless/ti/wlcore/sdio.c
+@@ -260,7 +260,7 @@ static int wl1271_probe(struct sdio_func
+ 	dev_dbg(glue->dev, "sdio PM caps = 0x%x\n", mmcflags);
+ 
+ 	if (mmcflags & MMC_PM_KEEP_POWER)
+-		pdev_data->pdata->pwr_in_suspend = true;
++		pdev_data->pwr_in_suspend = true;
+ 
+ 	sdio_set_drvdata(func, glue);
+ 
+Index: linux-3.13/drivers/net/wireless/ti/wlcore/wlcore_i.h
+===================================================================
+--- linux-3.13.orig/drivers/net/wireless/ti/wlcore/wlcore_i.h
++++ linux-3.13/drivers/net/wireless/ti/wlcore/wlcore_i.h
+@@ -209,6 +209,7 @@ struct wl1271_if_operations {
+ struct wlcore_platdev_data {
+ 	struct wl12xx_platform_data *pdata;
+ 	struct wl1271_if_operations *if_ops;
++	bool pwr_in_suspend;
+ };
+ 
+ #define MAX_NUM_KEYS 14
+Index: linux-3.13/include/linux/wl12xx.h
+===================================================================
+--- linux-3.13.orig/include/linux/wl12xx.h
++++ linux-3.13/include/linux/wl12xx.h
+@@ -55,7 +55,6 @@ struct wl12xx_platform_data {
+ 	bool use_eeprom;
+ 	int board_ref_clock;
+ 	int board_tcxo_clock;
+-	bool pwr_in_suspend;
+ };
+ 
+ #ifdef CONFIG_WILINK_PLATFORM_DATA

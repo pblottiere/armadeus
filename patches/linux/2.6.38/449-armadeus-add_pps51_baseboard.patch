@@ -1,0 +1,379 @@
+Add APF51_PPS baseboard support.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+Signed-off-by: Fabien Marteau <fabien.marteau@armadeus.com> 
+
+Index: linux-2.6.38.8/arch/arm/mach-mx5/Kconfig
+===================================================================
+--- linux-2.6.38.8.orig/arch/arm/mach-mx5/Kconfig	2011-12-15 10:13:07.000000000 +0100
++++ linux-2.6.38.8/arch/arm/mach-mx5/Kconfig	2011-12-15 10:33:32.000000000 +0100
+@@ -197,6 +197,18 @@
+ 	  This selects the APF51Dev as baseboard and adds board's specific
+ 	  devices.
+ 
++config MACH_APF51_PPS
++	prompt "Armadeus systems APF51_PPS development board"
++	bool
++	select MACH_APF51_HAS_BASEBOARD
++	select IMX_HAVE_PLATFORM_IMX_IPUV3
++	select IMX_HAVE_PLATFORM_SPI_IMX
++	select IMX_HAVE_PLATFORM_SDHCI_ESDHC_IMX
++	select IMX_HAVE_PLATFORM_IMX_SSI
++	help
++	  This selects the APF51_PPS as baseboard and adds board's specific
++	  devices.
++
+ config MACH_APF51_PROTO
+ 	prompt "Armadeus systems APF51Proto development board"
+ 	bool
+Index: linux-2.6.38.8/arch/arm/mach-mx5/Makefile
+===================================================================
+--- linux-2.6.38.8.orig/arch/arm/mach-mx5/Makefile	2011-12-15 10:13:07.000000000 +0100
++++ linux-2.6.38.8/arch/arm/mach-mx5/Makefile	2011-12-15 10:33:32.000000000 +0100
+@@ -10,6 +10,7 @@
+ obj-$(CONFIG_CPU_FREQ_IMX)    += cpu_op-mx51.o
+ obj-$(CONFIG_MACH_APF51) += board-apf51.o
+ obj-$(CONFIG_MACH_APF51_DEV) += apf51dev-baseboard.o
++obj-$(CONFIG_MACH_APF51_PPS) += apf51pps-baseboard.o
+ obj-$(CONFIG_MACH_APF51_PROTO) += apf51proto-baseboard.o
+ obj-$(CONFIG_MACH_MX51_BABBAGE) += board-mx51_babbage.o
+ obj-$(CONFIG_MACH_MX51_3DS) += board-mx51_3ds.o
+Index: linux-2.6.38.8/arch/arm/mach-mx5/apf51pps-baseboard.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ linux-2.6.38.8/arch/arm/mach-mx5/apf51pps-baseboard.c	2011-12-15 13:48:19.000000000 +0100
+@@ -0,0 +1,334 @@
++ /*
++ * Support for APF51's PPS baseboard (APF51_PPS)
++ *
++ * Copyright (C) 2011 Armadeus systems <support@armadeus.com>
++ *
++ * Based on code which is:
++ * Copyright 2009-2010 Freescale Semiconductor, Inc. All Rights Reserved.
++ * Copyright (C) 2009-2010 Amit Kucheria <amit.kucheria@canonical.com>
++ *
++ * The code contained herein is licensed under the GNU General Public
++ * License. You may obtain a copy of the GNU General Public License
++ * Version 2 or later at the following locations:
++ *
++ * http://www.opensource.org/licenses/gpl-license.html
++ * http://www.gnu.org/copyleft/gpl.html
++ */
++
++#include <linux/gpio.h>
++#include <linux/platform_device.h>
++#include <linux/io.h>
++#include <linux/spi/spi.h>
++#include <linux/fb.h>
++#include <linux/mfd/imx-ipu-v3.h>
++#include <linux/delay.h>
++#include <mach/iomux-mx51.h>
++#include <mach/ipu-v3.h>
++#include <mach/i2c.h>
++#include <linux/can/platform/mcp251x.h>
++
++#include <linux/debugfs.h>
++#include <linux/seq_file.h>
++
++#include <video/hx8369.h>
++
++#include "devices-imx51.h"
++#include "devices.h"
++#include "cpu_op-mx51.h"
++
++#define APF51_GPIO_SPECIAL_PAD_CTRL (PAD_CTL_DSE_HIGH | PAD_CTL_PKE | PAD_CTL_SRE_FAST | PAD_CTL_PUE)
++
++#define APF51_SDHCI_PAD_CTRL	(PAD_CTL_PKE | PAD_CTL_DSE_MED | \
++				PAD_CTL_PUS_47K_UP | PAD_CTL_PUE | \
++				PAD_CTL_SRE_FAST | PAD_CTL_DVS)
++
++#define APF51_LCD_PAD_CTRL (PAD_CTL_SRE_SLOW | PAD_CTL_DSE_MED)
++
++static iomux_v3_cfg_t pps51_pads[] = {
++	/* SD1 */
++	(_MX51_PAD_SD1_CMD__SD1_CMD | MUX_PAD_CTRL(APF51_SDHCI_PAD_CTRL)),
++	(_MX51_PAD_SD1_CLK__SD1_CLK | MUX_PAD_CTRL(APF51_SDHCI_PAD_CTRL)),
++	(_MX51_PAD_SD1_DATA0__SD1_DATA0 | MUX_PAD_CTRL(APF51_SDHCI_PAD_CTRL)),
++	(_MX51_PAD_SD1_DATA1__SD1_DATA1 | MUX_PAD_CTRL(APF51_SDHCI_PAD_CTRL)),
++	(_MX51_PAD_SD1_DATA2__SD1_DATA2 | MUX_PAD_CTRL(APF51_SDHCI_PAD_CTRL)),
++	(_MX51_PAD_SD1_DATA3__SD1_DATA3 | MUX_PAD_CTRL(APF51_SDHCI_PAD_CTRL)),
++	(_MX51_PAD_EIM_CS4__GPIO2_29 | MUX_PAD_CTRL(APF51_GPIO_SPECIAL_PAD_CTRL)),
++	(_MX51_PAD_GPIO1_1__GPIO1_1 | MUX_PAD_CTRL(PAD_CTL_DSE_HIGH | PAD_CTL_PKE | 
++		PAD_CTL_SRE_FAST | PAD_CTL_PUE | PAD_CTL_PUS_100K_DOWN)),
++
++	/* SD2 (WiFi) */
++	(_MX51_PAD_SD2_CMD__SD2_CMD | MUX_PAD_CTRL(APF51_SDHCI_PAD_CTRL)),
++	(_MX51_PAD_SD2_CLK__SD2_CLK | MUX_PAD_CTRL(APF51_SDHCI_PAD_CTRL)),
++	(_MX51_PAD_SD2_DATA0__SD2_DATA0 | MUX_PAD_CTRL(APF51_SDHCI_PAD_CTRL)),
++	(_MX51_PAD_SD2_DATA1__SD2_DATA1 | MUX_PAD_CTRL(APF51_SDHCI_PAD_CTRL)),
++	(_MX51_PAD_SD2_DATA2__SD2_DATA2 | MUX_PAD_CTRL(APF51_SDHCI_PAD_CTRL)),
++	(_MX51_PAD_SD2_DATA3__SD2_DATA3 | MUX_PAD_CTRL(APF51_SDHCI_PAD_CTRL)),
++
++	/* SD2 Detect */
++	(_MX51_PAD_AUD3_BB_CK__GPIO4_20 | MUX_PAD_CTRL(APF51_GPIO_SPECIAL_PAD_CTRL)),
++
++
++	(_MX51_PAD_CSPI1_SS1__GPIO4_25 | MUX_PAD_CTRL(APF51_GPIO_SPECIAL_PAD_CTRL)), /* WIFI_PWRDN# */
++	(_MX51_PAD_CSPI1_RDY__GPIO4_26 | MUX_PAD_CTRL(APF51_GPIO_SPECIAL_PAD_CTRL)), /* WIFI_RESET# */
++
++	/* UART3 (DEBUG)  */
++	MX51_PAD_UART3_RXD__UART3_RXD,
++	MX51_PAD_UART3_TXD__UART3_TXD,
++	/* UART2 (Bluetooth) */
++	MX51_PAD_UART2_RXD__UART2_RXD,
++	MX51_PAD_UART2_TXD__UART2_TXD,
++	MX51_PAD_EIM_D25__UART2_CTS,
++	MX51_PAD_EIM_D26__UART2_RTS,
++
++	(_MX51_PAD_AUD3_BB_RXD__GPIO4_19 | MUX_PAD_CTRL(APF51_GPIO_SPECIAL_PAD_CTRL)), /* BT_RESET# */
++
++	/* UART1 */
++	MX51_PAD_UART1_RXD__UART1_RXD,
++	MX51_PAD_UART1_TXD__UART1_TXD,
++	MX51_PAD_UART1_RTS__UART1_RTS,
++	MX51_PAD_UART1_CTS__UART1_CTS,
++
++	/* eCSPI1 */
++	MX51_PAD_CSPI1_MISO__ECSPI1_MISO,
++	MX51_PAD_CSPI1_MOSI__ECSPI1_MOSI,
++	MX51_PAD_CSPI1_SCLK__ECSPI1_SCLK,
++	(_MX51_PAD_CSPI1_SS0__GPIO4_24 | MUX_PAD_CTRL(APF51_GPIO_SPECIAL_PAD_CTRL)),
++	(_MX51_PAD_CSPI1_SS1__GPIO4_25 | MUX_PAD_CTRL(APF51_GPIO_SPECIAL_PAD_CTRL)),
++
++	/* eCSPI2 */
++	MX51_PAD_NANDF_RB2__ECSPI2_SCLK,
++	MX51_PAD_NANDF_RB3__ECSPI2_MISO,
++	MX51_PAD_NANDF_D15__ECSPI2_MOSI,
++	(_MX51_PAD_NANDF_D12__GPIO3_28 | MUX_PAD_CTRL(APF51_GPIO_SPECIAL_PAD_CTRL)),	/* SS1 */
++	(_MX51_PAD_NANDF_D13__GPIO3_27 | MUX_PAD_CTRL(APF51_GPIO_SPECIAL_PAD_CTRL)),	/* SS2 */
++
++	/* Display */
++	(_MX51_PAD_DISP1_DAT0__DISP1_DAT0 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),
++	(_MX51_PAD_DISP1_DAT1__DISP1_DAT1 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),
++	(_MX51_PAD_DISP1_DAT2__DISP1_DAT2 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),
++	(_MX51_PAD_DISP1_DAT3__DISP1_DAT3 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),
++	(_MX51_PAD_DISP1_DAT4__DISP1_DAT4 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),
++	(_MX51_PAD_DISP1_DAT5__DISP1_DAT5 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),
++	(_MX51_PAD_DISP1_DAT6__DISP1_DAT6 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),
++	(_MX51_PAD_DISP1_DAT7__DISP1_DAT7 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),
++	(_MX51_PAD_DISP1_DAT8__DISP1_DAT8 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),
++	(_MX51_PAD_DISP1_DAT9__DISP1_DAT9 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),
++	(_MX51_PAD_DISP1_DAT10__DISP1_DAT10 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),
++	(_MX51_PAD_DISP1_DAT11__DISP1_DAT11 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),
++	(_MX51_PAD_DISP1_DAT12__DISP1_DAT12 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),
++	(_MX51_PAD_DISP1_DAT13__DISP1_DAT13 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),
++	(_MX51_PAD_DISP1_DAT14__DISP1_DAT14 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),
++	(_MX51_PAD_DISP1_DAT15__DISP1_DAT15 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),
++	(_MX51_PAD_DISP1_DAT16__DISP1_DAT16 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),
++	(_MX51_PAD_DISP1_DAT17__DISP1_DAT17 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),
++	(_MX51_PAD_DISP1_DAT18__DISP1_DAT18 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),
++	(_MX51_PAD_DISP1_DAT19__DISP1_DAT19 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),
++	(_MX51_PAD_DISP1_DAT20__DISP1_DAT20 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),
++	(_MX51_PAD_DISP1_DAT21__DISP1_DAT21 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),
++	(_MX51_PAD_DISP1_DAT22__DISP1_DAT22 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),
++	(_MX51_PAD_DISP1_DAT23__DISP1_DAT23 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),
++	(_MX51_PAD_DI1_PIN2__DI1_PIN2 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),	/* HSYNC */
++	(_MX51_PAD_DI1_PIN3__DI1_PIN3 | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),	/* VSYNC */
++	(_MX51_PAD_DI1_D1_CS__DI1_D1_CS | MUX_PAD_CTRL(APF51_LCD_PAD_CTRL)),	/* CONTRAST */
++
++	/* HDMI detect */
++	(_MX51_PAD_I2C1_DAT__GPIO4_17 | MUX_PAD_CTRL(APF51_GPIO_SPECIAL_PAD_CTRL)),
++
++	/* LEDs */
++	(_MX51_PAD_EIM_EB2__GPIO2_22 | MUX_PAD_CTRL(APF51_GPIO_SPECIAL_PAD_CTRL)), /* Red led */
++	(_MX51_PAD_EIM_EB3__GPIO2_23 | MUX_PAD_CTRL(APF51_GPIO_SPECIAL_PAD_CTRL)), /* green led */
++
++	/* lan95000 resetn */
++	(_MX51_PAD_AUD3_BB_FS__GPIO4_21 | MUX_PAD_CTRL(APF51_GPIO_SPECIAL_PAD_CTRL)),
++
++};
++
++/* Serial ports */
++static struct imxuart_platform_data pps51_uart_pdata = {
++	.flags = IMXUART_HAVE_RTSCTS,
++};
++
++/* APF51Proto has a LCD connector for a 18 bits 800x480 Chimei TFT LCD */
++static struct fb_videomode pps51_modes[] = {
++        {
++		.name 		= "tft480800-hx8369",
++		.refresh 	= 60,
++		.xres 		= 480,
++		.yres 		= 800,
++		.pixclock 	= 30303, /* picoS */
++		.left_margin 	= 45, .right_margin = 98,
++		.upper_margin 	= 0, .lower_margin = 21,
++		.hsync_len 	= 64, .vsync_len = 4,
++		.sync 		= FB_SYNC_CLK_IDLE_EN,
++		.vmode 		= FB_VMODE_NONINTERLACED,
++		.flag 		= 0,
++        },
++};
++
++static struct ipuv3_fb_platform_data pps51_fb0_data = {
++	.interface_pix_fmt = IPU_PIX_FMT_RGB666,
++	.modes = pps51_modes,
++	.num_modes = ARRAY_SIZE(pps51_modes),
++	.display = 0,
++};
++
++static struct imx_ipuv3_platform_data pps51_ipu_data = {
++	.fb_head0_platform_data = &pps51_fb0_data,
++};
++
++/* ECSPI1 */
++#define PPS51_ECSPI1_SS0	IMX_GPIO_NR(4, 24)
++
++static int pps51_spi1_cs[] = {
++	PPS51_ECSPI1_SS0,
++};
++
++static const struct spi_imx_master pps51_spi1_pdata __initconst = {
++	.chipselect     = pps51_spi1_cs,
++	.num_chipselect = ARRAY_SIZE(pps51_spi1_cs),
++};
++
++static void p0340_reset_on(int value){
++}
++
++static struct hx8369_display hx8369_display_config = {
++	.gcontrast_value = 32,
++	.reset_on	 = &p0340_reset_on,
++};
++
++static struct spi_board_info apf51dev_spi1_board_info[] __initdata = {
++	{
++		.modalias = "hx8369-display",
++		.max_speed_hz = 1000,
++		.bus_num = 0,
++		.chip_select = 0,
++		.mode = SPI_MODE_0,
++		.platform_data = &hx8369_display_config,
++	},
++};
++
++/* I2C2 */
++static struct i2c_board_info pps51_i2c2_devices[] __initdata = {
++	{
++	/* EDID */
++		I2C_BOARD_INFO("eeprom", 0x50),
++	},
++};
++
++/* SD card ports */
++#define ESDHC_CARD_DETECT	(GPIO_PORTD | 20)
++static struct esdhc_platform_data edshc0_pdata = {
++	.no_sdio_irq = 1,	/* Temporary ! (for Wi2Wi) */
++};
++
++static struct esdhc_platform_data edshc1_pdata = {
++	.cd_gpio = ESDHC_CARD_DETECT,	/* card detect pin */
++};
++
++static int init_gpio(void)
++{
++#define WIFI_PWRDN		(GPIO_PORTD | 25)
++#define WIFI_RESET		(GPIO_PORTD | 26)
++#define BT_RESET		(GPIO_PORTD | 19)
++#define HDMI_DETECT_GPIO	(GPIO_PORTD | 17)
++
++#define RED_LED_GPIO		(GPIO_PORTB | 22)
++#define GREEN_LED_GPIO		(GPIO_PORTB | 23)
++
++#define LAN9500_RESETN		(GPIO_PORTD | 21)
++
++	int ret;
++
++	/* LAN9500 */
++	ret = gpio_request(LAN9500_RESETN, "LAN9500_RESETN");
++	if (ret) {
++		pr_warn("failed to get LAN9500_RESETN GPIO: %d\n", ret);
++		return ret;
++	}
++	gpio_direction_output(LAN9500_RESETN, 1);
++	gpio_set_value(LAN9500_RESETN, 1);
++
++
++	/* WIFI */
++	ret = gpio_request(WIFI_PWRDN, "WIFI");
++	if (ret) {
++		pr_warn("failed to get WIFI_PWRDN GPIO: %d\n", ret);
++		return ret;
++	}
++	ret = gpio_request(WIFI_RESET, "WIFI");
++	if (ret) {
++		pr_warn("failed to get WIFI_RESET GPIO: %d\n", ret);
++		return ret;
++	}
++	gpio_direction_output(WIFI_PWRDN, 1);
++	udelay(1000);
++	gpio_direction_output(WIFI_RESET, 1);
++
++	/* BT */
++	ret = gpio_request(BT_RESET, "BT");
++	if (ret) {
++		pr_warn("failed to get BT_RESET GPIO: %d\n", ret);
++		return ret;
++	}
++	gpio_direction_output(BT_RESET, 1);
++	gpio_set_value(BT_RESET, 1);
++
++	/* LEDs */
++	ret = gpio_request(RED_LED_GPIO, "RED_LED_GPIO");
++	if (ret) {
++		pr_warn("failed to get red LED GPIO: %d\n", ret);
++		return ret;
++	}
++	gpio_direction_output(RED_LED_GPIO, 1);
++	gpio_free(RED_LED_GPIO);
++
++	ret = gpio_request(GREEN_LED_GPIO, "GREEN_LED_GPIO");
++	if (ret) {
++		pr_warn("failed to get red LED GPIO: %d\n", ret);
++		return ret;
++	}
++	gpio_direction_output(GREEN_LED_GPIO, 1);
++	gpio_free(GREEN_LED_GPIO);
++
++	/* HDMI */
++	ret = gpio_request(HDMI_DETECT_GPIO, "HDMI_DETECT_GPIO");
++	if (ret) {
++		pr_warn("failed to get HDMI detect GPIO: %d\n", ret);
++		return ret;
++	}
++	gpio_direction_input(HDMI_DETECT_GPIO);
++
++	return 0;
++}
++
++void __init apf51_baseboard_init(void)
++{
++#if defined(CONFIG_CPU_FREQ_IMX)
++	get_cpu_op = mx51_get_cpu_op;
++#endif
++
++	mxc_iomux_v3_setup_multiple_pads(pps51_pads,
++					ARRAY_SIZE(pps51_pads));
++
++	imx51_add_imx_uart(1, &pps51_uart_pdata);
++
++	init_gpio();
++
++	/* SD card ports */
++	imx51_add_sdhci_esdhc_imx(0, &edshc0_pdata); /* wi2wi */
++	imx51_add_sdhci_esdhc_imx(1, &edshc1_pdata); /* sdcard*/
++
++	/* Register LCD on spi1 bus */
++	spi_register_board_info(apf51dev_spi1_board_info,
++				ARRAY_SIZE(apf51dev_spi1_board_info));
++	imx51_add_ecspi(0, &pps51_spi1_pdata);
++
++	/* I2C2 already initialized by APF51, so just register devices */
++	i2c_register_board_info(1, pps51_i2c2_devices,
++				ARRAY_SIZE(pps51_i2c2_devices));
++
++	imx51_add_ipuv3(&pps51_ipu_data);
++
++	printk("DEBUG: init debugfs\n");
++
++}

@@ -1,0 +1,97 @@
+Fix gpio driver to support raising and falling edge interrupts -
+used by some drivers like gpio-keys, matrix keypad, USB Vbus...
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+--- a/arch/arm/plat-mxs/include/mach/gpio.h
++++ b/arch/arm/plat-mxs/include/mach/gpio.h
+@@ -41,6 +41,7 @@ struct mxs_gpio_chip {
+ 	void (*unmask_irq) (struct mxs_gpio_port *, int);
+ 	void (*mask_irq) (struct mxs_gpio_port *, int);
+ 	void (*ack_irq) (struct mxs_gpio_port *, int);
++	void (*flip_edge_irq) (struct mxs_gpio_port *, int);
+ };
+ 
+ struct mxs_gpio_port {
+@@ -49,6 +50,7 @@ struct mxs_gpio_port {
+ 	int child_irq;
+ 	struct mxs_gpio_chip *chip;
+ 	struct gpio_chip port;
++	u32 both_edges;
+ };
+ 
+ extern int mxs_add_gpio_port(struct mxs_gpio_port *port);
+--- a/arch/arm/plat-mxs/gpio.c
++++ b/arch/arm/plat-mxs/gpio.c
+@@ -114,12 +114,20 @@ static void mxs_gpio_irq_handler(u32 irq
+ 	struct mxs_gpio_port *port = get_irq_data(irq);
+ 	int gpio_irq = port->child_irq;
+ 	u32 irq_stat = port->chip->get_irq_stat(port);
++	int pin;
+ 
+ 	desc->chip->mask(irq);
+ 
+ 	while (irq_stat) {
+-		if (irq_stat & 1)
++		if (irq_stat & 1) {
++
++			pin = GPIO_TO_PINS(irq_to_gpio(gpio_irq));
++			if ((port->both_edges & (1 << pin))
++				&&(port->chip->flip_edge_irq))
++				port->chip->flip_edge_irq(port, pin);
++
+ 			generic_handle_irq(gpio_irq);
++		}
+ 		gpio_irq++;
+ 		irq_stat >>= 1;
+ 	}
+--- a/arch/arm/mach-mx28/gpio.c
++++ b/arch/arm/mach-mx28/gpio.c
+@@ -72,6 +72,7 @@ mx28_gpio_set_irq_type(struct mxs_gpio_p
+ {
+ 	unsigned int level, pol;
+ 	void __iomem *base = PINCTRL_BASE_ADDR + 0x10 * port->id;
++	u32 val;
+ 	switch (type) {
+ 	case IRQ_TYPE_EDGE_RISING:
+ 		level = 0;
+@@ -81,6 +82,18 @@ mx28_gpio_set_irq_type(struct mxs_gpio_p
+ 		level = 0;
+ 		pol = 0;
+ 		break;
++	case IRQ_TYPE_EDGE_BOTH:
++		val = mx28_gpio_get(port, pin);
++		level = 1;
++		if (val) {
++			pol = 0;
++			pr_debug("mx28: set pin %d on port %d to low trigger\n", pin, port->id);
++		} else {
++			level = 1;
++			pr_debug("mx28: set pin %d on port %d to high trigger\n", pin, port->id);
++		}
++		port->both_edges |= 1 << pin;
++		break;
+ 	case IRQ_TYPE_LEVEL_HIGH:
+ 		level = 1;
+ 		pol = 1;
+@@ -108,6 +121,12 @@ mx28_gpio_set_irq_type(struct mxs_gpio_p
+ 	return 0;
+ }
+ 
++static void mx28_flip_edge_irq(struct mxs_gpio_port *port, int pin)
++{
++	void __iomem *base = PINCTRL_BASE_ADDR + 0x10 * port->id;
++	__raw_writel(1 << pin, base + HW_PINCTRL_IRQPOL0_TOG);
++}
++
+ static void mx28_gpio_unmask_irq(struct mxs_gpio_port *port, int pin)
+ {
+ 	void __iomem *base = PINCTRL_BASE_ADDR + 0x10 * port->id;
+@@ -156,6 +175,7 @@ static struct mxs_gpio_chip mx28_gpio_ch
+ 	.unmask_irq = mx28_gpio_unmask_irq,
+ 	.mask_irq = mx28_gpio_mask_irq,
+ 	.ack_irq = mx28_gpio_ack_irq,
++	.flip_edge_irq = mx28_flip_edge_irq,
+ };
+ 
+ int __init mx28_gpio_init(void)

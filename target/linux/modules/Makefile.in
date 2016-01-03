@@ -1,0 +1,13 @@
+#
+# Helpers Makefile for the Armadeus drivers
+#
+
+default:
+	$(MAKE) -C $(KDIR) SUBDIRS=$(PWD) ARCH=arm CROSS_COMPILE=$(PWD)/$(ARMADEUS_TOOLCHAIN_PATH)/$(ARMADEUS_TOOLCHAIN_PREFIX) modules
+
+clean:
+	$(MAKE) -C $(KDIR) SUBDIRS=$(PWD) clean
+	rm -f modules.order
+	rm -rf .tmp_versions/
+	rm -f Module.markers
+

@@ -1,0 +1,39 @@
+From 77e0aa9b059b4896875f12044e756dddfb685122 Mon Sep 17 00:00:00 2001
+From: Steve Longerbeam <steve_longerbeam@mentor.com>
+Date: Tue, 26 Aug 2014 10:02:49 -0700
+Subject: [PATCH 602/625] ARM: dts: imx6qdl: Add ipu aliases
+
+Add ipu0 (and ipu1 for quad) aliases to ipu1/ipu2 nodes respectively.
+
+Signed-off-by: Steve Longerbeam <steve_longerbeam@mentor.com>
+---
+ arch/arm/boot/dts/imx6q.dtsi   | 1 +
+ arch/arm/boot/dts/imx6qdl.dtsi | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/arch/arm/boot/dts/imx6q.dtsi b/arch/arm/boot/dts/imx6q.dtsi
+index e9f3646..585a541 100644
+--- a/arch/arm/boot/dts/imx6q.dtsi
++++ b/arch/arm/boot/dts/imx6q.dtsi
+@@ -14,6 +14,7 @@
+
+ / {
+	aliases {
++		ipu1 = &ipu2;
+		spi4 = &ecspi5;
+	};
+
+diff --git a/arch/arm/boot/dts/imx6qdl.dtsi b/arch/arm/boot/dts/imx6qdl.dtsi
+index 9596ed5..c9b8613 100644
+--- a/arch/arm/boot/dts/imx6qdl.dtsi
++++ b/arch/arm/boot/dts/imx6qdl.dtsi
+@@ -30,6 +30,7 @@
+		i2c0 = &i2c1;
+		i2c1 = &i2c2;
+		i2c2 = &i2c3;
++		ipu0 = &ipu1;
+		mmc0 = &usdhc1;
+		mmc1 = &usdhc2;
+		mmc2 = &usdhc3;
+--
+1.8.5.5

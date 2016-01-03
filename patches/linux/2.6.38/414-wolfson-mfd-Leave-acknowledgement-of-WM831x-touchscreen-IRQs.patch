@@ -1,0 +1,28 @@
+From: Mark Brown <broonie@opensource.wolfsonmicro.com>
+Date: Mon, 10 Jan 2011 18:15:56 +0000 (+0000)
+Subject: mfd: Leave acknowledgement of WM831x touchscreen IRQs to the driver
+X-Git-Url: http://opensource.wolfsonmicro.com/cgi-bin/gitweb.cgi?p=linux-2.6-audioplus.git;a=commitdiff_plain;h=a12170399f6e1a06631a281fe085fd356dd7de37
+
+mfd: Leave acknowledgement of WM831x touchscreen IRQs to the driver
+
+The WM831x touchscreen interrupts need acknowledgement even when using
+direct signals to the CPU (which don't go through the core) so leave
+the acknowledgement up to the touchscreen driver for simplicity.
+
+Signed-off-by: Mark Brown <broonie@opensource.wolfsonmicro.com>
+---
+
+diff --git a/drivers/mfd/wm831x-irq.c b/drivers/mfd/wm831x-irq.c
+index 7a24c66..46db25b 100644
+--- a/drivers/mfd/wm831x-irq.c
++++ b/drivers/mfd/wm831x-irq.c
+@@ -481,6 +481,9 @@ static irqreturn_t wm831x_irq_thread(int irq, void *data)
+ 	}
+ 
+ out:
++	/* Touchscreen interrupts are handled specially in the driver */
++	status_regs[0] &= ~(WM831X_TCHDATA_EINT | WM831X_TCHPD_EINT);
++
+ 	for (i = 0; i < ARRAY_SIZE(status_regs); i++) {
+ 		if (status_regs[i])
+ 			wm831x_reg_write(wm831x, WM831X_INTERRUPT_STATUS_1 + i,

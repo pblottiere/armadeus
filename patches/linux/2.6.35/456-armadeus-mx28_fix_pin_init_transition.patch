@@ -1,0 +1,17 @@
+Fix mx28 pin init transition.
+
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+---
+Index: linux-2.6.35.3/arch/arm/mach-mx28/pinctrl.c
+===================================================================
+--- linux-2.6.35.3/arch/arm/mach-mx28/pinctrl.c
++++ linux-2.6.35.3/arch/arm/mach-mx28/pinctrl.c
+@@ -92,7 +92,7 @@ static void mx28_set_type(struct pin_ban
+ 	addr += 0x20 * bank->id + 0x10 * (id >> 4);
+ 	id &= 0xF;
+ 	id *= 2;
+-	__raw_writel(0x3 << id, addr + CLR_REGISTER);
++	__raw_writel(((~cfg)&0x3) << id, addr + CLR_REGISTER);
+ 	__raw_writel(cfg << id, addr + SET_REGISTER);
+ }
+ 

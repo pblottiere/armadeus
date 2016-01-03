@@ -1,0 +1,13 @@
+Index: linux-3.11.8/drivers/watchdog/imx2_wdt.c
+===================================================================
+--- linux-3.11.8.orig/drivers/watchdog/imx2_wdt.c	2013-11-13 04:08:24.000000000 +0100
++++ linux-3.11.8/drivers/watchdog/imx2_wdt.c	2014-09-09 15:59:12.337690148 +0200
+@@ -279,6 +279,8 @@
+ 	if (ret)
+ 		goto fail;
+ 
++	dev_info(&pdev->dev, "IMX2+ Watchdog status : %04x",
++						__raw_readw(imx2_wdt.base + IMX2_WDT_WRSR));
+ 	dev_info(&pdev->dev,
+ 		"IMX2+ Watchdog Timer enabled. timeout=%ds (nowayout=%d)\n",
+ 						imx2_wdt.timeout, nowayout);

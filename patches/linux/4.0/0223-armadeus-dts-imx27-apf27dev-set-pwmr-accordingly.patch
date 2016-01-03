@@ -1,0 +1,14 @@
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+
+Index: linux-3.15.1/arch/arm/boot/dts/imx27-apf27dev.dts
+===================================================================
+--- linux-3.15.1.orig/arch/arm/boot/dts/imx27-apf27dev.dts	2014-06-26 12:08:04.865783373 +0200
++++ linux-3.15.1/arch/arm/boot/dts/imx27-apf27dev.dts	2014-06-26 12:09:25.118181329 +0200
+@@ -94,6 +94,7 @@
+ 
+ &fb {
+ 	display = <&display>;
++	fsl,lpccr = <0x00a90580>;
+ 	fsl,dmacr = <0x00020010>;
+ 	pinctrl-names = "default";
+ 	pinctrl-0 = <&pinctrl_imxfb1>;

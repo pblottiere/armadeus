@@ -1,0 +1,31 @@
+From 40492b4aa603eecb0f54c6b9fbc71f4656036221 Mon Sep 17 00:00:00 2001
+From: Steve Longerbeam <steve_longerbeam@mentor.com>
+Date: Fri, 29 Aug 2014 11:14:11 -0700
+Subject: [PATCH 615/625] ARM: imx6dl: Add iomux field defines for imx6dl
+
+Start adding iomux field defines for imx6dl. Adds GPR13 fields for
+MIPI-CSI2/Parallel video mux selection.
+
+Signed-off-by: Steve Longerbeam <steve_longerbeam@mentor.com>
+---
+ include/linux/mfd/syscon/imx6q-iomuxc-gpr.h | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/include/linux/mfd/syscon/imx6q-iomuxc-gpr.h b/include/linux/mfd/syscon/imx6q-iomuxc-gpr.h
+index ff44374..1007ea4 100644
+--- a/include/linux/mfd/syscon/imx6q-iomuxc-gpr.h
++++ b/include/linux/mfd/syscon/imx6q-iomuxc-gpr.h
+@@ -395,4 +395,11 @@
+ #define IMX6SL_GPR1_FEC_CLOCK_MUX1_SEL_MASK    (0x3 << 17)
+ #define IMX6SL_GPR1_FEC_CLOCK_MUX2_SEL_MASK    (0x1 << 14)
+
++/* iomux gpr register field defines for imx6dl  */
++#define IMX6DL_GPR13_MIPI_IPU_CSI1_MUX_SHIFT   3
++#define IMX6DL_GPR13_MIPI_IPU_CSI1_MUX_MASK    (0x7 << 3)
++#define IMX6DL_GPR13_MIPI_IPU_CSI0_MUX_SHIFT   0
++#define IMX6DL_GPR13_MIPI_IPU_CSI0_MUX_MASK    (0x7 << 0)
++
++
+ #endif /* __LINUX_IMX6Q_IOMUXC_GPR_H */
+--
+1.8.5.5

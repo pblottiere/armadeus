@@ -1,0 +1,17 @@
+Fix Fbgrab site URL.
+
+Signed-off-by: Jérémie Scheer <jeremie.scheer@armadeus.com>
+---
+
+Index: buildroot/package/fbgrab/fbgrab.mk
+===================================================================
+--- buildroot.orig/package/fbgrab/fbgrab.mk	2013-05-31 22:29:04.000000000 +0200
++++ buildroot/package/fbgrab/fbgrab.mk	2013-09-19 10:32:21.000000000 +0200
+@@ -1,6 +1,6 @@
+ FBGRAB_VERSION = 1.0
+ FBGRAB_SOURCE = fbgrab-$(FBGRAB_VERSION).tar.gz
+-FBGRAB_SITE = http://hem.bredband.net/gmogmo/fbgrab
++FBGRAB_SITE = http://fbgrab.monells.se
+ FBGRAB_DEPENDENCIES = libpng
+ 
+ define FBGRAB_BUILD_CMDS

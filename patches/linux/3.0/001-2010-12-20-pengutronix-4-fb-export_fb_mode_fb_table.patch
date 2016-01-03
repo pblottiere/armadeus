@@ -1,0 +1,48 @@
+The different modes can be useful for drivers. Currently there is
+no way to expose the modes to sysfs, so export them.
+
+Signed-off-by: Sascha Hauer <s.hauer@pengutronix.de>
+---
+ drivers/video/modedb.c |    7 ++++++-
+ include/linux/fb.h     |    3 +++
+ 2 files changed, 9 insertions(+), 1 deletions(-)
+
+Index: linux-3.0.10/drivers/video/modedb.c
+===================================================================
+--- linux-3.0.10.orig/drivers/video/modedb.c	2011-11-21 23:37:44.000000000 +0100
++++ linux-3.0.10/drivers/video/modedb.c	2011-11-30 17:07:14.000000000 +0100
+@@ -36,7 +36,7 @@
+  *  Standard video mode definitions (taken from XFree86)
+  */
+ 
+-static const struct fb_videomode modedb[] = {
++const struct fb_videomode modedb[] = {
+ 
+ 	/* 640x400 @ 70 Hz, 31.5 kHz hsync */
+ 	{ NULL, 70, 640, 400, 39721, 40, 24, 39, 9, 96, 2, 0,
+@@ -291,6 +291,11 @@
+ 		0, FB_VMODE_NONINTERLACED },
+ };
+ 
++const struct fb_videomode *fb_modes = modedb;
++EXPORT_SYMBOL(fb_modes);
++const int num_fb_modes = ARRAY_SIZE(modedb);
++EXPORT_SYMBOL(num_fb_modes);
++
+ #ifdef CONFIG_FB_MODE_HELPERS
+ const struct fb_videomode cea_modes[64] = {
+ 	/* #1: 640x480p@59.94/60Hz */
+Index: linux-3.0.10/include/linux/fb.h
+===================================================================
+--- linux-3.0.10.orig/include/linux/fb.h	2011-11-21 23:37:44.000000000 +0100
++++ linux-3.0.10/include/linux/fb.h	2011-11-30 17:07:14.000000000 +0100
+@@ -1157,6 +1157,9 @@
+ extern const struct fb_videomode vesa_modes[];
+ extern const struct fb_videomode cea_modes[64];
+ 
++extern const struct fb_videomode *fb_modes;
++extern const int num_fb_modes;
++
+ struct fb_modelist {
+ 	struct list_head list;
+ 	struct fb_videomode mode;

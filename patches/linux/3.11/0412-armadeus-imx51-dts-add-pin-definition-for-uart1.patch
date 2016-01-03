@@ -1,0 +1,21 @@
+To use UART1 without CTS/RTS.
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: linux-3.11.1/arch/arm/boot/dts/imx51.dtsi
+===================================================================
+--- linux-3.11.1.orig/arch/arm/boot/dts/imx51.dtsi	2013-10-23 11:06:16.201044459 +0200
++++ linux-3.11.1/arch/arm/boot/dts/imx51.dtsi	2013-10-28 12:19:52.758294405 +0100
+@@ -535,6 +535,12 @@
+ 							MX51_PAD_UART1_CTS__UART1_CTS 0x1c5
+ 						>;
+ 					};
++					pinctrl_uart1_2: uart1grp-2 {
++						fsl,pins = <
++							MX51_PAD_UART1_RXD__UART1_RXD 0x1c5
++							MX51_PAD_UART1_TXD__UART1_TXD 0x1c5
++						>;
++					};
+ 				};
+ 
+ 				uart2 {

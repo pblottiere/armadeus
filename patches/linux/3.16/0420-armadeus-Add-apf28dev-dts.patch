@@ -1,0 +1,45 @@
+From 8262b3cd32259533556e6dd8d1cd0a4c77c6acfe Mon Sep 17 00:00:00 2001
+From: Philippe Reynes <tremyfr@yahoo.fr>
+Date: Mon, 15 Jul 2013 15:26:14 +0200
+Subject: [PATCH] Fix spidev
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+---
+Index: linux-3.15.5/arch/arm/boot/dts/imx28-apf28dev.dts
+===================================================================
+--- linux-3.15.5.orig/arch/arm/boot/dts/imx28-apf28dev.dts
++++ linux-3.15.5/arch/arm/boot/dts/imx28-apf28dev.dts
+@@ -77,6 +77,15 @@
+ 					fsl,voltage = <MXS_VOLTAGE_HIGH>;
+ 					fsl,pull-up = <MXS_PULL_DISABLE>;
+ 				};
++
++				apf28dev_usb0_id_pins: apf28dev-usb0-id-pins@0 {
++					reg = <0>;
++					fsl,pinmux-ids = <
++						MX28_PAD_PWM2__USB0_ID
++					>;
++					fsl,voltage = <MXS_VOLTAGE_HIGH>;
++					fsl,pull-up = <MXS_PULL_ENABLE>;
++				};
+ 			};
+ 
+ 			lcdif@80030000 {
+@@ -143,7 +152,8 @@
+ 	ahb@80080000 {
+ 		usb0: usb@80080000 {
+ 			pinctrl-names = "default";
+-			pinctrl-0 = <&usb0_otg_apf28dev>;
++			pinctrl-0 = <&usb0_otg_apf28dev
++					&apf28dev_usb0_id_pins>;
+ 			vbus-supply = <&reg_usb0_vbus>;
+ 			status = "okay";
+ 		};
+@@ -202,6 +212,7 @@
+ 			label = "User button";
+ 			gpios = <&gpio0 17 0>;
+ 			linux,code = <0x100>;
++			gpio-key,wakeup;
+ 		};
+ 	};
+ };

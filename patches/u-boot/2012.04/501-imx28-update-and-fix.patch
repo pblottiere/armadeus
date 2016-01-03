@@ -1,0 +1,43 @@
+Signed-off-by: Eric Jarrige <eric.jarrige@armadeus.org>
+Signed-off-by: Philippe Reynes <tremyfr@yahoo.fr>
+---
+ arch/arm/cpu/arm926ejs/mx28/spl_mem_init.c |    5 ++++-
+ common/memsize.c                           |    2 ++
+ 2 files changed, 6 insertions(+), 1 deletions(-)
+
+diff --git a/arch/arm/cpu/arm926ejs/mx28/spl_mem_init.c b/arch/arm/cpu/arm926ejs/mx28/spl_mem_init.c
+index 911bbef..7c3f1dd 100644
+--- a/arch/arm/cpu/arm926ejs/mx28/spl_mem_init.c
++++ b/arch/arm/cpu/arm926ejs/mx28/spl_mem_init.c
+@@ -82,7 +82,7 @@ uint32_t dram_vals[] = {
+ 	0x00000000, 0x00010001
+ };
+ 
+-void init_m28_200mhz_ddr2(void)
++void __init_m28_200mhz_ddr2(void)
+ {
+ 	int i;
+ 
+@@ -90,6 +90,9 @@ void init_m28_200mhz_ddr2(void)
+ 		writel(dram_vals[i], MXS_DRAM_BASE + (4 * i));
+ }
+ 
++void init_m28_200mhz_ddr2(void)
++	__attribute__((weak, alias("__init_m28_200mhz_ddr2")));
++
+ void mx28_mem_init_clock(void)
+ {
+ 	struct mx28_clkctrl_regs *clkctrl_regs =
+diff --git a/common/memsize.c b/common/memsize.c
+index 963e4f3..112ae6e 100644
+--- a/common/memsize.c
++++ b/common/memsize.c
+@@ -74,6 +74,8 @@ long get_ram_size(long *base, long maxsize)
+ 		return (0);
+ 	}
+ 
++	sync();
++	*addr = save[i];
+ 	for (cnt = 1; cnt < maxsize / sizeof (long); cnt <<= 1) {
+ 		addr = base + cnt;	/* pointer arith! */
+ 		val = *addr;

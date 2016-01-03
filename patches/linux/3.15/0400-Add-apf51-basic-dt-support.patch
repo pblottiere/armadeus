@@ -1,0 +1,105 @@
+Add apf51 basic support
+
+Signed-off-by: Laurent Cans <laurent.cans@gmail.com>
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+---
+Index: linux-3.13-rc2/arch/arm/boot/dts/imx51-apf51.dts
+===================================================================
+--- linux-3.13-rc2.orig/arch/arm/boot/dts/imx51-apf51.dts
++++ linux-3.13-rc2/arch/arm/boot/dts/imx51-apf51.dts
+@@ -30,6 +30,19 @@
+ 			clock-frequency = <33554432>;
+ 		};
+ 	};
++
++	regulators {
++		compatible = "simple-bus";
++
++		reg_usbotg_vbus: usbotg_vbus {
++			compatible = "regulator-fixed";
++			regulator-name = "usbotg_vbus";
++			regulator-min-microvolt = <5000000>;
++			regulator-max-microvolt = <5000000>;
++			gpio = <&gpio1 8 0>;
++			enable-active-high;
++		};
++	};
+ };
+ 
+ &fec {
+@@ -72,6 +72,43 @@
+ 				MX51_PAD_UART3_TXD__UART3_TXD		0x1c5
+ 			>;
+ 		};
++		usbh1 {
++			pinctrl_usbh1_1: usbh1grp-1 {
++				fsl,pins = <
++					MX51_PAD_USBH1_DATA0__USBH1_DATA0 0x1e5
++					MX51_PAD_USBH1_DATA1__USBH1_DATA1 0x1e5
++					MX51_PAD_USBH1_DATA2__USBH1_DATA2 0x1e5
++					MX51_PAD_USBH1_DATA3__USBH1_DATA3 0x1e5
++					MX51_PAD_USBH1_DATA4__USBH1_DATA4 0x1e5
++					MX51_PAD_USBH1_DATA5__USBH1_DATA5 0x1e5
++					MX51_PAD_USBH1_DATA6__USBH1_DATA6 0x1e5
++					MX51_PAD_USBH1_DATA7__USBH1_DATA7 0x1e5
++					MX51_PAD_USBH1_CLK__USBH1_CLK	  0x1e5
++					MX51_PAD_USBH1_DIR__USBH1_DIR	  0x1e5
++					MX51_PAD_USBH1_NXT__USBH1_NXT	  0x1e5
++					MX51_PAD_USBH1_STP__USBH1_STP	  0x1e5
++				>;
++			};
++		};
++
++		usbh2 {
++			pinctrl_usbh2_1: usbh2grp-1 {
++				fsl,pins = <
++					MX51_PAD_EIM_D16__USBH2_DATA0 0x1e5
++					MX51_PAD_EIM_D17__USBH2_DATA1 0x1e5
++					MX51_PAD_EIM_D18__USBH2_DATA2 0x1e5
++					MX51_PAD_EIM_D19__USBH2_DATA3 0x1e5
++					MX51_PAD_EIM_D20__USBH2_DATA4 0x1e5
++					MX51_PAD_EIM_D21__USBH2_DATA5 0x1e5
++					MX51_PAD_EIM_D22__USBH2_DATA6 0x1e5
++					MX51_PAD_EIM_D23__USBH2_DATA7 0x1e5
++					MX51_PAD_EIM_A24__USBH2_CLK   0x1e5
++					MX51_PAD_EIM_A25__USBH2_DIR   0x1e5
++					MX51_PAD_EIM_A27__USBH2_NXT   0x1e5
++					MX51_PAD_EIM_A26__USBH2_STP   0x1e5
++				>;
++			};
++		};
+ 	};
+ };
+ 
+@@ -87,3 +100,31 @@
+ 	pinctrl-0 = <&pinctrl_uart3>;
+ 	status = "okay";
+ };
++
++&usbphy1 {
++	reset-gpios = <&gpio3 1 1>;
++};
++
++&usbh1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_usbh1_1>;
++	phy_type = "ulpi";
++	dr_mode = "host";
++	ext-clk-en;
++	status = "okay";
++};
++
++&usbh2 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_usbh2_1>;
++	phy_type = "ulpi";
++	dr_mode = "host";
++	ext-clk-en;
++	status = "okay";
++};
++
++&usbotg {
++	phy_type = "utmi_wide";
++	vbus-supply = <&reg_usbotg_vbus>;
++	status = "okay";
++};

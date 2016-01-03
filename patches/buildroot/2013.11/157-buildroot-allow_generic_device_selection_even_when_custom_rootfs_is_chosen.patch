@@ -1,0 +1,46 @@
+On Armadeus platforms, we use a custom rootfs AND we need to be able to choose
+generic serial tty device.
+
+Specific to Armadeus ??
+
+Signed-off-by: Julien Boibessot <julien.boibessot@armadeus.com>
+
+Index: buildroot/system/Config.in
+===================================================================
+--- buildroot/system/Config.in
++++ buildroot/system/Config.in
+@@ -171,8 +171,6 @@ config BR2_ROOTFS_SKELETON_CUSTOM_PATH
+ 	  Path custom target skeleton.
+ endif
+ 
+-if BR2_ROOTFS_SKELETON_DEFAULT
+-
+ config BR2_TARGET_GENERIC_ROOT_PASSWD
+ 	string "Root password"
+ 	default ""
+@@ -247,8 +245,6 @@ config BR2_TARGET_GENERIC_REMOUNT_ROOTFS
+ 	  read-only.
+ 	  If unsure, say Y.
+ 
+-endif # BR2_ROOTFS_SKELETON_DEFAULT
+-
+ config BR2_ROOTFS_OVERLAY
+ 	string "Root filesystem overlay directories"
+ 	default ""
+Index: buildroot/system/system.mk
+===================================================================
+--- buildroot/system/system.mk
++++ buildroot/system/system.mk
+@@ -48,7 +48,6 @@ ifneq ($(TARGET_GENERIC_ISSUE),)
+ TARGETS += target-generic-issue
+ endif
+ 
+-ifeq ($(BR2_ROOTFS_SKELETON_DEFAULT),y)
+ TARGETS += target-root-passwd
+ 
+ ifneq ($(TARGET_GENERIC_GETTY),)
+@@ -60,4 +59,3 @@ TARGETS += target-generic-do-remount-rw
+ else
+ TARGETS += target-generic-dont-remount-rw
+ endif
+-endif

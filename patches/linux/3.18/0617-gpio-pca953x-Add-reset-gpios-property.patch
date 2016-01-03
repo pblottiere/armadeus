@@ -1,0 +1,68 @@
+From f6de254fa0592e7deadae4f7b6f9b4b6984308ad Mon Sep 17 00:00:00 2001
+From: Steve Longerbeam <steve_longerbeam@mentor.com>
+Date: Tue, 6 May 2014 16:38:08 -0700
+Subject: [PATCH 617/625] gpio: pca953x: Add reset-gpios property
+
+Add optional reset-gpios property. If present, de-assert the
+specified reset gpio pin to bring the chip out of reset.
+
+Signed-off-by: Steve Longerbeam <steve_longerbeam@mentor.com>
+---
+ drivers/gpio/gpio-pca953x.c | 28 ++++++++++++++++++++++++++++
+ 1 file changed, 28 insertions(+)
+
+diff --git a/drivers/gpio/gpio-pca953x.c b/drivers/gpio/gpio-pca953x.c
+index e2da64a..93180e1 100644
+--- a/drivers/gpio/gpio-pca953x.c
++++ b/drivers/gpio/gpio-pca953x.c
+@@ -20,6 +20,7 @@
+ #include <linux/slab.h>
+ #ifdef CONFIG_OF_GPIO
+ #include <linux/of_platform.h>
++#include <linux/of_gpio.h>
+ #endif
+
+ #define PCA953X_INPUT		0
+@@ -95,6 +96,11 @@ struct pca953x_chip {
+	struct gpio_chip gpio_chip;
+	const char *const *names;
+	int	chip_type;
++
++#ifdef CONFIG_OF_GPIO
++	enum of_gpio_flags reset_gpio_flags;
++	int reset_gpio;
++#endif
+ };
+
+ static inline struct pca953x_chip *to_pca(struct gpio_chip *gc)
+@@ -662,6 +668,28 @@ static int pca953x_probe(struct i2c_client *client,
+	} else {
+		chip->gpio_start = -1;
+		irq_base = 0;
++
++#ifdef CONFIG_OF_GPIO
++		/* see if we need to de-assert a reset pin */
++		ret = of_get_named_gpio_flags(client->dev.of_node,
++					      "reset-gpios", 0,
++					      &chip->reset_gpio_flags);
++		if (gpio_is_valid(ret)) {
++			chip->reset_gpio = ret;
++			ret = devm_gpio_request_one(&client->dev,
++						    chip->reset_gpio,
++						    GPIOF_DIR_OUT,
++						    "pca953x_reset");
++			if (ret == 0) {
++				/* bring chip out of reset */
++				dev_info(&client->dev, "releasing reset\n");
++				gpio_set_value(chip->reset_gpio,
++					       (chip->reset_gpio_flags ==
++						OF_GPIO_ACTIVE_LOW) ? 1 : 0);
++			}
++		} else if (ret == -EPROBE_DEFER)
++			return ret;
++#endif
+	}
+
+	chip->client = client;
+--
+1.8.5.5

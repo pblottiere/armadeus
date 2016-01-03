@@ -1,0 +1,82 @@
+Index: linux-3.12-rc1/scripts/kconfig/zconf.tab.c_shipped
+===================================================================
+--- linux-3.12-rc1.orig/scripts/kconfig/zconf.tab.c_shipped
++++ linux-3.12-rc1/scripts/kconfig/zconf.tab.c_shipped
+@@ -85,6 +85,8 @@
+ #include <stdlib.h>
+ #include <string.h>
+ #include <stdbool.h>
++#include <dirent.h>
++#include <sys/stat.h>
+ 
+ #include "lkc.h"
+ 
+@@ -92,6 +94,7 @@
+ 
+ #define PRINTD		0x0001
+ #define DEBUG_PARSE	0x0002
++#define BUFF_SIZE 300
+ 
+ int cdebug = PRINTD;
+ 
+@@ -108,6 +111,27 @@ static struct menu *current_menu, *curre
+ 
+ 
+ 
++
++static int isDir(const char *, const char *);
++
++int isDir(const char *fullpath, const char *dname) {
++  struct stat sbuf;
++
++  if (*dname == '.')
++	 return 0;
++
++  if (lstat(fullpath, &sbuf) == -1) {
++    fprintf(stderr, "lstat() Failed.\n");
++    return 0;
++  }
++
++  if(S_ISDIR(sbuf.st_mode)) {
++    return 1;
++  }
++
++  return 0;
++}
++
+ /* Enabling traces.  */
+ #ifndef YYDEBUG
+ # define YYDEBUG 1
+@@ -1922,8 +1946,31 @@ yyreduce:
+   case 83:
+ 
+     {
++	char *name;
++	char *ptr;
++	char dirname[BUFF_SIZE];
++	char filename[BUFF_SIZE];
++	struct dirent *lecture;
++	DIR *rep;
++
+ 	printd(DEBUG_PARSE, "%s:%d:source %s\n", zconf_curname(), zconf_lineno(), (yyvsp[(2) - (3)].string));
+-	zconf_nextfile((yyvsp[(2) - (3)].string));
++	name = (yyvsp[(2) -(3)].string);
++	ptr = strchr(name, '*');
++	if(ptr != NULL) {
++		*ptr = '\0';
++		snprintf(dirname, BUFF_SIZE, "%s/%s", getenv(SRCTREE), name);
++		rep = opendir(dirname);
++		while ((lecture = readdir(rep))) {
++			snprintf(filename, BUFF_SIZE, "%s/%s/%s", getenv(SRCTREE), name,
++			lecture->d_name);
++			if(isDir(filename, lecture->d_name)){
++				snprintf(filename, BUFF_SIZE, "%s/%s/%s/%s", getenv(SRCTREE), name, lecture->d_name, ptr+1);
++				zconf_nextfile(filename);
++			}
++		}
++	} else {
++		zconf_nextfile((yyvsp[(2) - (3)].string));
++	}
+ }
+     break;
+ 

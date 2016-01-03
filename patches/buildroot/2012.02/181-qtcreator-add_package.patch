@@ -1,0 +1,1001 @@
+Add QtCreator package to Buildroot.
+
+Signed-off-by: Jérémie Scheer <jeremie.scheer@armadeus.com>
+
+Index: buildroot/package/Config.in.host
+===================================================================
+--- buildroot.orig/package/Config.in.host	2012-02-29 23:19:47.000000000 +0100
++++ buildroot/package/Config.in.host	2012-03-26 16:21:47.000000000 +0200
+@@ -3,5 +3,6 @@
+ source "package/openocd/Config.in.host"
+ source "package/sam-ba/Config.in.host"
+ source "package/uboot-tools/Config.in.host"
++source "package/qtcreator/Config.in.host"
+ 
+ endmenu
+Index: buildroot/package/qtcreator/Config.in.host
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/qtcreator/Config.in.host	2012-03-26 16:21:47.000000000 +0200
+@@ -0,0 +1,68 @@
++menuconfig BR2_PACKAGE_HOST_QTCREATOR
++	bool "host qtcreator"
++	select BR2_PACKAGE_QT
++	help
++	  QtCreator IDE for x86 platform.
++
++	  QtCreator binary is installed in
++	  $(HOST_DIR)/usr/bin/qtcreator
++
++	  http://qt.gitorious.org/qt-creator
++
++if BR2_PACKAGE_HOST_QTCREATOR
++
++menuconfig BR2_PACKAGE_HOST_QTCREATOR_GDB
++	bool "GDB for QtCreator"
++	select BR2_PACKAGE_GDB
++	select BR2_PACKAGE_GDB_SERVER
++	select BR2_PACKAGE_GDB_HOST
++	select BR2_PACKAGE_OPENSSH
++	help
++	  Configure QtCreator remote debugger
++
++ 	  All fields must be filled except for the arguments
++	  that are optionals.
++
++	  A GDB server startup script is generated in
++	  $(HOST_DIR)/etc/Nokia/gdb_server_script and
++	  can be manually customized or completed.
++
++if BR2_PACKAGE_HOST_QTCREATOR_GDB
++
++config BR2_PACKAGE_HOST_QTCREATOR_GDB_SERVER_IP
++	string "GDB server IP address"
++	default "192.168.0.208"
++	help
++	  Can be changed directly in QtCreator remote GDB interface.
++
++config BR2_PACKAGE_HOST_QTCREATOR_GDB_SERVER_PORT
++	string "GDB server port"
++	default "5600"
++	help
++	  Can be changed directly in QtCreator remote GDB interface.
++
++config BR2_PACKAGE_HOST_QTCREATOR_GDB_LOCAL_EXECUTABLE
++	string "Local executable path"
++	help
++	  Path to the local executable.
++	  Can be changed in QtCreator remote GDB interface and in GDB server
++	  startup script (buildroot/output/host/etc/gdb_server_startup)
++
++config BR2_PACKAGE_HOST_QTCREATOR_GDB_REMOTE_EXECUTABLE
++	string "Remote executable path on system"
++	help
++	  Remote path to the executable on the remote system.
++	  Can be changed in GDB server startup script (buildroot/output/
++	  host/etc/gdb_server_startup)
++
++config BR2_PACKAGE_HOST_QTCREATOR_GDB_REMOTE_EXEC_ARGUMENTS
++	string "Remote executable arguments"
++	help
++	  List of optional arguments for remote executable.
++	  Can be changed in GDB server startup script (buildroot/output/
++	  host/etc/gdb_server_startup)
++
++endif # BR2_PACKAGE_HOST_QTCREATOR_GDB
++
++endif # BR2_PACKAGE_HOST_QTCREATOR
++
+Index: buildroot/package/qtcreator/qtcreator-2.2.1-create_gdb_server_script.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/qtcreator/qtcreator-2.2.1-create_gdb_server_script.patch	2012-03-26 16:21:47.000000000 +0200
+@@ -0,0 +1,52 @@
++Create GDB default server script.
++
++Signed-off-by: Jérémie SCHEER <jeremie.scheer@armadeus.com>
++
++Index: qtcreator-2.2.1/gdb_server_script
++===================================================================
++--- qtcreator-2.2.1.orig/dev/null	2012-03-15 09:21:31.258893004 +0100
+++++ qtcreator-2.2.1/gdb_server_script	2012-03-19 14:24:44.000000000 +0100
++@@ -0,0 +1,43 @@
+++#
+++#	 This software has been developed by ARMADEUS SYSTEMS
+++#
+++#    Copyright (C) 2012
+++#
+++# Author: Jérémie SCHEER
+++#
+++# Project Name: THE ARMADEUS PROJECT
+++#
+++# Sub-Project Name:
+++#
+++# Written by: The armadeus systems team
+++#
+++# This program is free software; you can redistribute it and/or modify
+++# it under the terms of the GNU General Public License as published by
+++# the Free Software Foundation; either version 2 of the License, or
+++# (at your option) any later version.
+++#
+++# This program is distributed in the hope that it will be useful,
+++# but WITHOUT ANY WARRANTY; without even the implied warranty of
+++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+++# GNU General Public License for more details.
+++#
+++# You should have received a copy of the GNU General Public License
+++# along with this program; if not, write to the Free Software
+++# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+++#
+++
+++IP_ADDR=DEFAULT_IP
+++PORT=DEFAULT_PORT
+++EXEC_ARGUMENTS=DEFAULT_ARGUMENTS
+++PRIVATE_KEY_PATH=DEFAULT_KEY_PATH
+++
+++# Copy executable to embedded system
+++# Use the same command if you must copy other files
+++# to the remote environment
+++LOCAL_EXEC_PATH=DEFAULT_LOCAL_PATH
+++REMOTE_EXEC_PATH=DEFAULT_REMOTE_PATH
+++
+++scp -i $PRIVATE_KEY_PATH $LOCAL_EXEC_PATH root@${IP_ADDR}:$REMOTE_EXEC_PATH 2>/dev/null
+++
+++# Launch remote GDB server
+++ssh -i $PRIVATE_KEY_PATH -t root@${IP_ADDR} /usr/bin/gdbserver ${IP_ADDR}:${PORT} $REMOTE_EXEC_PATH ${EXEC_ARGUMENTS} 2>/dev/null&
+Index: buildroot/package/qtcreator/qtcreator-2.2.1-create_toolchains_file.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/qtcreator/qtcreator-2.2.1-create_toolchains_file.patch	2012-03-26 16:21:47.000000000 +0200
+@@ -0,0 +1,30 @@
++Create toolchains file with default configuration for Armadeus boards.
++
++Signed-off-by: Jérémie SCHEER <jeremie.scheer@armadeus.com>
++
++Index: qtcreator-2.2.1/toolChains.xml
++===================================================================
++--- qtcreator-2.2.1.orig/dev/null	2012-03-12 09:20:30.508028007 +0100
+++++ qtcreator-2.2.1/toolChains.xml	2012-03-12 11:53:41.000000000 +0100
++@@ -0,0 +1,21 @@
+++<!DOCTYPE QtCreatorToolChains>
+++<qtcreator>
+++ <data>
+++  <variable>ToolChain.0</variable>
+++  <valuemap type="QVariantMap">
+++   <value key="ProjectExplorer.GccToolChain.Debugger" type="QString"></value>
+++   <value key="ProjectExplorer.GccToolChain.Path" type="QString">TOOLCHAIN_PATH</value>
+++   <value key="ProjectExplorer.GccToolChain.TargetAbi" type="QString">TOOLCHAIN_TARGET_ABI</value>
+++   <value key="ProjectExplorer.ToolChain.DisplayName" type="QString">TOOLCHAIN_NAME</value>
+++   <value key="ProjectExplorer.ToolChain.Id" type="QString">ProjectExplorer.ToolChain.Gcc:TOOLCHAIN_ID.</value>
+++  </valuemap>
+++ </data>
+++ <data>
+++  <variable>ToolChain.Count</variable>
+++  <value type="int">1</value>
+++ </data>
+++ <data>
+++  <variable>Version</variable>
+++  <value type="int">1</value>
+++ </data>
+++</qtcreator>
+Index: buildroot/package/qtcreator/qtcreator-2.2.1-create_user_settings_file.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/qtcreator/qtcreator-2.2.1-create_user_settings_file.patch	2012-03-26 17:01:06.000000000 +0200
+@@ -0,0 +1,308 @@
++Create user settings file with default configuration for Armadeus boards.
++
++Signed-off-by: Jérémie SCHEER <jeremie.scheer@armadeus.com>
++
++Index: qtcreator-2.2.1/QtCreator.ini
++===================================================================
++--- qtcreator-2.2.1.orig/dev/null	2012-03-15 09:21:31.258893004 +0100
+++++ qtcreator-2.2.1/QtCreator.ini	2012-03-15 11:26:23.000000000 +0100
++@@ -0,0 +1,299 @@
+++[General]
+++DefaultQtVersion=4
+++ViewGroup_Default=@ByteArray(\0\0\0\xff\0\0\0\0\xfd\0\0\0\0\0\0\x5V\0\0\x2\x9c\0\0\0\x4\0\0\0\x4\0\0\0\x1\0\0\0\b\xfc\0\0\0\0)
+++ProjectTreeWidget.0.ProjectFilter=false
+++ProjectTreeWidget.0.GeneratedFilter=true
+++ProjectTreeWidget.0.SyncWithEditor=true
+++DesignerdefaultGrid=@Variant(\0\0\0\b\0\0\0\0)
+++DesignerzoomEnabled=false
+++Designerzoom=100
+++DesignerActionEditorViewMode=0
+++DesignerFormTemplate=Dialog without Buttons
+++DesignerNewFormSize=@Size(320 240)
+++Outline.0.SyncWithEditor=true
+++Outline.1.SyncWithEditor=true
+++ProjectTreeWidget.1.ProjectFilter=false
+++ProjectTreeWidget.1.GeneratedFilter=true
+++ProjectTreeWidget.1.SyncWithEditor=true
+++
+++[QtVersions]
+++1\Name=Qt Embedded (arm)
+++1\Path=QT_EMBEDDED_PATH
+++1\QMakePath=QT_EMBEDDED_QMAKE_PATH
+++1\Id=
+++1\msvcVersion=
+++1\isAutodetected=false
+++1\S60SDKDirectory=
+++1\SBSv2Directory=
+++size=1
+++
+++[Navigation]
+++Version=2
+++Views=Projects, Open Documents
+++Visible=true
+++VerticalPosition=@ByteArray(\0\0\0\xff\0\0\0\0\0\0\0\x2\0\0\x1\xcb\0\0\0\xd8\0\0\0\0\x1\x1\0\0\0\x2)
+++Width=347
+++
+++[ProjectExplorer]
+++StartupSession=
+++RecentProjects\FileNames=@Invalid()
+++RecentProjects\DisplayNames=@Invalid()
+++Settings\BuildBeforeRun=true
+++Settings\SaveBeforeBuild=true
+++Settings\ShowCompilerOutput=false
+++Settings\UseJom=true
+++Settings\CleanOldAppOutput=false
+++Settings\BuildBeforeDeploy=true
+++Settings\DeployBeforeRun=true
+++Settings\WrapAppOutput=true
+++Settings\AutoRestoreLastSession=false
+++Settings\EnvironmentId=
+++Settings\ShowRunOutput=true
+++Settings\PromptToStopRunControl=false
+++
+++[MainWindow]
+++Color=@Variant(\0\0\0\x43\x1\xff\xff\x66\x66\x66\x66\x66\x66\0\0)
+++WindowGeometry=@ByteArray(\x1\xd9\xd0\xcb\0\x1\0\0\0\0\a\x80\0\0\x1P\0\0\f\xd5\0\0\x4\x1f\0\0\a\x80\0\0\x1L\0\0\v\x7f\0\0\x4\t\0\0\0\x1\x2\0)
+++WindowState=@ByteArray(\0\0\0\xff\0\0\0\0\xfd\0\0\0\0\0\0\x5V\0\0\x2\x99\0\0\0\x4\0\0\0\x4\0\0\0\x1\0\0\0\b\xfc\0\0\0\0)
+++
+++[RecentFiles]
+++Files=@Invalid()
+++EditorIds=@Invalid()
+++
+++[KeyBindings]
+++size=0
+++
+++[Find]
+++Backward=false
+++CaseSensitively=false
+++WholeWords=false
+++FindStrings=@Invalid()
+++ReplaceStrings=@Invalid()
+++FindToolBar\Backward=false
+++FindToolBar\CaseSensitively=false
+++FindToolBar\WholeWords=false
+++FindToolBar\RegularExpression=false
+++CurrentFilter=Current Project
+++AllProjectsFind\filters=*
+++AllProjectsFind\currentFilter=*
+++AllProjectsFind\useRegExp=false
+++CurrentProjectFind\filters=*
+++CurrentProjectFind\currentFilter=*
+++CurrentProjectFind\useRegExp=false
+++FindInFiles\filters="*.cpp,*.h"
+++FindInFiles\currentFilter="*.cpp,*.h"
+++FindInFiles\useRegExp=false
+++FindInFiles\directories=
+++FindInFiles\currentDirectory=
+++FindInCurrentFile\filters="*.cpp,*.h"
+++FindInCurrentFile\useRegExp=false
+++RegularExpression=false
+++CppSymbols\SymbolsToSearchFor=15
+++CppSymbols\SearchScope=0
+++
+++[CppTools]
+++Completion\CaseSensitive=true
+++Completion\AutoInsertBraces=true
+++Completion\PartiallyComplete=true
+++SortedMethodOverview=false
+++
+++[DebugMode]
+++UseAlternatingRowColours=false
+++UseMessageBoxForSignals=true
+++AutoQuit=false
+++LogTimeStamps=false
+++UseDebuggingHelper=true
+++UseCustomDebuggingHelperLocation=false
+++CustomDebuggingHelperLocation=
+++DebugDebuggingHelpers=false
+++UseCodeModel=true
+++UseToolTips=false
+++UseToolTipsInLocalsView=false
+++UseToolTipsInBreakpointsView=false
+++UseAddressInBreakpointsView=false
+++UseAddressInStackView=false
+++Location=gdb
+++Environment=
+++ScriptFile=
+++WatchdogTimeout=40
+++MaximalStackDepth=20
+++ListSourceFiles=false
+++SkipKnownFrames=false
+++EnableReverseDebugging=false
+++AllPluginBreakpoints=true
+++SelectedPluginBreakpoints=false
+++NoPluginBreakpoints=false
+++SelectedPluginBreakpointsPattern=.*
+++UsePreciseBreakpoints=true
+++Stack=false
+++Breakpoints=false
+++Locals%20and%20Watchers=false
+++Registers=false
+++Locked=true
+++Thread=false
+++Source%20Files=false
+++Modules=false
+++Debugger=false
+++VerboseLog=false
+++ShowStandardNamespace=true
+++ShowQtNamespace=true
+++BreakOnThrow=false
+++BreakOnCatch=false
+++ChangeLanguageAutomatically=true
+++CppDebugThreadsDockWidget=true
+++CppDebugLocalsAndWatchersDockWidget=false
+++CppDebugOutputDockWidget=false
+++CppDebugSourcesDockWidget=false
+++CppDebugBreakpointsDockWidget=false
+++CppDebugRegistersDockWidget=false
+++CppDebugSnapshotsDockWidget=false
+++CppDebugStackDockWidget=false
+++CppDebugModulesDockWidget=false
+++CloseBuffersOnExit=false
+++SwitchModeOnExit=false
+++SortStructMembers=true
+++AutoDerefPointers=true
+++AdjustBreakpointLocations=true
+++ShowThreadNames=false
+++LoadGdbInit=true
+++TargetAsync=false
+++AlwaysAdjustStackColumnWidths=false
+++AlwaysAdjustLocalsColumnWidths=false
+++AlwaysAdjustBreakpointsColumnWidths=false
+++AlwaysAdjustRegistersColumnWidths=false
+++AlwaysAdjustSnapshotsColumnWidths=false
+++AlwaysAdjustThreadsColumnWidths=false
+++AlwaysAdjustModulesColumnWidths=false
+++LastRemoteChannel=GDB_REMOTE_SERVER
+++LastLocalExecutable=GDB_DEBUGGED_PROGRAM
+++LastDebugger=GDB_BINARY
+++LastRemoteArchitecture=arm
+++LastGnuTarget=arm-none-linux-gnueabi
+++LastServerStartScript=SERVER_SCRIPT
+++LastUseServerStartScript=USE_GDB_SCRIPT
+++LastSysroot=GDB_SYSROOT
+++LastPrivateKeyPath=DEBUG_CONSOLE_KEY_PATH
+++LastRemoteIp=DEBUG_CONSOLE_REMOTE_IP
+++
+++[FakeVim]
+++UseFakeVim=false
+++StartOfLine=false
+++HlSearch=true
+++TabStop=8
+++SmartTab=false
+++ShiftWidth=8
+++ExpandTab=false
+++AutoIndent=false
+++IncSearch=true
+++Backspace="indent,eol,start"
+++ReadVimRc=false
+++SmartIndent=false
+++UseCoreSearch=false
+++IsKeyword="@@,48-57,_,192-255,a-z,A-Z"
+++ShowMarks=false
+++PassControlKey=false
+++
+++[HelpSideBar]
+++Views=Index
+++Visible=true
+++VerticalPosition=@ByteArray(\0\0\0\xff\0\0\0\0\0\0\0\x1\0\0\0\xd2\0\0\0\0\x1\x1\0\0\0\x2)
+++Width=300
+++
+++[%General]
+++WelcomeTab=1
+++LastPreferenceCategory=L.Qt4
+++LastPreferencePage=Qt Versions
+++TerminalEmulator=xterm -e
+++
+++[SearchResults]
+++ExpandResults=true
+++
+++[DesignerPreview]
+++Enabled=false
+++Style=
+++AppStyleSheet=
+++Skin=
+++UserDeviceSkins=@Invalid()
+++
+++[CodePasterSettings]
+++Server=
+++
+++[PasteBinDotComSettings]
+++Prefix=
+++
+++[TextEditor]
+++FontSize=9
+++ColorScheme=COLOR_SCHEMES
+++FontZoom=100
+++
+++[Directories]
+++Projects=
+++UseProjectsDirectory=false
+++
+++[FakeVimExCommand]
+++size=0
+++
+++[DebugMode.CppMode]
+++Debugger.Docks.Modules=false
+++Debugger.Docks.Threads=false
+++Debugger.Docks.Stack=false
+++Debugger.Docks.ScriptConsole=false
+++Locked=true
+++Debugger.Docks.Register=false
+++Debugger.Docks.Output=false
+++Debugger.Docks.Snapshots=false
+++Debugger.Docks.Break=false
+++Debugger.Docks.SourceFiles=false
+++Debugger.Docks.LocalsAndWatchers=false
+++Debugger.Docks.QmlInspector=false
+++Debugger%20Toolbar=false
+++
+++[DebugMode.CppQmlMode]
+++Debugger.Docks.Modules=false
+++Debugger.Docks.Threads=false
+++Debugger.Docks.Stack=false
+++Debugger.Docks.ScriptConsole=false
+++Locked=true
+++Debugger.Docks.Register=false
+++Debugger.Docks.Output=false
+++Debugger.Docks.Snapshots=false
+++Debugger.Docks.Break=false
+++Debugger.Docks.SourceFiles=false
+++Debugger.Docks.LocalsAndWatchers=false
+++Debugger.Docks.QmlInspector=false
+++
+++[QML.Inspector]
+++ShowLivePreview=true
+++
+++[VCS]
+++NickNameMailMap=
+++NickNameFieldListFile=
+++SubmitMessageCheckScript=
+++LineWrap=true
+++LineWrapWidth=72
+++SshPasswordPrompt=/usr/bin/ssh-askpass
+++
+++[TextHighlighterSettings]
+++UserDefinitionFilesPath=GENERIC_HIGHLIGHTER
+++AlertWhenDefinitionsIsNotFound=true
+++UseFallbackLocation=true
+++IgnoredFilesPatterns="*.txt,LICENSE*,README,INSTALL,COPYING,NEWS,qmldir,*.lst"
+++
+++[ClassView]
+++TreeWidget.0\FlatMode=false
+++TreeWidget.1\FlatMode=false
+++
+++[Plugins]
+++Ignored=@Invalid()
+++ForceEnabled=@Invalid()
+++
+++[CMakeSettings]
+++cmakeExecutable=
+++
+++[ExternalTools]
+++OverrideCategories\Linguist\size=2
+++OverrideCategories\Linguist\1\Tool=lupdate
+++OverrideCategories\Linguist\2\Tool=lrelease
+++OverrideCategories\Text\size=2
+++OverrideCategories\Text\1\Tool=sort
+++OverrideCategories\Text\2\Tool=vi
+Index: buildroot/package/qtcreator/qtcreator-2.2.1-set_user_settings_path.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/qtcreator/qtcreator-2.2.1-set_user_settings_path.patch	2012-03-26 16:21:47.000000000 +0200
+@@ -0,0 +1,17 @@
++Set QtCreator user settings path to host directory.
++
++Signed-off-by: Jérémie SCHEER <jeremie.scheer@armadeus.com>
++
++Index: qtcreator-2.2.1/src/app/main.cpp
++===================================================================
++--- qtcreator-2.2.1.orig/src/app/main.cpp	2012-03-09 11:56:13.000000000 +0100
+++++ qtcreator-2.2.1/src/app/main.cpp	2012-03-09 12:02:29.000000000 +0100
++@@ -221,6 +221,8 @@
++     }
++     if (!settingsPath.isEmpty())
++         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsPath);
+++    else
+++        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, "HOST_DIR/etc");
++
++     // Must be done before any QSettings class is created
++     QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope,
+Index: buildroot/package/qtcreator/qtcreator.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/qtcreator/qtcreator.mk	2012-03-26 17:16:31.000000000 +0200
+@@ -0,0 +1,130 @@
++#############################################################
++#
++# QtCreator
++#
++#############################################################
++QTCREATOR_VERSION_MAJOR = 2.2
++QTCREATOR_VERSION       = $(QTCREATOR_VERSION_MAJOR).1
++QTCREATOR_SOURCE        = qt-creator-$(QTCREATOR_VERSION)-src.tar.gz
++QTCREATOR_SITE          = ftp://ftp.qt.nokia.com/qtcreator/
++
++TOOLCHAIN_ABI		= arm-linux-generic-elf-32bit
++TOOLCHAIN_NAME 		= arm-linux-g++
++
++HOST_QTCREATOR_DEPENDENCIES = openssh
++
++define HOST_QTCREATOR_SET_SETTINGS_PATH
++	$(SED) "s:HOST_DIR:$(HOST_DIR):" $(@D)/src/app/main.cpp
++endef
++
++define HOST_QTCREATOR_SET_SETTINGS_DEFAULT_CONFIG
++	$(SED) "s:QT_EMBEDDED_PATH:$(STAGING_DIR)/usr:" $(@D)/QtCreator.ini
++	$(SED) "s:QT_EMBEDDED_QMAKE_PATH:$(HOST_DIR)/usr/bin/qmake:" $(@D)/QtCreator.ini
++	$(SED) "s:COLOR_SCHEMES:$(HOST_DIR)/usr/share/qtcreator/styles/default.xml:" $(@D)/QtCreator.ini
++	$(SED) "s:GENERIC_HIGHLIGHTER:$(HOST_DIR)/etc/Nokia/qtcreator/generic-highlighter:" $(@D)/QtCreator.ini
++endef
++
++define HOST_QTCREATOR_SET_TOOLCHAINS_DEFAULT_CONFIG
++	$(SED) "s:TOOLCHAIN_PATH:$(HOST_DIR)/usr/bin/$(TOOLCHAIN_NAME):" $(@D)/toolChains.xml
++	$(SED) "s:TOOLCHAIN_TARGET_ABI:$(TOOLCHAIN_ABI):" $(@D)/toolChains.xml
++	$(SED) "s:TOOLCHAIN_NAME:$(TOOLCHAIN_NAME):" $(@D)/toolChains.xml
++	$(SED) "s:TOOLCHAIN_ID:$(HOST_DIR)/usr/bin/$(TOOLCHAIN_NAME).$(TOOLCHAIN_ABI):" $(@D)/toolChains.xml
++endef
++
++ifeq ($(BR2_PACKAGE_HOST_QTCREATOR_GDB),y)
++
++define HOST_QTCREATOR_SET_GDB_DEFAULT_CONFIG
++	$(SED) "s:GDB_REMOTE_SERVER:$(BR2_PACKAGE_HOST_QTCREATOR_GDB_SERVER_IP)\:$(BR2_PACKAGE_HOST_QTCREATOR_GDB_SERVER_PORT):" $(@D)/QtCreator.ini
++	$(SED) "s:GDB_DEBUGGED_PROGRAM:$(BR2_PACKAGE_HOST_QTCREATOR_GDB_LOCAL_EXECUTABLE):" $(@D)/QtCreator.ini
++	$(SED) "s:GDB_BINARY:$(HOST_DIR)/usr/bin/arm-linux-gdb:" $(@D)/QtCreator.ini
++	$(SED) "s:GDB_SYSROOT:$(TARGET_DIR):" $(@D)/QtCreator.ini
++	$(SED) "s:SERVER_SCRIPT:$(HOST_DIR)/etc/Nokia/gdb_server_script:" $(@D)/QtCreator.ini
++	$(SED) "s:USE_GDB_SCRIPT:true:" $(@D)/QtCreator.ini
++	$(SED) "s:DEBUG_CONSOLE_KEY_PATH:$(HOST_DIR)/etc/ssh/id_dsa:" $(@D)/QtCreator.ini
++	$(SED) "s:DEBUG_CONSOLE_REMOTE_IP:$(BR2_PACKAGE_HOST_QTCREATOR_GDB_SERVER_IP):" $(@D)/QtCreator.ini
++endef
++
++define HOST_QTCREATOR_FILL_GDB_SERVER_SCRIPT
++	$(SED) "s:DEFAULT_IP:$(BR2_PACKAGE_HOST_QTCREATOR_GDB_SERVER_IP):" $(@D)/gdb_server_script
++	$(SED) "s:DEFAULT_PORT:$(BR2_PACKAGE_HOST_QTCREATOR_GDB_SERVER_PORT):" $(@D)/gdb_server_script
++	$(SED) "s:DEFAULT_ARGUMENTS:$(BR2_PACKAGE_HOST_QTCREATOR_GDB_REMOTE_EXEC_ARGUMENTS):" $(@D)/gdb_server_script
++	$(SED) "s:DEFAULT_LOCAL_PATH:$(BR2_PACKAGE_HOST_QTCREATOR_GDB_LOCAL_EXECUTABLE):" $(@D)/gdb_server_script
++	$(SED) "s:DEFAULT_REMOTE_PATH:$(BR2_PACKAGE_HOST_QTCREATOR_GDB_REMOTE_EXECUTABLE):" $(@D)/gdb_server_script
++	$(SED) "s:DEFAULT_KEY_PATH:$(HOST_DIR)/etc/ssh/id_dsa:" $(@D)/gdb_server_script
++endef
++
++else
++
++define HOST_QTCREATOR_SET_GDB_DEFAULT_CONFIG
++	$(SED) "s:GDB_REMOTE_SERVER::" $(@D)/QtCreator.ini
++	$(SED) "s:GDB_DEBUGGED_PROGRAM::" $(@D)/QtCreator.ini
++	$(SED) "s:GDB_BINARY::" $(@D)/QtCreator.ini
++	$(SED) "s:GDB_SYSROOT::" $(@D)/QtCreator.ini
++	$(SED) "s:SERVER_SCRIPT::" $(@D)/QtCreator.ini
++	$(SED) "s:USE_GDB_SCRIPT:false:" $(@D)/QtCreator.ini
++	$(SED) "s:DEBUG_CONSOLE_KEY_PATH::" $(@D)/QtCreator.ini
++	$(SED) "s:DEBUG_CONSOLE_REMOTE_IP::" $(@D)/QtCreator.ini
++endef
++
++define HOST_QTCREATOR_FILL_GDB_SERVER_SCRIPT
++	$(SED) "s:DEFAULT_IP::" $(@D)/gdb_server_script
++	$(SED) "s:DEFAULT_PORT::" $(@D)/gdb_server_script
++	$(SED) "s:DEFAULT_ARGUMENTS::" $(@D)/gdb_server_script
++	$(SED) "s:DEFAULT_LOCAL_PATH::" $(@D)/gdb_server_script
++	$(SED) "s:DEFAULT_REMOTE_PATH::" $(@D)/gdb_server_script
++	$(SED) "s:DEFAULT_KEY_PATH::" $(@D)/gdb_server_script
++endef
++
++endif
++
++HOST_QTCREATOR_POST_PATCH_HOOKS += HOST_QTCREATOR_SET_SETTINGS_PATH
++HOST_QTCREATOR_POST_PATCH_HOOKS += HOST_QTCREATOR_SET_SETTINGS_DEFAULT_CONFIG
++HOST_QTCREATOR_POST_PATCH_HOOKS += HOST_QTCREATOR_SET_TOOLCHAINS_DEFAULT_CONFIG
++HOST_QTCREATOR_POST_PATCH_HOOKS += HOST_QTCREATOR_SET_GDB_DEFAULT_CONFIG
++HOST_QTCREATOR_POST_PATCH_HOOKS += HOST_QTCREATOR_FILL_GDB_SERVER_SCRIPT
++
++define HOST_QTCREATOR_CONFIGURE_CMDS
++	(cd $(@D); \
++		if [ "`which qmake`" != "" ]; then \
++		`which qmake` qtcreator.pro; \
++		fi \
++	)
++endef
++
++HOST_QTCREATOR_MAKE_ENV = \
++	QTCREATOR_MODULES_INCLUDE=/usr/include \
++	QTCREATOR_MODULES_LIB="/lib /usr/lib"
++
++define HOST_QTCREATOR_INSTALL_CMDS
++	(cd $(@D); make install INSTALL_ROOT=$(HOST_DIR)/usr)
++endef
++
++define HOST_QTCREATOR_INSTALL_SETTINGS_FILES
++	mkdir -p $(HOST_DIR)/etc/Nokia
++	cp $(@D)/QtCreator.ini $(HOST_DIR)/etc/Nokia
++	cp $(@D)/toolChains.xml $(HOST_DIR)/etc/Nokia
++endef
++
++define HOST_QTCREATOR_INSTALL_SSH_KEYS
++	mkdir $(HOST_DIR)/etc/ssh
++	ssh-keygen -f $(HOST_DIR)/etc/ssh/id_dsa -t dsa -b 1024 -N ""
++
++	mkdir $(TARGET_DIR)/root/.ssh/
++	touch $(TARGET_DIR)/root/.ssh/authorized_keys
++	cat $(HOST_DIR)/etc/ssh/id_dsa.pub > $(TARGET_DIR)/root/.ssh/authorized_keys
++endef
++
++define HOST_QTCREATOR_INSTALL_GDB_SERVER_SCRIPT
++	mkdir -p $(HOST_DIR)/etc/Nokia
++	cp $(@D)/gdb_server_script $(HOST_DIR)/etc/Nokia
++	chmod a+x $(HOST_DIR)/etc/Nokia/gdb_server_script
++endef
++
++HOST_QTCREATOR_POST_INSTALL_HOOKS += HOST_QTCREATOR_INSTALL_SETTINGS_FILES
++ifeq ($(BR2_PACKAGE_HOST_QTCREATOR_GDB),y)
++	HOST_QTCREATOR_POST_INSTALL_HOOKS += HOST_QTCREATOR_INSTALL_SSH_KEYS
++	HOST_QTCREATOR_POST_INSTALL_HOOKS += HOST_QTCREATOR_INSTALL_GDB_SERVER_SCRIPT
++endif
++
++
++$(eval $(call GENTARGETS,host))
+Index: buildroot/package/qtcreator/qtcreator-2.2.1-create_remote_console_open_menu.patch
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/qtcreator/qtcreator-2.2.1-create_remote_console_open_menu.patch	2012-03-26 17:25:46.000000000 +0200
+@@ -0,0 +1,346 @@
++Create a new menu in QtCreator to open a remote console.
++
++Signed-off-by: Jérémie SCHEER <jeremie.scheer@armadeus.com>
++
++Index: qtcreator-2.2.1/src/plugins/debugger/debugger.pro
++===================================================================
++--- qtcreator-2.2.1.orig/src/plugins/debugger/debugger.pro	2012-03-23 18:01:18.000000000 +0100
+++++ qtcreator-2.2.1/src/plugins/debugger/debugger.pro	2012-03-23 14:00:19.000000000 +0100
++@@ -116,7 +116,8 @@
++     commonoptionspage.ui \
++     startexternaldialog.ui \
++     startremotedialog.ui \
++-    startremoteenginedialog.ui
+++    startremoteenginedialog.ui \
+++    remoteconsoledialog.ui
++
++ RESOURCES += debugger.qrc
++
++
++Index: qtcreator-2.2.1/src/plugins/debugger/debuggerdialogs.cpp
++===================================================================
++--- qtcreator-2.2.1.orig/src/plugins/debugger/debuggerdialogs.cpp	2012-03-23 18:01:33.000000000 +0100
+++++ qtcreator-2.2.1/src/plugins/debugger/debuggerdialogs.cpp	2012-03-23 14:38:03.000000000 +0100
++@@ -40,6 +40,7 @@
++ #include "ui_startexternaldialog.h"
++ #include "ui_startremotedialog.h"
++ #include "ui_startremoteenginedialog.h"
+++#include "ui_remoteconsoledialog.h"
++
++ #ifdef Q_OS_WIN
++ #  include "shared/dbgwinutils.h"
++@@ -758,6 +759,53 @@
++     m_ui->serverStartScript->setEnabled(enabled);
++ }
++
+++
+++///////////////////////////////////////////////////////////////////////
+++//
+++// RemoteConsoleDialog
+++//
+++///////////////////////////////////////////////////////////////////////
+++
+++RemoteConsoleDialog::RemoteConsoleDialog(QWidget *parent)
+++  : QDialog(parent),
+++    m_ui(new Ui::RemoteConsoleDialog)
+++{
+++    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
+++    m_ui->setupUi(this);
+++    m_ui->mButtonBox->button(QDialogButtonBox::Ok)->setDefault(true);
+++    m_ui->mPrivateKeyPathChooser->setExpectedKind(PathChooser::File);
+++    m_ui->mPrivateKeyPathChooser->setPromptDialogTitle(tr("Select Private Key"));
+++
+++    connect(m_ui->mButtonBox, SIGNAL(accepted()), this, SLOT(accept()));
+++    connect(m_ui->mButtonBox, SIGNAL(rejected()), this, SLOT(reject()));
+++}
+++
+++RemoteConsoleDialog::~RemoteConsoleDialog()
+++{
+++    delete m_ui;
+++}
+++
+++void RemoteConsoleDialog::setPrivateKeyPath(const QString &aKeyPath)
+++{
+++    m_ui->mPrivateKeyPathChooser->setPath(aKeyPath);
+++}
+++
+++const QString& RemoteConsoleDialog::privateKeyPath() const
+++{
+++    return m_ui->mPrivateKeyPathChooser->path();
+++}
+++
+++void RemoteConsoleDialog::setRemoteIp(const QString &aRemoteIp)
+++{
+++    m_ui->mRemoteIpLineEdit->setText(aRemoteIp);
+++}
+++
+++const QString& RemoteConsoleDialog::remoteIp() const
+++{
+++    return m_ui->mRemoteIpLineEdit->text();
+++}
+++
+++
++ // --------- StartRemoteCdbDialog
++ static inline QString cdbRemoteHelp()
++ {
++
++Index: qtcreator-2.2.1/src/plugins/debugger/debuggerdialogs.h
++===================================================================
++--- qtcreator-2.2.1.orig/src/plugins/debugger/debuggerdialogs.h	2012-03-23 18:01:44.000000000 +0100
+++++ qtcreator-2.2.1/src/plugins/debugger/debuggerdialogs.h	2012-03-23 14:34:36.000000000 +0100
++@@ -48,6 +48,7 @@
++ class StartExternalDialog;
++ class StartRemoteDialog;
++ class StartRemoteEngineDialog;
+++class RemoteConsoleDialog;
++ } // namespace Ui
++
++ QT_END_NAMESPACE
++@@ -204,6 +205,24 @@
++     Ui::StartRemoteDialog *m_ui;
++ };
++
+++class RemoteConsoleDialog : public QDialog
+++{
+++    Q_OBJECT
+++
+++public:
+++    explicit RemoteConsoleDialog(QWidget *parent);
+++    ~RemoteConsoleDialog();
+++
+++    const QString& privateKeyPath() const;
+++    void setPrivateKeyPath(const QString &aKeyPath);
+++
+++    const QString& remoteIp() const;
+++    void setRemoteIp(const QString &aRemoteIp);
+++
+++private:
+++    Ui::RemoteConsoleDialog *m_ui;
+++};
+++
++ class StartRemoteCdbDialog : public QDialog
++ {
++     Q_OBJECT
++
++Index: qtcreator-2.2.1/src/plugins/debugger/debuggerdialogs.h
++===================================================================
++--- qtcreator-2.2.1.orig/src/plugins/debugger/debuggerplugin.cpp	2012-03-23 18:02:06.000000000 +0100
+++++ qtcreator-2.2.1/src/plugins/debugger/debuggerplugin.cpp	2012-03-23 15:45:36.000000000 +0100
++@@ -111,6 +111,7 @@
++
++ #include <QtCore/QTimer>
++ #include <QtCore/QtPlugin>
+++#include <QtCore/QProcess>
++ #include <QtGui/QComboBox>
++ #include <QtGui/QDockWidget>
++ #include <QtGui/QFileDialog>
++@@ -388,6 +389,7 @@
++ const char * const ADD_TO_WATCH2            = "Debugger.AddToWatch2";
++ const char * const FRAME_UP                 = "Debugger.FrameUp";
++ const char * const FRAME_DOWN               = "Debugger.FrameDown";
+++const char * const REMOTE_CONSOLE           = "Debugger.RemoteConsole";
++
++ #ifdef Q_WS_MAC
++ const char * const STOP_KEY                     = "Shift+Ctrl+Y";
++@@ -404,6 +406,7 @@
++ const char * const BREAK_AT_MAIN_KEY            = "Ctrl+D,Ctrl+M";
++ const char * const ADD_TO_WATCH_KEY             = "Ctrl+D,Ctrl+W";
++ const char * const SNAPSHOT_KEY                 = "Ctrl+D,Ctrl+S";
+++const char * const REMOTE_CONSOLE_KEY           = "Ctrl+Shift+C";
++ #else
++ const char * const STOP_KEY                     = "Shift+F5";
++ const char * const RESET_KEY                    = "Ctrl+Shift+F5";
++@@ -419,6 +422,7 @@
++ const char * const BREAK_AT_MAIN_KEY            = "";
++ const char * const ADD_TO_WATCH_KEY             = "Ctrl+Alt+Q";
++ const char * const SNAPSHOT_KEY                 = "Ctrl+D,Ctrl+S";
+++const char * const REMOTE_CONSOLE_KEY           = "Ctrl+Shift+C";
++ #endif
++
++ } // namespace Constants
++@@ -931,6 +935,26 @@
++         currentEngine()->frameUp();
++     }
++
+++    void handleRemoteConsole()
+++    {
+++        RemoteConsoleDialog dlg(mainWindow());
+++
+++        dlg.setPrivateKeyPath(configValue(_("LastPrivateKeyPath")).toString());
+++        dlg.setRemoteIp(configValue(_("LastRemoteIp")).toString());
+++
+++        if (dlg.exec() != QDialog::Accepted)
+++            return;
+++
+++        setConfigValue(_("LastPrivateKeyPath"), dlg.privateKeyPath());
+++        setConfigValue(_("LastRemoteIp"), dlg.remoteIp());
+++
+++        QString privateKey = dlg.privateKeyPath();
+++        QString remoteIp = dlg.remoteIp();
+++
+++        QProcess* process = new QProcess;
+++        process->start("xterm", QStringList() << "-e" << "ssh" << "-i" << privateKey << "root@" + remoteIp);
+++    }
+++
++     void handleOperateByInstructionTriggered(bool operateByInstructionTriggered)
++     {
++         // Go to source only if we have the file.
++@@ -1004,6 +1028,7 @@
++     QAction *m_reverseDirectionAction;
++     QAction *m_frameUpAction;
++     QAction *m_frameDownAction;
+++    QAction *m_RemoteConsoleAction;
++
++     QToolButton *m_reverseToolButton;
++
++@@ -1924,6 +1949,8 @@
++     action(ExpandStack)->setEnabled(false);
++
++     m_scriptConsoleWindow->setEnabled(false);
+++
+++    m_RemoteConsoleAction->setEnabled(true);
++ }
++
++ void DebuggerPluginPrivate::updateWatchersWindow()
++@@ -2630,6 +2657,9 @@
++     act = m_frameUpAction = new QAction(tr("Move to Calling Frame"), this);
++     connect(act, SIGNAL(triggered()), SLOT(handleFrameUp()));
++
+++    act = m_RemoteConsoleAction = new QAction(tr("Open Remote Console"), this);
+++    connect(act, SIGNAL(triggered()), SLOT(handleRemoteConsole()));
+++
++     connect(action(OperateByInstruction), SIGNAL(triggered(bool)),
++         SLOT(handleOperateByInstructionTriggered(bool)));
++
++@@ -2904,6 +2934,16 @@
++     //cmd->setDefaultKeySequence(QKeySequence(tr("Ctrl+D,Ctrl+W")));
++     debugMenu->addAction(cmd);
++
+++    sep = new QAction(this);
+++    sep->setSeparator(true);
+++    cmd = am->registerAction(sep, _("Debugger.Sep.Console"), globalcontext);
+++    debugMenu->addAction(cmd);
+++
+++    cmd = am->registerAction(m_RemoteConsoleAction,
+++        Constants::REMOTE_CONSOLE, globalcontext);
+++    cmd->setDefaultKeySequence(QKeySequence(Constants::REMOTE_CONSOLE_KEY));
+++    debugMenu->addAction(cmd);
+++
++     // If the CppEditor plugin is there, we want to add something to
++     // the editor context menu.
++     if (ActionContainer *editorContextMenu =
++
++Index: qtcreator-2.2.1/src/plugins/debugger/debuggerdialogs.h
++===================================================================
++--- qtcreator-2.2.1.orig/src/plugins/debugger/dev/null	1970-01-01 01:00:00.000000000 +0100
+++++ qtcreator-2.2.1/src/plugins/debugger/remoteconsoledialog.ui	2012-03-23 14:10:40.000000000 +0100
++@@ -0,0 +1,109 @@
+++<?xml version="1.0" encoding="UTF-8"?>
+++<ui version="4.0">
+++ <class>RemoteConsoleDialog</class>
+++ <widget class="QDialog" name="RemoteConsoleDialog">
+++  <property name="geometry">
+++   <rect>
+++    <x>0</x>
+++    <y>0</y>
+++    <width>451</width>
+++    <height>103</height>
+++   </rect>
+++  </property>
+++  <property name="windowTitle">
+++   <string>Dialog</string>
+++  </property>
+++  <layout class="QVBoxLayout" name="verticalLayout">
+++   <item>
+++    <layout class="QFormLayout" name="formLayout">
+++     <property name="fieldGrowthPolicy">
+++      <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+++     </property>
+++     <item row="0" column="0">
+++      <widget class="QLabel" name="mPrivateKeyLabel">
+++       <property name="text">
+++        <string>Host private key:</string>
+++       </property>
+++       <property name="buddy">
+++        <cstring>mPrivateKeyPathChooser</cstring>
+++       </property>
+++      </widget>
+++     </item>
+++     <item row="0" column="1">
+++      <widget class="Utils::PathChooser" name="mPrivateKeyPathChooser" native="true"/>
+++     </item>
+++     <item row="1" column="0">
+++      <widget class="QLabel" name="mRemoteIp">
+++       <property name="text">
+++        <string>Remote system IP:</string>
+++       </property>
+++       <property name="buddy">
+++        <cstring>mRemoteIpLineEdit</cstring>
+++       </property>
+++      </widget>
+++     </item>
+++     <item row="1" column="1">
+++      <widget class="QLineEdit" name="mRemoteIpLineEdit">
+++       <property name="text">
+++        <string notr="true"/>
+++       </property>
+++      </widget>
+++     </item>
+++    </layout>
+++   </item>
+++   <item>
+++    <widget class="QDialogButtonBox" name="mButtonBox">
+++     <property name="orientation">
+++      <enum>Qt::Horizontal</enum>
+++     </property>
+++     <property name="standardButtons">
+++      <set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set>
+++     </property>
+++    </widget>
+++   </item>
+++  </layout>
+++ </widget>
+++ <customwidgets>
+++  <customwidget>
+++   <class>Utils::PathChooser</class>
+++   <extends>QWidget</extends>
+++   <header location="global">utils/pathchooser.h</header>
+++   <container>1</container>
+++  </customwidget>
+++ </customwidgets>
+++ <resources/>
+++ <connections>
+++  <connection>
+++   <sender>mButtonBox</sender>
+++   <signal>accepted()</signal>
+++   <receiver>RemoteConsoleDialog</receiver>
+++   <slot>accept()</slot>
+++   <hints>
+++    <hint type="sourcelabel">
+++     <x>248</x>
+++     <y>254</y>
+++    </hint>
+++    <hint type="destinationlabel">
+++     <x>157</x>
+++     <y>274</y>
+++    </hint>
+++   </hints>
+++  </connection>
+++  <connection>
+++   <sender>mButtonBox</sender>
+++   <signal>rejected()</signal>
+++   <receiver>RemoteConsoleDialog</receiver>
+++   <slot>reject()</slot>
+++   <hints>
+++    <hint type="sourcelabel">
+++     <x>316</x>
+++     <y>260</y>
+++    </hint>
+++    <hint type="destinationlabel">
+++     <x>286</x>
+++     <y>274</y>
+++    </hint>
+++   </hints>
+++  </connection>
+++ </connections>
+++</ui>

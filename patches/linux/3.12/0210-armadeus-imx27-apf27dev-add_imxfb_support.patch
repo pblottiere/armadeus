@@ -1,0 +1,50 @@
+
+Signed-off-by: Gwenhael Goavec-Merou <gwenhael.goavec-merou@armadeus.com>
+---
+Index: linux-3.11-rc3/arch/arm/boot/dts/imx27-apf27dev.dts
+===================================================================
+--- linux-3.11-rc3.orig/arch/arm/boot/dts/imx27-apf27dev.dts
++++ linux-3.11-rc3/arch/arm/boot/dts/imx27-apf27dev.dts
+@@ -35,6 +35,26 @@
+ 			linux,default-trigger = "heartbeat";
+ 		};
+ 	};
++
++	display0: display0 {
++		model = "Chimei-LW700AT9003";
++		native-mode = <&timing0>;
++		bits-per-pixel = <16>;  /* non-standard but required */
++		fsl,pcr = <0xfae80083>; /* non-standard but required */
++		display-timings {
++			timing0: timing0 {
++				clock-frequency = <33000033>;
++				hactive = <800>;
++				vactive = <480>;
++				hback-porch = <96>;
++				hfront-porch = <96>;
++				vback-porch = <20>;
++				vfront-porch = <21>;
++				hsync-len = <64>;
++				vsync-len = <4>;
++			};
++		};
++	};
+ };
+ 
+ &cspi1 {
+@@ -64,6 +84,15 @@
+ 	status = "okay";
+ };
+ 
++&fb {
++	display = <&display0>;
++	fsl,pwmr = <0x00a903ff>;
++	fsl,dmacr = <0x00020010>;
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_imxfb1_1>;
++	status = "okay";
++};
++
+ &iomuxc {
+ 	pinctrl-names = "default";
+ 	pinctrl-0 = <&pinctrl_hog>;

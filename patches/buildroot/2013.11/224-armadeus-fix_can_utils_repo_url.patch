@@ -1,0 +1,13 @@
+Index: buildroot/package/can-utils/can-utils.mk
+===================================================================
+--- buildroot.orig/package/can-utils/can-utils.mk
++++ buildroot/package/can-utils/can-utils.mk
+@@ -5,7 +5,7 @@
+ ################################################################################
+ 
+ CAN_UTILS_VERSION = 16c970d40e6c19dde705bad4751bab1a3a4f3a0d
+-CAN_UTILS_SITE = git://gitorious.org/linux-can/can-utils.git
++CAN_UTILS_SITE = http://github.com/linux-can/can-utils/tarball/$(CAN_UTILS_VERSION)
+ CAN_UTILS_AUTORECONF = YES
+ 
+ $(eval $(autotools-package))

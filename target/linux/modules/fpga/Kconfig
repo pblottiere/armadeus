@@ -1,0 +1,20 @@
+#
+# Armadeus FPGA drivers configuration
+#
+
+menuconfig ARMADEUS_FPGA_DRIVERS
+	bool "FPGA specific drivers and tools"
+	---help---
+	  All drivers and tools related to FPGA.
+
+if ARMADEUS_FPGA_DRIVERS
+
+source "drivers/armadeus/fpga/dev_tools/Kconfig"
+source "drivers/armadeus/fpga/others/Kconfig"
+
+comment "Specific designs"
+source "drivers/armadeus/fpga/virtual_components/Kconfig"
+source "drivers/armadeus/fpga/POD/Kconfig"
+source "drivers/armadeus/fpga/board_designs/Kconfig"
+
+endif # ARMADEUS_FPGA_DRIVERS

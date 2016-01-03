@@ -1,0 +1,154 @@
+From patchwork Wed Sep 11 05:26:46 2013
+Content-Type: text/plain; charset="utf-8"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Subject: [RFC] mmc: core: Update ext_csd if touched by ioctl
+From: Dirk Behme <dirk.behme@gmail.com>
+X-Patchwork-Id: 2870291
+Message-Id: <1378877206-3376-1-git-send-email-dirk.behme@gmail.com>
+To: linux-mmc@vger.kernel.org
+Cc: Chris Ball <cjb@laptop.org>, Dirk Behme <dirk.behme@gmail.com>
+Date: Wed, 11 Sep 2013 07:26:46 +0200
+
+In case an ioctl changes an EXT_CSD register, update the internal ext_csd
+data structure, too. Else the driver's internal ext_csd data structure and
+the EXT_CSD register content doesn't match any more. In this case additional
+ioctls changing the ext_csd would revert the initial one due to the old data
+in the driver's internal ext_csd data.
+
+E.g. using the mmc utils utility to enable the bootpart
+
+mmc bootpart enable 1 0 /dev/mmcblk1
+
+correctly writes to the EXT_CSD structure of the device, but
+doesn't update
+
+card->ext_csd.part_config
+
+Issuing additional MMC_SWITCH commands afterwards use the then (wrong)
+card->ext_csd.part_config. Resulting in an undo of the initial mmc bootpart
+enable.
+
+Fix this by updating the ext_csd in case of an EXT_CSD update ioctl.
+
+Signed-off-by: Dirk Behme <dirk.behme@gmail.com>
+
+---
+Notes:
+
+This fixes the issue discussed in
+
+http://marc.info/?l=linux-mmc&m=137820629730918
+
+This patch is marked as RFC due to two reasons:
+
+* exporting mmc_update_ext_csd() in core/mmc.c and calling it directly from
+  card/block.c
+* It seems it's not allowed to call mmc_part_add() in mmc_read_ext_csd()
+  several times. So this is disabled by passing an 'update' variable to
+  mmc_read_ext_csd() disabling the mmc_part_add() in case we just want to
+  update the ext_csd variables.
+
+How can this be done better/cleaner?
+
+ drivers/mmc/card/block.c |   14 ++++++++++++++
+ drivers/mmc/core/mmc.c   |   26 ++++++++++++++++++++++----
+ 2 files changed, 36 insertions(+), 4 deletions(-)
+
+Index: linux-3.19-rc2/drivers/mmc/card/block.c
+===================================================================
+--- linux-3.19-rc2.orig/drivers/mmc/card/block.c	2014-12-30 15:49:05.976292142 +0100
++++ linux-3.19-rc2/drivers/mmc/card/block.c	2014-12-30 16:08:59.000000000 +0100
+@@ -135,6 +135,8 @@
+ module_param(perdev_minors, int, 0444);
+ MODULE_PARM_DESC(perdev_minors, "Minors numbers to allocate per device");
+ 
++int mmc_update_ext_csd(struct mmc_card *card);
++
+ static inline int mmc_blk_part_switch(struct mmc_card *card,
+ 				      struct mmc_blk_data *md);
+ static int get_card_status(struct mmc_card *card, u32 *status, int retries);
+@@ -602,6 +604,18 @@
+ 					__func__, status, err);
+ 	}
+ 
++	if ((cmd.opcode == MMC_SWITCH) && ((cmd.arg >> 24) & 0x3)) {
++		/*
++		 * In case the IOCTL has modified the EXT_CSD,
++		 * update it, i.e. re-read the EXT_CSD.
++		 */
++		err = mmc_update_ext_csd(card);
++		if (err)
++			dev_err(mmc_dev(card->host),
++					"%s: EXT_CSD update failed, error %d\n",
++					__func__, err);
++	}
++
+ cmd_rel_host:
+ 	mmc_put_card(card);
+ 
+Index: linux-3.19-rc2/drivers/mmc/core/mmc.c
+===================================================================
+--- linux-3.19-rc2.orig/drivers/mmc/core/mmc.c	2014-12-30 15:49:05.976292142 +0100
++++ linux-3.19-rc2/drivers/mmc/core/mmc.c	2014-12-30 16:10:22.536332697 +0100
+@@ -332,7 +332,7 @@
+ /*
+  * Decode extended CSD.
+  */
+-static int mmc_decode_ext_csd(struct mmc_card *card, u8 *ext_csd)
++static int mmc_decode_ext_csd(struct mmc_card *card, u8 *ext_csd, int update)
+ {
+ 	int err = 0, idx;
+ 	unsigned int part_size;
+@@ -404,7 +404,8 @@
+ 		 * There are two boot regions of equal size, defined in
+ 		 * multiples of 128K.
+ 		 */
+-		if (ext_csd[EXT_CSD_BOOT_MULT] && mmc_boot_partition_access(card->host)) {
++		if (ext_csd[EXT_CSD_BOOT_MULT] && mmc_boot_partition_access(card->host) &&
++		    !update) {
+ 			for (idx = 0; idx < MMC_NUM_BOOT_PARTITION; idx++) {
+ 				part_size = ext_csd[EXT_CSD_BOOT_MULT] << 17;
+ 				mmc_part_add(card, part_size,
+@@ -513,7 +514,8 @@
+ 		 * RPMB regions are defined in multiples of 128K.
+ 		 */
+ 		card->ext_csd.raw_rpmb_size_mult = ext_csd[EXT_CSD_RPMB_MULT];
+-		if (ext_csd[EXT_CSD_RPMB_MULT] && mmc_host_cmd23(card->host)) {
++		if (ext_csd[EXT_CSD_RPMB_MULT] && mmc_host_cmd23(card->host) &&
++		    !update) {
+ 			mmc_part_add(card, ext_csd[EXT_CSD_RPMB_MULT] << 17,
+ 				EXT_CSD_PART_CONFIG_ACC_RPMB,
+ 				"rpmb", 0, false,
+@@ -609,7 +611,7 @@
+ 		return err;
+ 	}
+ 
+-	err = mmc_decode_ext_csd(card, ext_csd);
++	err = mmc_decode_ext_csd(card, ext_csd, 0);
+ 	kfree(ext_csd);
+ 	return err;
+ }
+@@ -1625,6 +1627,22 @@
+ 	return mmc_send_status(host->card, NULL);
+ }
+ 
++int mmc_update_ext_csd(struct mmc_card *card)
++{
++	u8 *new_ext_csd;
++	int err;
++
++	err = mmc_get_ext_csd(card, &new_ext_csd);
++	if (err || new_ext_csd == NULL)
++		goto out;
++
++	err = mmc_decode_ext_csd(card, new_ext_csd, 1);
++
++out:
++	kfree(new_ext_csd);
++	return err;
++}
++
+ /*
+  * Card detection callback from host.
+  */

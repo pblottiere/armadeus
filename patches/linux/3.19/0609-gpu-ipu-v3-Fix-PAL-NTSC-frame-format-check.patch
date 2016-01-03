@@ -1,0 +1,39 @@
+From a8f7b78f0b900900dcc92e06a6ee019cd9e23ff5 Mon Sep 17 00:00:00 2001
+From: Steve Longerbeam <steve_longerbeam@mentor.com>
+Date: Thu, 23 Oct 2014 16:46:56 -0700
+Subject: [PATCH 609/625] gpu: ipu-v3: Fix PAL/NTSC frame format check
+
+The struct v4l2_mbus_framefmt width/height values passed to
+ipu_csi_init_interface() are the raw dimensions that include
+vertical blanking lines. So use the raw values when checking
+for PAL/NTSC frame formats.
+
+Signed-off-by: Steve Longerbeam <steve_longerbeam@mentor.com>
+---
+ drivers/gpu/ipu-v3/ipu-csi.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/ipu-v3/ipu-csi.c b/drivers/gpu/ipu-v3/ipu-csi.c
+index 0765162..f7f4ebc 100644
+--- a/drivers/gpu/ipu-v3/ipu-csi.c
++++ b/drivers/gpu/ipu-v3/ipu-csi.c
+@@ -398,7 +398,7 @@ int ipu_csi_init_interface(struct ipu_csi *csi,
+		ipu_csi_write(csi, 0xFF0000, CSI_CCIR_CODE_3);
+		break;
+	case IPU_CSI_CLK_MODE_CCIR656_INTERLACED:
+-		if (mbus_fmt->width == 720 && mbus_fmt->height == 576) {
++		if (mbus_fmt->width == 720 && mbus_fmt->height == 625) {
+			/*
+			 * PAL case
+			 *
+@@ -412,7 +412,7 @@ int ipu_csi_init_interface(struct ipu_csi *csi,
+			ipu_csi_write(csi, 0xD07DF, CSI_CCIR_CODE_2);
+			ipu_csi_write(csi, 0xFF0000, CSI_CCIR_CODE_3);
+
+-		} else if (mbus_fmt->width == 720 && mbus_fmt->height == 480) {
++		} else if (mbus_fmt->width == 720 && mbus_fmt->height == 525) {
+			/*
+			 * NTSC case
+			 *
+--
+1.8.5.5

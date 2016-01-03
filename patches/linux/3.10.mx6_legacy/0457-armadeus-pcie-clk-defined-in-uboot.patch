@@ -1,0 +1,18 @@
+Do not configure PCIe clock with Linux. PCIe Frequency clock is configured
+under U-Boot.
+
+Signed-off-by: Sébastien Szymanski <sebastien.szymanski@armadeus.com>
+Index: linux-wandboard_imx_3.10.31_1.1.0_beta2/arch/arm/mach-imx/clk-imx6q.c
+===================================================================
+--- linux-wandboard_imx_3.10.31_1.1.0_beta2.orig/arch/arm/mach-imx/clk-imx6q.c
++++ linux-wandboard_imx_3.10.31_1.1.0_beta2/arch/arm/mach-imx/clk-imx6q.c
+@@ -675,7 +675,8 @@ static void __init imx6q_clocks_init(str
+	imx_clk_set_parent(clk[enfc_sel], clk[pll2_pfd2_396m]);
+
+	/* Set the parent clks of PCIe lvds1 and pcie_axi to be sata ref, axi */
+-	imx_clk_set_parent(clk[lvds1_sel], clk[sata_ref]);
++	// APF6: This is done in U-Boot
++	//imx_clk_set_parent(clk[lvds1_sel], clk[sata_ref]);
+	imx_clk_set_parent(clk[pcie_axi_sel], clk[axi]);
+
+	/* gpu clock initilazation */

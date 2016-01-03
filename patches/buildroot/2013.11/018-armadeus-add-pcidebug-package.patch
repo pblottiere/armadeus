@@ -1,0 +1,61 @@
+Index: buildroot/package/Config.in
+===================================================================
+--- buildroot.orig/package/Config.in	2015-02-18 09:14:28.467372230 +0100
++++ buildroot/package/Config.in	2015-02-18 09:36:09.873825541 +0100
+@@ -344,6 +344,7 @@
+ source "package/owfs/Config.in"
+ source "package/owl-linux/Config.in"
+ source "package/parted/Config.in"
++source "package/pci_debug/Config.in"
+ source "package/pciutils/Config.in"
+ source "package/picocom/Config.in"
+ source "package/read-edid/Config.in"
+Index: buildroot/package/pci_debug/Config.in
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/pci_debug/Config.in	2015-02-18 09:43:45.860087739 +0100
+@@ -0,0 +1,14 @@
++config BR2_PACKAGE_PCI_DEBUG
++	bool "pcidebug"
++	select BR2_PACKAGE_READLINE
++	help
++	  PCI debug registers interface.
++
++	  This tool provides a debug interface for reading and writing to PCI
++	  registers via the device base address registers (BARs). The tool uses
++	  the PCI resource nodes automatically created by recent Linux kernels.
++
++	  This tool uses readline (and ncurses) so it will autoselect it.
++
++	  Written by D. W. Hawkins :
++	  http://www.ovro.caltech.edu/%7Edwh/correlator/pdf/altera_pcie.zip
+Index: buildroot/package/pci_debug/pci_debug.mk
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ buildroot/package/pci_debug/pci_debug.mk	2015-02-18 10:01:50.657466829 +0100
+@@ -0,0 +1,25 @@
++################################################################################
++#
++# pci_debug
++#
++################################################################################
++
++PCI_DEBUG_VERSION = 2012.03
++PCI_DEBUG_SITE = http://www.ovro.caltech.edu/%7Edwh/correlator/pdf/
++PCI_DEBUG_SOURCE = altera_pcie.zip
++#PCI_DEBUG_LICENSE = ????
++PCI_DEBUG_DEPENDENCIES = readline
++
++define PCI_DEBUG_EXTRACT_CMDS
++	unzip $(DL_DIR)/$(PCI_DEBUG_SOURCE) -d $(@D)
++endef
++
++define PCI_DEBUG_BUILD_CMDS
++	$(TARGET_CONFIGURE_OPTS) $(MAKE) CC="$(TARGET_CC)" -C $(@D)/code/pci_debug/
++endef
++
++define PCI_DEBUG_INSTALL_TARGET_CMDS
++	$(INSTALL) -m 755 $(@D)/code/pci_debug/pci_debug $(TARGET_DIR)/usr/sbin/
++endef
++
++$(eval $(generic-package))
