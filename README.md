@@ -7,9 +7,9 @@ compilation is straightforward and images are successfully generated.
 
 I have tested my armadeus APF28 card with :
 
-    * the uboot image **apf28-u-boot.sb**
-    * the kernel image **apf28-linux.bin**
-    * the UBIFS **apf28-rootfs.ubi**
+  * the uboot image **apf28-u-boot.sb**
+  * the kernel image **apf28-linux.bin**
+  * the UBIFS **apf28-rootfs.ubi**
 
 ## Debian Stretch
 
