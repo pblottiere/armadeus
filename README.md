@@ -3,7 +3,9 @@
 ## Debian Jessie
 
 After some updates about downloading links (in the Buildroot part), the
-compilation is straightforward and images are successfully generated.
+compilation is straightforward and images are successfully generated thanks to:
+
+    make apf28_defconfig
 
 I have tested my armadeus APF28 card with :
 
