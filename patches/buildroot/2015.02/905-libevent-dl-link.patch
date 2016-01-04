@@ -1,0 +1,15 @@
+libevent.mk: fox download link
+
+signed-off-by Blottiere Paul <blottiere.paul@gmail.com>
+
+--- buildroot/package/libevent/libevent.mk	2015-03-01 22:26:12.000000000 +0100
++++ buildroot/package/libevent/libevent.mk	2016-01-04 13:54:29.396000000 +0100
+@@ -6,7 +6,7 @@
+ 
+ LIBEVENT_VERSION_MAJOR = 2.0
+ LIBEVENT_VERSION = $(LIBEVENT_VERSION_MAJOR).22-stable
+-LIBEVENT_SITE = http://downloads.sourceforge.net/project/levent/libevent/libevent-$(LIBEVENT_VERSION_MAJOR)
++LIBEVENT_SITE = http://downloads.sourceforge.net/project/levent/release-2.0.22-stable/
+ LIBEVENT_INSTALL_STAGING = YES
+ LIBEVENT_LICENSE = BSD-3c, OpenBSD
+ LIBEVENT_LICENSE_FILES = LICENSE
